@@ -74,6 +74,10 @@ export const PeerErrorCodes = {
   SelfUrl: 'PEER_SELF_URL',
   // A 1.0 card with no JSON-RPC interface (CLEAN-97).
   Binding: 'PEER_BINDING',
+  // The connection is shown to the caller, who may not change it (CLEAN-236).
+  Forbidden: 'PEER_FORBIDDEN',
+  // Opening a connection to visitors without `confirm` (CLEAN-236).
+  VisitorsNeedsConfirm: 'PEER_VISITORS_NEEDS_CONFIRM',
 } as const;
 
 export type PeerErrorCode =
@@ -112,11 +116,21 @@ export interface IAgentPeerData {
   updatedAt: string;
 }
 
-/** A peer connection joined with what the peer agent looks like right now. */
+/** A person named on a connection. `name` is null once the account is gone. */
+export interface IPeerPerson {
+  id: string;
+  name: string | null;
+}
+
+/**
+ * A peer connection joined with what the peer agent looks like right now, as
+ * one viewer may see it (CLEAN-236, `peerAccess.ts`). A connection that does
+ * not exist for the viewer has no view at all.
+ */
 export interface IAgentPeerView {
   id: string;
   agentId: string;
-  /** Null for external rows. */
+  /** Null for external rows, and on a masked view. */
   peerAgentId: string | null;
   origin: PeerOrigin;
   peerName: string;
@@ -129,6 +143,56 @@ export interface IAgentPeerView {
   cardUrl: string;
   cardReadAt: string;
   createdAt: string;
+  /**
+   * `masked`: the peer serves this viewer through a connection open to
+   * visitors, and the viewer does not reach it. Only its skills are shown;
+   * name, id, status, address and who connected it are not.
+   */
+  visibility: 'full' | 'masked';
+  /** Who made the connection. Null: made before it was recorded. */
+  createdBy: IPeerPerson | null;
+  /** Internal rows: serves every caller of the agent, not only who reaches it. */
+  openToVisitors: boolean;
+  /** External rows: the one person the connection serves; null ⇒ everybody. */
+  owner: IPeerPerson | null;
+  /** Existed before CLEAN-236 and its visitors setting was never saved. */
+  needsReview: boolean;
+  /** The viewer may remove or re-read it. */
+  canRemove: boolean;
+  /** The viewer manages both agents and may open or close it to visitors. */
+  canSetVisitors: boolean;
+}
+
+/** What a masked peer is called wherever a person reads it. */
+export const MASKED_PEER_NAME = 'A colleague';
+
+/** `peerStatus` of a masked view: the peer's live status is not the viewer's. */
+export const MASKED_PEER_STATUS = 'hidden';
+
+/**
+ * The card of a masked peer: its skills and nothing else. The asking model
+ * cannot pick a colleague without knowing what it can do, so the skills
+ * stay. The description goes by rule, not by judgment: the default one is
+ * literally "Ranch agent «name».", and an own one may say anything.
+ */
+export function maskCard(
+  card: IA2aAgentCard | null | undefined,
+): IA2aAgentCard {
+  return {
+    name: MASKED_PEER_NAME,
+    description: '',
+    version: '',
+    supportedInterfaces: [],
+    capabilities: {},
+    defaultInputModes: [],
+    defaultOutputModes: [],
+    skills: (card?.skills ?? []).map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description,
+      tags: skill.tags ?? [],
+    })),
+  };
 }
 
 /** Whether the running pod has loaded the current peer set (CLEAN-95). */

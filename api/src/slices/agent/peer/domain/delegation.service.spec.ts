@@ -16,6 +16,15 @@ import type { IPeerGateway } from './peer.gateway';
 import type { IDelegationGateway } from './delegation.gateway';
 import type { A2aClient } from './a2a.client';
 import type { IBridleGateway } from '#/bridle/domain/bridle.gateway';
+import type { ICallerParty } from '#/user/auth/domain/auth.types';
+import {
+  ADMIN,
+  GUEST,
+  OWNER,
+  TRUSTED,
+  peerAccessOver,
+  type IPeerWorld,
+} from './__fixtures__/peerAccess';
 
 /**
  * One delegation end to end. The invariants worth defending are about order
@@ -126,6 +135,8 @@ function makeHarness(
     reply?: A2aSendMessageResult;
     sendThrows?: Error;
     activeTurn?: { clientId: string; turnId: string; ts: number } | null;
+    /** Who is denied which agents (CLEAN-236). Nobody, unless said. */
+    world?: IPeerWorld;
   } = {},
 ) {
   const order: string[] = [];
@@ -184,17 +195,28 @@ function makeHarness(
     ),
   } as unknown as IBridleGateway;
 
+  // Every id is an agent: the rule under test here is about reach.
+  const agents = {
+    findById: (id: string) =>
+      Promise.resolve({ id, name: id, isAdmin: false, createdById: null }),
+  };
+  const { access } = peerAccessOver(agents, options.world);
+
   const service = new DelegationService(
     peers,
     delegationMocks as unknown as IDelegationGateway,
     client,
     hub,
+    access,
   );
 
   const run = (overrides: Record<string, unknown> = {}) =>
     service.run(
       {
         callerAgentId: 'a',
+        // The Owner reaches every agent, so the party decides nothing in the
+        // cases that are not about access.
+        party: OWNER,
         peer: 'peer-1',
         task: 'What is the return window for shoes?',
         reason: 'Support Bot holds the returns policy base',
@@ -916,6 +938,191 @@ describe('DelegationService.run — which interface gets called (CLEAN-97)', () 
     expect(outcome).toMatchObject({
       status: 'failed',
       errorCode: DelegationErrorCodes.Unsupported,
+    });
+  });
+});
+
+/**
+ * CLEAN-236. The peer is resolved among the connections that serve the
+ * caller of the turn, at the time of the call, and among no others.
+ */
+describe('DelegationService.run — whom the peer serves', () => {
+  const world: IPeerWorld = { denied: { 'user-admin': ['b'] } };
+  const open = () => connection({ openToVisitors: true });
+
+  const refused: Array<[string, ICallerParty]> = [
+    ['a person who does not reach it', ADMIN],
+    ['a visitor', GUEST],
+    ['the agent on its own schedule', TRUSTED],
+    [
+      'another agent’s question, started for nobody',
+      { kind: 'peer', chain: ['x'], connectionId: 'c-1' },
+    ],
+    [
+      'another agent’s question, started for a person who does not reach it',
+      {
+        kind: 'peer',
+        chain: ['x'],
+        connectionId: 'c-1',
+        forUserId: 'user-admin',
+      },
+    ],
+  ];
+
+  it.each(refused)(
+    'does not ask a peer for %s, and does not name it in the refusal',
+    async (_who, party) => {
+      const { run, sendMessage, delegations } = makeHarness({ world });
+
+      for (const peer of ['peer-1', 'b', 'Support Bot']) {
+        expect(await run({ party, peer })).toEqual({
+          kind: 'no_match',
+          peers: [],
+        });
+      }
+      expect(sendMessage).not.toHaveBeenCalled();
+      expect(delegations.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('asks it for another agent’s question started for a person who reaches it', async () => {
+    const { run, sendMessage } = makeHarness({ world });
+
+    const outcome = await run({
+      party: {
+        kind: 'peer',
+        chain: ['x'],
+        connectionId: 'c-1',
+        forUserId: 'user-user',
+      },
+    });
+
+    expect(outcome).toMatchObject({ kind: 'done', masked: false });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(refused)(
+    'open to visitors: asks it for %s, as a colleague without a name',
+    async (_who, party) => {
+      const { run, sendMessage, sent, rows } = makeHarness({
+        world,
+        connections: [open()],
+      });
+
+      // The reason is the model's own line, and the model of this turn was
+      // only ever told of "Colleague 1".
+      const outcome = await run({
+        party,
+        peer: 'Colleague 1',
+        reason: 'Colleague 1 covers the returns policy',
+      });
+
+      expect(outcome).toMatchObject({
+        kind: 'done',
+        status: 'answered',
+        peerName: 'a colleague',
+        masked: true,
+        text: 'Within 30 days.',
+      });
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+      // The audit row keeps the peer; what was pushed to the chat does not.
+      expect(Object.values(rows)[0]).toMatchObject({
+        peerName: 'Support Bot',
+        peerAgentId: 'b',
+      });
+      for (const push of sent) {
+        expect(push.data.step.label).toMatch(/a colleague/);
+        expect(push.data.step.delegation).toMatchObject({
+          peerAgentId: null,
+          peerName: 'A colleague',
+        });
+        expect(JSON.stringify(push.data)).not.toMatch(/Support Bot|"b"/);
+      }
+    },
+  );
+
+  it('a masked peer answers to its connection id and its label, never to the agent behind it', async () => {
+    const { run, sendMessage } = makeHarness({
+      world,
+      connections: [open()],
+    });
+
+    for (const peer of ['b', 'Support Bot']) {
+      expect(await run({ party: GUEST, peer })).toEqual({
+        kind: 'no_match',
+        peers: ['Colleague 1'],
+      });
+    }
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    expect(await run({ party: GUEST, peer: 'Colleague 1' })).toMatchObject({
+      kind: 'done',
+      masked: true,
+    });
+  });
+
+  it('a person who reaches an open peer is told its name, as for any other', async () => {
+    const { run, sent } = makeHarness({ world, connections: [open()] });
+
+    const outcome = await run({ party: OWNER, peer: 'Support Bot' });
+
+    expect(outcome).toMatchObject({ peerName: 'Support Bot', masked: false });
+    expect(sent[0].data.step.label).toBe('Asking «Support Bot»');
+  });
+
+  describe('a peer outside the Ranch', () => {
+    const outside = (ownerUserId: string | null) =>
+      connection({
+        id: 'peer-x',
+        peerAgentId: null,
+        origin: PeerOrigins.External,
+        token: null,
+        ownerUserId,
+        cardSnapshot: {
+          ...card('Outside Bot'),
+          supportedInterfaces: [
+            {
+              url: 'https://other.example/a2a/agents/x',
+              protocolBinding: 'JSONRPC',
+              protocolVersion: '1.0',
+            },
+          ],
+        },
+        cardUrl:
+          'https://other.example/a2a/agents/x/.well-known/agent-card.json',
+      });
+
+    it('shared: asked for anybody', async () => {
+      for (const party of [OWNER, ADMIN, GUEST]) {
+        const { run } = makeHarness({ world, connections: [outside(null)] });
+        expect(await run({ party, peer: 'peer-x' })).toMatchObject({
+          kind: 'done',
+          peerName: 'Outside Bot',
+          masked: false,
+        });
+      }
+    });
+
+    it('one person’s own: asked for them, and for nobody else, the one who manages the agent included', async () => {
+      const mine = () =>
+        makeHarness({ world, connections: [outside('user-user')] });
+
+      const owner = mine();
+      expect(
+        await owner.run({
+          party: { kind: 'person', userId: 'user-user', role: 'User' },
+          peer: 'peer-x',
+        }),
+      ).toMatchObject({ kind: 'done' });
+
+      for (const party of [OWNER, ADMIN, GUEST]) {
+        const other = mine();
+        expect(await other.run({ party, peer: 'peer-x' })).toEqual({
+          kind: 'no_match',
+          peers: [],
+        });
+        expect(other.sendMessage).not.toHaveBeenCalled();
+      }
     });
   });
 });

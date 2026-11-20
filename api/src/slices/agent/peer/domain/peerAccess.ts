@@ -60,6 +60,8 @@ export interface IPeerViewer {
   reaches(agentId: string): boolean;
   /** Whether the viewer manages the agent that holds the connections. */
   managesAgent: boolean;
+  /** The Owner: the one viewer shown what no connection row explains any more. */
+  isOwner: boolean;
 }
 
 /** Nobody: reaches nothing, manages nothing. */
@@ -67,6 +69,7 @@ export const NOBODY: IPeerViewer = {
   userId: null,
   reaches: () => false,
   managesAgent: false,
+  isOwner: false,
 };
 
 function reachesPeer(row: IPeerAccessRow, viewer: IPeerViewer): boolean {
@@ -138,6 +141,7 @@ export class PeerAccessService {
         userId: party.userId,
         reaches: (id) => reach.has(id),
         managesAgent: managed !== null,
+        isOwner: party.role === UserRoleTypes.Owner,
       };
     }
 
@@ -159,6 +163,9 @@ export class PeerAccessService {
         userId: user.id,
         reaches: (id) => reach.has(id),
         managesAgent: false,
+        // For reach only: a question written by another agent's model is
+        // never the Owner's hand on this agent.
+        isOwner: false,
       };
     }
 

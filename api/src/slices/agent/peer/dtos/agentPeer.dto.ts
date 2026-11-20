@@ -1,6 +1,20 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { AgentCardDto } from './agentCard.dto';
 
+/** A person named on a connection: who made it, or the one person it serves. */
+export class PeerPersonDto {
+  @ApiProperty({ example: 'user-6f1c…' })
+  id: string;
+
+  @ApiProperty({
+    description: 'Null once the account no longer exists.',
+    nullable: true,
+    type: String,
+    example: 'Ada Lovelace',
+  })
+  name: string | null;
+}
+
 /**
  * One directed peer connection as the console sees it (CLEAN-74).
  *
@@ -82,4 +96,68 @@ export class AgentPeerDto {
 
   @ApiProperty({ format: 'date-time', example: '2026-09-14T10:00:00.000Z' })
   createdAt: string;
+
+  @ApiProperty({
+    description:
+      "How the caller is shown this connection (CLEAN-236). 'full': as it " +
+      "is. 'masked': the peer serves the caller through a connection open " +
+      'to visitors, and the caller has no access to the peer itself, so ' +
+      '`peerName` is a constant, `peerAgentId` is null, `cardUrl` is empty ' +
+      'and `card` holds the skills only. A connection the caller may not ' +
+      'see at all is not in the list.',
+    enum: ['full', 'masked'],
+    example: 'full',
+  })
+  visibility: 'full' | 'masked';
+
+  @ApiProperty({
+    description:
+      'Who made the connection. Null when it was made before that was ' +
+      'recorded, and on a masked row.',
+    nullable: true,
+    type: PeerPersonDto,
+  })
+  createdBy: PeerPersonDto | null;
+
+  @ApiProperty({
+    description:
+      'Internal peers only. False: the peer serves the people who have ' +
+      'access to it. True: it serves everybody who talks to the agent, ' +
+      'visitors included.',
+    example: false,
+  })
+  openToVisitors: boolean;
+
+  @ApiProperty({
+    description:
+      'External peers only: the one person this connection serves, when ' +
+      'somebody who does not manage the agent added it. Null: it serves ' +
+      'everybody who talks to the agent.',
+    nullable: true,
+    type: PeerPersonDto,
+  })
+  owner: PeerPersonDto | null;
+
+  @ApiProperty({
+    description:
+      'The connection existed before access to peers was checked and its ' +
+      'visitors setting has not been saved since. Saving it, either way, ' +
+      'clears the mark.',
+    example: false,
+  })
+  needsReview: boolean;
+
+  @ApiProperty({
+    description: 'The caller may remove this connection.',
+    example: true,
+  })
+  canRemove: boolean;
+
+  @ApiProperty({
+    description:
+      'The caller manages both agents and may open or close the connection ' +
+      'to visitors.',
+    example: false,
+  })
+  canSetVisitors: boolean;
 }

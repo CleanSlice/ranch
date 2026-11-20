@@ -5,6 +5,11 @@ import { A2aCardGuard, A2aPeerGuard } from './a2a.guards';
 import type { IA2aRequest } from './a2a.guards';
 import type { IPeerGateway } from '../domain/peer.gateway';
 import { UserRoleTypes } from '#/user/user/domain';
+import { NotFoundException } from '@nestjs/common';
+import {
+  peerAccessOver,
+  type IPeerWorld,
+} from '../domain/__fixtures__/peerAccess';
 
 /**
  * Who may read a card and who may send a task (CLEAN-74, FR-002 / FR-007).
@@ -29,6 +34,8 @@ function makeHarness(
       peerAgentId: string;
     }>;
     verify?: () => unknown;
+    /** Who is denied which agents (CLEAN-236). Nobody, unless said. */
+    world?: IPeerWorld;
   } = {},
 ) {
   const rows = options.rows ?? [];
@@ -46,8 +53,19 @@ function makeHarness(
     ),
   } as unknown as JwtService;
 
+  // Every id is an agent but `ghost`; `ranch` is the Ranch admin agent.
+  const agents = {
+    findById: (id: string) =>
+      Promise.resolve(
+        id === 'ghost'
+          ? null
+          : { id, name: id, isAdmin: id === 'ranch', createdById: null },
+      ),
+  };
+  const { permission } = peerAccessOver(agents, options.world);
+
   return {
-    cardGuard: new A2aCardGuard(jwt, peers),
+    cardGuard: new A2aCardGuard(jwt, peers, permission),
     peerGuard: new A2aPeerGuard(peers),
     peers: peerMocks,
     jwt,
@@ -258,5 +276,80 @@ describe('A2aCardGuard — acting tokens (CLEAN-232)', () => {
       ).rejects.toBeInstanceOf(UnauthorizedException);
       expect((req as { user?: unknown }).user).toBeUndefined();
     }
+  });
+});
+
+/**
+ * CLEAN-236. A console token used to open the card of any agent to any Owner
+ * or Admin: checked on the live installation, an Admin read the Ranch admin
+ * agent's card here while the console's own card route told them 404, and an
+ * id that names no agent answered 404 too, so the route also said which ids
+ * exist. The guard now asks the manage rule, and answers an agent the person
+ * does not manage exactly as `AgentCardService.build` answers no agent.
+ */
+describe('A2aCardGuard — a console token reads the card of an agent its person manages', () => {
+  const tokenOf = (sub: string, role: UserRoleTypes) => () => ({
+    sub,
+    email: '',
+    roles: [role],
+  });
+  const world: IPeerWorld = { denied: { 'user-admin': ['agent-hidden'] } };
+  const answerOf = (attempt: Promise<unknown>) =>
+    attempt.then(
+      () => 'admitted',
+      (e: { status?: number; response?: unknown }) => ({
+        status: e.status,
+        response: e.response,
+      }),
+    );
+
+  it('admits an Admin for an agent they reach', async () => {
+    const { cardGuard } = makeHarness({
+      world,
+      verify: tokenOf('user-admin', UserRoleTypes.Admin),
+    });
+
+    await expect(
+      cardGuard.canActivate(contextFor(request('Bearer t', 'agent-b'))),
+    ).resolves.toBe(true);
+  });
+
+  it('refuses an Admin the Ranch admin agent, an agent their lists hide, and an id that names none, all three alike', async () => {
+    const { cardGuard } = makeHarness({
+      world,
+      verify: tokenOf('user-admin', UserRoleTypes.Admin),
+    });
+    const at = (agentId: string) =>
+      answerOf(cardGuard.canActivate(contextFor(request('Bearer t', agentId))));
+
+    const missing = await at('ghost');
+    expect(missing).toMatchObject({ status: 404 });
+    expect(await at('ranch')).toEqual(missing);
+    expect(await at('agent-hidden')).toEqual(missing);
+    // The words the route itself has for an agent that does not exist.
+    await expect(
+      cardGuard.canActivate(contextFor(request('Bearer t', 'ranch'))),
+    ).rejects.toEqual(new NotFoundException('Agent not found'));
+  });
+
+  it('admits the Owner everywhere an agent exists', async () => {
+    const { cardGuard } = makeHarness({
+      world,
+      verify: tokenOf('user-owner', UserRoleTypes.Owner),
+    });
+
+    for (const agentId of ['ranch', 'agent-hidden', 'agent-b']) {
+      await expect(
+        cardGuard.canActivate(contextFor(request('Bearer t', agentId))),
+      ).resolves.toBe(true);
+    }
+  });
+
+  it('leaves a peer credential as it was: the connection is what proves it', async () => {
+    const { cardGuard } = makeHarness({ world, rows: [connection] });
+
+    await expect(
+      cardGuard.canActivate(contextFor(request(`Bearer ${VALID}`, 'agent-b'))),
+    ).resolves.toBe(true);
   });
 });

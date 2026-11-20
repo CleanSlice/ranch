@@ -298,12 +298,7 @@ const limits = new AgentLimitTool(
   permission,
   access,
 );
-const peers = new PeerAdminTool(
-  never('peers'),
-  never('cards'),
-  never('delegations'),
-  permission,
-);
+const peers = new PeerAdminTool(never('peers'), permission);
 const secrets = new SecretTool(agents, never('secrets'), permission);
 const shareLinks = new ShareLinkTool(never('shareLinks'), agents, access);
 const chatTool = new ChatTool(
@@ -440,6 +435,12 @@ const BY_AGENT_ID: Record<string, ToolCall> = {
     peers.connectAgentPeer({ agentId, peerAgentId: A }, null, req),
   remove_agent_peer: (agentId, req) =>
     peers.removeAgentPeer({ agentId, peerId: 'p', confirm: true }, null, req),
+  set_agent_peer_visitors: (agentId, req) =>
+    peers.setAgentPeerVisitors(
+      { agentId, peerId: 'p', open: true, confirm: true },
+      null,
+      req,
+    ),
   // secret.tool.ts
   list_agent_secrets: (agentId, req) =>
     secrets.listAgentSecrets({ agentId }, null, req),

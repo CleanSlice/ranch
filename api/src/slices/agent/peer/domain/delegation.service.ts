@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { IBridleGateway } from '#/bridle/domain/bridle.gateway';
+import type { ICallerParty } from '#/user/auth/domain/auth.types';
 import { IPeerGateway } from './peer.gateway';
+import { PeerAccessService } from './peerAccess';
+import { matchRoster, rosterFor } from './peerRoster';
 import { IDelegationGateway } from './delegation.gateway';
 import {
   A2aClient,
@@ -33,6 +36,11 @@ import {
 
 export interface IRunDelegationInput {
   callerAgentId: string;
+  /**
+   * Who the turn is for (CLEAN-236). The peer is resolved among the
+   * connections that serve this party, and among no others.
+   */
+  party: ICallerParty;
   /** Peer id, or the peer's name as the card spells it. */
   peer: string;
   task: string;
@@ -47,7 +55,10 @@ export type IDelegationOutcome =
   | {
       kind: 'done';
       status: DelegationStatus;
+      /** How the peer is named to this caller: its name, or "a colleague". */
       peerName: string;
+      /** The caller is served by the peer without reaching it. */
+      masked: boolean;
       contextId: string;
       durationMs: number;
       text?: string;
@@ -77,25 +88,31 @@ export class DelegationService {
     private readonly delegations: IDelegationGateway,
     private readonly client: A2aClient,
     private readonly hub: IBridleGateway,
+    private readonly access: PeerAccessService,
   ) {}
 
   async run(
     input: IRunDelegationInput,
     timeoutMs: number,
   ): Promise<IDelegationOutcome> {
-    const connections = await this.peers.listByAgent(input.callerAgentId);
-    const peer = matchPeer(connections, input.peer);
-    if (!peer) {
-      return {
-        kind: 'no_match',
-        peers: connections.map(
-          (c) => c.cardSnapshot?.name ?? c.peerAgentId ?? c.cardUrl,
-        ),
-      };
+    // Asked now, not when the roster was described: access taken away a
+    // minute ago is gone for this call, whatever the model still remembers.
+    const [connections, viewer] = await Promise.all([
+      this.peers.listByAgent(input.callerAgentId),
+      this.access.viewerOf(input.party, input.callerAgentId),
+    ]);
+    const roster = rosterFor(connections, viewer);
+    const entry = matchRoster(roster, input.peer);
+    if (!entry) {
+      return { kind: 'no_match', peers: roster.map((e) => e.label) };
     }
+    const { row: peer, masked } = entry;
 
+    // The audit row keeps the peer's real name. What the caller is told is
+    // `shownName`.
     const peerName =
       peer.cardSnapshot?.name ?? peer.peerAgentId ?? peer.cardUrl;
+    const shownName = masked ? 'a colleague' : peerName;
     const contextId = input.contextId ?? `ctx-${crypto.randomUUID()}`;
     const matchedSkills = matchSkills(peer, `${input.reason} ${input.task}`);
 
@@ -117,7 +134,7 @@ export class DelegationService {
       matchedSkills,
     });
 
-    this.publish(input.callerAgentId, turn, row);
+    this.publish(input.callerAgentId, turn, row, masked);
 
     const startedAt = Date.now();
     let status: DelegationStatus = DelegationStatuses.Failed;
@@ -210,12 +227,13 @@ export class DelegationService {
       durationMs,
     });
 
-    this.publish(input.callerAgentId, turn, finished);
+    this.publish(input.callerAgentId, turn, finished, masked);
 
     return {
       kind: 'done',
       status,
-      peerName,
+      peerName: shownName,
+      masked,
       contextId,
       durationMs,
       ...(text !== undefined ? { text } : {}),
@@ -233,6 +251,7 @@ export class DelegationService {
     agentId: string,
     turn: { clientId: string; turnId: string } | null,
     row: Parameters<typeof buildDelegationStep>[0],
+    masked: boolean,
   ): void {
     if (!turn) {
       this.logger.debug(
@@ -246,30 +265,9 @@ export class DelegationService {
       clientId: turn.clientId,
       turnId: turn.turnId,
       ts: Date.now(),
-      step: buildDelegationStep(row),
+      step: buildDelegationStep(row, { masked }),
     });
   }
-}
-
-/** By connection id first, then by the name the card advertises. */
-function matchPeer(
-  connections: IAgentPeerData[],
-  wanted: string,
-): IAgentPeerData | null {
-  const needle = wanted.trim().toLowerCase();
-  if (!needle) return null;
-
-  return (
-    connections.find(
-      (c) =>
-        c.id.toLowerCase() === needle ||
-        (c.peerAgentId ?? '').toLowerCase() === needle,
-    ) ??
-    connections.find(
-      (c) => (c.cardSnapshot?.name ?? '').trim().toLowerCase() === needle,
-    ) ??
-    null
-  );
 }
 
 /**

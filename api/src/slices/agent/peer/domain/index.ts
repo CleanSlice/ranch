@@ -3,6 +3,7 @@ export * from './peer.types';
 export * from './peer.gateway';
 export * from './peerAccess';
 export * from './handover';
+export * from './peerRoster';
 export * from './delegation.gateway';
 export * from './agentCard.service';
 export * from './a2aTask.store';

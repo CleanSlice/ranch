@@ -37,6 +37,7 @@ const viewer = (
   userId: over.userId === undefined ? 'user-1' : over.userId,
   reaches: over.reaches ?? ((id) => (over.reached ?? []).includes(id)),
   managesAgent: over.managesAgent ?? false,
+  isOwner: over.isOwner ?? false,
 });
 
 describe('the peer access rule', () => {
@@ -156,6 +157,7 @@ describe('PeerAccessService.viewerOf', () => {
     expect(who.reaches(B)).toBe(true);
     expect(who.reaches('agent-c')).toBe(false);
     expect(who.managesAgent).toBe(true);
+    expect(who.isOwner).toBe(false);
     expect(permission.manageable).toHaveBeenCalledWith(party, 'agent-a');
   });
 
@@ -177,6 +179,7 @@ describe('PeerAccessService.viewerOf', () => {
     expect(who.userId).toBe('user-9');
     expect(who.reaches(B)).toBe(true);
     expect(who.managesAgent).toBe(false);
+    expect(who.isOwner).toBe(false);
     expect(permission.manageable).not.toHaveBeenCalled();
     expect(access.reachableIds).toHaveBeenCalledWith({
       kind: 'person',

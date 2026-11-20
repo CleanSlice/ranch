@@ -177,3 +177,71 @@ describe('causeText', () => {
     expect(causeText(null)).toBe('it did not answer');
   });
 });
+
+/**
+ * CLEAN-236. A peer that serves the person through a connection open to
+ * visitors, without their reaching it, is "a colleague" in every reading of
+ * the step: the label, the markdown and the structured fields.
+ */
+describe('buildDelegationStep — a masked peer', () => {
+  const masked = (overrides: Partial<IAgentDelegationData> = {}) =>
+    buildDelegationStep(
+      row({ reason: 'Colleague 1 covers returns', ...overrides }),
+      { masked: true },
+    );
+
+  it('says a colleague was asked, in each state, and never which one', () => {
+    expect(masked().label).toBe('Asking a colleague');
+    expect(
+      masked({ status: DelegationStatuses.Answered, durationMs: 900 }).label,
+    ).toBe('Answered by a colleague');
+    expect(
+      masked({
+        status: DelegationStatuses.Failed,
+        errorCode: DelegationErrorCodes.Timeout,
+        durationMs: 900,
+      }).label,
+    ).toBe('Could not reach a colleague');
+    expect(
+      masked({
+        status: DelegationStatuses.Rejected,
+        errorCode: DelegationErrorCodes.RejectedLoop,
+        durationMs: 900,
+      }).label,
+    ).toBe('A colleague refused the task');
+  });
+
+  it('keeps the skill, the reason, the task and the answer, and drops the peer', () => {
+    const step = masked({
+      status: DelegationStatuses.Answered,
+      durationMs: 900,
+      excerpt: 'Within 30 days.',
+    });
+
+    expect(step.detail).toContain('**Skill:** Returns policy');
+    expect(step.detail).toContain('**Task:** What is the return window');
+    expect(step.detail).toContain('Within 30 days.');
+    expect(step.detail).not.toContain('**Peer:**');
+    expect(step.delegation).toMatchObject({
+      peerAgentId: null,
+      peerName: 'A colleague',
+      matchedSkills: [{ id: 'knowledge:9a', name: 'Returns policy' }],
+      excerpt: 'Within 30 days.',
+    });
+    expect(JSON.stringify(step)).not.toMatch(/Support Bot|"b"/);
+  });
+
+  it('has no skill line when none matched', () => {
+    expect(masked({ matchedSkills: [] }).detail).not.toMatch(/Skill|Peer/);
+  });
+
+  it('is the full step unless asked for', () => {
+    expect(buildDelegationStep(row()).label).toBe('Asking «Support Bot»');
+    expect(
+      buildDelegationStep(row(), { masked: false }).delegation,
+    ).toMatchObject({
+      peerAgentId: 'b',
+      peerName: 'Support Bot',
+    });
+  });
+});

@@ -1,6 +1,12 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import type { Request } from 'express';
 import { isCallToken, isEmbedToken } from '#/user/auth/domain/auth.types';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
@@ -57,17 +63,26 @@ async function resolvePeer(
 }
 
 /**
- * The agent card is readable by two kinds of caller (CLEAN-74, FR-002):
- * an operator previewing a card in the console (Owner/Admin JWT), and an agent
- * reading the card of a peer it is connected to (`ap_` credential for that
- * agent). Nobody else — anonymous discovery is deliberately not offered, so a
- * card cannot be used to enumerate what an installation can do.
+ * The agent card is readable by two kinds of caller (CLEAN-74, FR-002): an
+ * agent reading the card of a peer it is connected to (`ap_` credential for
+ * that agent), and a person who manages the agent, with their console token.
+ * Nobody else — anonymous discovery is deliberately not offered, so a card
+ * cannot be used to enumerate what an installation can do.
+ *
+ * "Manages", not "is an Owner or Admin" (CLEAN-236). The role alone used to
+ * be enough, so any Admin read the card of any agent by its id, the Ranch
+ * admin agent's and those their access lists hide included: name,
+ * description, skills, knowledge bases, and a 200 against a 404 that said
+ * which ids exist. The console's own card route already asked the manage
+ * rule; this one now gives the same answer, and for an agent the person does
+ * not manage it is the answer for an agent that does not exist.
  */
 @Injectable()
 export class A2aCardGuard implements CanActivate {
   constructor(
     private readonly jwt: JwtService,
     private readonly peers: IPeerGateway,
+    private readonly permission: AgentPermissionService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -104,6 +119,13 @@ export class A2aCardGuard implements CanActivate {
       hasAtLeastRole(role, UserRoleTypes.Admin),
     );
     if (!allowed) refuse('Not allowed to read this card');
+
+    const managed = await this.permission.manageable(
+      AgentPermissionService.callerOfBearer(payload),
+      String(request.params?.agentId ?? ''),
+    );
+    // The words `AgentCardService.build` has for an id that names no agent.
+    if (!managed) throw new NotFoundException('Agent not found');
 
     request.user = payload;
     return true;

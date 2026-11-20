@@ -2,6 +2,7 @@ import {
   BadGatewayException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   HttpException,
   Injectable,
   Logger,
@@ -9,9 +10,19 @@ import {
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { IAgentGateway } from '#/agent/agent/domain';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import type { ICallerParty } from '#/user/auth/domain/auth.types';
 import { UserRoleTypes } from '#/user/user/domain';
+import { IUserGateway } from '#/user/user/domain/user.gateway';
 import { IPeerGateway } from './peer.gateway';
+import { IDelegationGateway } from './delegation.gateway';
+import {
+  PeerAccessService,
+  PeerVisibilities,
+  peerVisibility,
+  type IPeerViewer,
+  type PeerVisibility,
+} from './peerAccess';
 import { AgentCardService } from './agentCard.service';
 import {
   A2aClient,
@@ -34,29 +45,36 @@ import {
 } from './a2a.legacy';
 import {
   EXTERNAL_PEER_STATUS,
+  MASKED_PEER_NAME,
+  MASKED_PEER_STATUS,
   PEER_TOKEN_BYTES,
   PEER_TOKEN_PREFIX,
   PeerCardUnreachableError,
   PeerErrorCodes,
   PeerOrigins,
   hashPeerIds,
+  maskCard,
+  type IAgentDelegationData,
   type IAgentPeerCandidate,
   type IAgentPeerData,
   type IAgentPeerView,
+  type IPeerPerson,
   type IPeersState,
 } from './peer.types';
 
 /**
  * Who may tie the Ranch admin agent to another agent, in either direction:
- * the Owner, or a trusted party (that agent acting for itself). The same two
- * `AgentPermissionService.canManage` allows on the Ranch admin agent.
+ * the Owner, and nobody else. A colleague of the agent that acts with Owner
+ * power is somebody it hands conversations to. That agent acting for itself
+ * could do it too until CLEAN-236; since then no turn without a person
+ * behind it changes anybody's peers.
  */
 function ownsRanchAdminAgent(party: ICallerParty): boolean {
-  return (
-    party.kind === 'trusted' ||
-    (party.kind === 'person' && party.role === UserRoleTypes.Owner)
-  );
+  return party.kind === 'person' && party.role === UserRoleTypes.Owner;
 }
+
+/** The words a person reads when a peer tool needs somebody signed in. */
+const PERSON_NEEDED = 'This needs a signed-in person.';
 
 /**
  * Connecting, refreshing and removing peers (CLEAN-74).
@@ -76,30 +94,101 @@ export class PeerService {
     private readonly agents: IAgentGateway,
     private readonly cards: AgentCardService,
     private readonly client: A2aClient,
+    private readonly access: PeerAccessService,
+    private readonly permission: AgentPermissionService,
+    private readonly delegations: IDelegationGateway,
+    private readonly users: IUserGateway,
   ) {}
 
-  async list(agentId: string): Promise<IAgentPeerView[]> {
-    const rows = await this.peers.listByAgent(agentId);
-    return Promise.all(rows.map((row) => this.toView(row)));
+  /**
+   * The peers of `agentId` as `party` may see them (CLEAN-236): a connection
+   * that does not exist for them is absent, with nothing in its place, and
+   * one that serves them without their reaching the peer is masked.
+   */
+  async list(agentId: string, party: ICallerParty): Promise<IAgentPeerView[]> {
+    const [rows, viewer] = await Promise.all([
+      this.peers.listByAgent(agentId),
+      this.access.viewerOf(party, agentId),
+    ]);
+    const names = new Map<string, Promise<IPeerPerson>>();
+    const views = await Promise.all(
+      rows.map((row) => this.viewFor(row, viewer, party, names)),
+    );
+    return views.filter((view): view is IAgentPeerView => view !== null);
   }
 
   /**
-   * Every other agent of this installation, marked with what is already
-   * connected. The Ranch admin agent is offered only to a caller who may
-   * connect it (see `connect`); for anybody else it is not in the list.
+   * What `agentId` recently handed to its peers, as `party` may see it. A
+   * hand-over is shown as its connection is: to a hidden peer not at all, to
+   * a masked one without the peer's name or its answer. Once the connection
+   * is gone the row is shown by reach on the agent it went to, and to the
+   * Owner alone when it went outside the Ranch.
+   */
+  async recentDelegations(
+    agentId: string,
+    party: ICallerParty,
+    limit: number,
+  ): Promise<IAgentDelegationData[]> {
+    const [rows, connections, viewer] = await Promise.all([
+      this.delegations.listRecent(agentId, limit),
+      this.peers.listByAgent(agentId),
+      this.access.viewerOf(party, agentId),
+    ]);
+    const byId = new Map(connections.map((row) => [row.id, row]));
+
+    const shown: IAgentDelegationData[] = [];
+    for (const row of rows) {
+      const connection = row.peerId ? byId.get(row.peerId) : undefined;
+      const visibility = connection
+        ? peerVisibility(connection, viewer)
+        : this.visibilityWithoutConnection(row, viewer);
+      if (visibility === PeerVisibilities.Hidden) continue;
+      shown.push(
+        visibility === PeerVisibilities.Masked
+          ? {
+              ...row,
+              peerName: MASKED_PEER_NAME,
+              peerAgentId: null,
+              excerpt: null,
+            }
+          : row,
+      );
+    }
+    return shown;
+  }
+
+  private visibilityWithoutConnection(
+    row: IAgentDelegationData,
+    viewer: IPeerViewer,
+  ): PeerVisibility {
+    const shown = row.peerAgentId
+      ? viewer.userId !== null && viewer.reaches(row.peerAgentId)
+      : viewer.isOwner;
+    return shown ? PeerVisibilities.Full : PeerVisibilities.Hidden;
+  }
+
+  /**
+   * The other agents `party` could connect to `agentId`: the ones that
+   * person reaches (CLEAN-236), marked with what is already connected. It
+   * names no agent to anybody who is not a signed-in person, and gives no
+   * count of the rest. The Ranch admin agent is offered only to a caller who
+   * may connect it (see `connect`).
    */
   async candidates(
     agentId: string,
     party: ICallerParty,
   ): Promise<IAgentPeerCandidate[]> {
-    const [all, connected] = await Promise.all([
+    if (party.kind !== 'person') return [];
+    const [all, connected, viewer] = await Promise.all([
       this.agents.findAll(),
       this.peers.listByAgent(agentId),
+      this.access.viewerOf(party, agentId),
     ]);
     const connectedIds = new Set(connected.map((p) => p.peerAgentId));
 
     return all
       .filter((agent) => agent.id !== agentId)
+      .filter((agent) => viewer.reaches(agent.id))
       .filter((agent) => !agent.isAdmin || ownsRanchAdminAgent(party))
       .map((agent) => ({
         id: agent.id,
@@ -113,12 +202,24 @@ export class PeerService {
    * `party` is who the connection is made for, and every entry point hands
    * it in: the console route, the operator tool and the agent's own tool.
    *
-   * One rule lives here because all three pass through here (CLEAN-232): a
-   * connection with the Ranch admin agent on either end needs the Owner, or
-   * that agent acting for itself. A colleague of the agent that acts with
-   * Owner power is somebody it hands conversations to, and somebody who can
-   * put text in front of it. For anybody else the answer is the one an
-   * unknown agent gets, so the refusal does not say the agent exists.
+   * Two rules live here because all three pass through here.
+   *
+   * The peer must be an agent the person reaches (CLEAN-236). It is the one
+   * rule about the other end, the same in the chat with the agent, through
+   * the Ranch admin agent and in the console; whether the person may touch
+   * `agentId` at all is the entry point's own question. A connection gives
+   * nobody but those who reach the peer anything (`peerAccess.ts`), which is
+   * why reaching it is enough and managing it is not asked.
+   *
+   * A connection with the Ranch admin agent on either end needs the Owner
+   * (CLEAN-232). A colleague of the agent that acts with Owner power is
+   * somebody it hands conversations to, and somebody who can put text in
+   * front of it.
+   *
+   * For anybody else the answer is the one an unknown agent gets, so the
+   * refusal does not say the agent exists. Nobody but a signed-in person
+   * connects anything: not a visitor, not a turn the agent started for
+   * itself, not another agent's question.
    */
   async connect(
     agentId: string,
@@ -132,13 +233,16 @@ export class PeerService {
       });
     }
 
-    const [caller, peerAgent] = await Promise.all([
+    const [caller, peerAgent, viewer] = await Promise.all([
       this.agents.findById(agentId),
       this.agents.findById(peerAgentId),
+      this.access.viewerOf(party, agentId),
     ]);
     if (
+      party.kind !== 'person' ||
       !caller ||
       !peerAgent ||
+      !viewer.reaches(peerAgentId) ||
       ((caller.isAdmin || peerAgent.isAdmin) && !ownsRanchAdminAgent(party))
     ) {
       throw new NotFoundException({
@@ -168,6 +272,7 @@ export class PeerService {
       cardSnapshot: await this.cards.build(peerAgentId),
       cardUrl,
       cardReadAt: new Date(),
+      createdById: party.userId,
     });
 
     try {
@@ -182,7 +287,35 @@ export class PeerService {
       throw this.cardUnreachable(err, peerAgent.name);
     }
 
-    return this.toView(row);
+    return this.viewAfterWrite(row, party);
+  }
+
+  /**
+   * The card of an agent of this Ranch, before connecting it: what `connect`
+   * would store. Shown to a person who could connect that agent, and to
+   * nobody else, with the answer of an agent that does not exist.
+   */
+  async previewAgent(
+    agentId: string,
+    peerAgentId: string,
+    party: ICallerParty,
+  ): Promise<IA2aAgentCard> {
+    const [peerAgent, viewer] = await Promise.all([
+      this.agents.findById(peerAgentId),
+      this.access.viewerOf(party, agentId),
+    ]);
+    if (
+      party.kind !== 'person' ||
+      !peerAgent ||
+      !viewer.reaches(peerAgentId) ||
+      (peerAgent.isAdmin && !ownsRanchAdminAgent(party))
+    ) {
+      throw new NotFoundException({
+        code: PeerErrorCodes.NotFound,
+        message: 'Agent not found',
+      });
+    }
+    return this.cards.build(peerAgentId);
   }
 
   /**
@@ -194,8 +327,10 @@ export class PeerService {
   async connectByUrl(
     agentId: string,
     rawUrl: string,
-    outboundToken?: string,
+    outboundToken: string | undefined,
+    party: ICallerParty,
   ): Promise<IAgentPeerView> {
+    const { userId, ownerUserId } = await this.externalAudience(agentId, party);
     // Empty string clears a stored credential on re-import; undefined keeps it.
     const token =
       outboundToken === undefined ? undefined : outboundToken.trim() || null;
@@ -206,7 +341,11 @@ export class PeerService {
       token ?? undefined,
     );
 
-    const existing = await this.peers.findByCardUrl(agentId, cardUrl, null);
+    const existing = await this.peers.findByCardUrl(
+      agentId,
+      cardUrl,
+      ownerUserId,
+    );
     const row = existing
       ? await this.peers.updateSnapshot(existing.id, {
           cardSnapshot: card,
@@ -223,12 +362,35 @@ export class PeerService {
           cardSnapshot: card,
           cardUrl,
           cardReadAt: new Date(),
+          createdById: userId,
+          ownerUserId,
         });
 
     this.logger.log(
-      `External peer ${existing ? 're-imported' : 'imported'}: agent=${agentId} url=${cardUrl}`,
+      `External peer ${existing ? 're-imported' : 'imported'}: agent=${agentId} url=${cardUrl} audience=${ownerUserId ? 'one person' : 'everybody'}`,
     );
-    return this.toView(row);
+    return this.viewAfterWrite(row, party);
+  }
+
+  /**
+   * Who an external peer added by `party` will serve (CLEAN-236).
+   *
+   * A peer outside the Ranch is where questions leave the installation, and
+   * its card is text put in front of the agent on every turn. Whoever
+   * manages the agent decides that for everybody who talks to it; anybody
+   * else decides it for themselves alone, so their connection is their own.
+   * Nobody but a signed-in person adds one at all.
+   */
+  private async externalAudience(
+    agentId: string,
+    party: ICallerParty,
+  ): Promise<{ userId: string; ownerUserId: string | null }> {
+    if (party.kind !== 'person') throw new ForbiddenException(PERSON_NEEDED);
+    const viewer = await this.access.viewerOf(party, agentId);
+    return {
+      userId: party.userId,
+      ownerUserId: viewer.managesAgent ? null : party.userId,
+    };
   }
 
   /**
@@ -257,13 +419,19 @@ export class PeerService {
   async connectByCard(
     agentId: string,
     text: string,
-    outboundToken?: string,
+    outboundToken: string | undefined,
+    party: ICallerParty,
   ): Promise<IAgentPeerView> {
+    const { userId, ownerUserId } = await this.externalAudience(agentId, party);
     const token =
       outboundToken === undefined ? undefined : outboundToken.trim() || null;
     const { cardUrl, card } = await this.readPastedCard(agentId, text);
 
-    const existing = await this.peers.findByCardUrl(agentId, cardUrl, null);
+    const existing = await this.peers.findByCardUrl(
+      agentId,
+      cardUrl,
+      ownerUserId,
+    );
     const row = existing
       ? await this.peers.updateSnapshot(existing.id, {
           cardSnapshot: card,
@@ -280,12 +448,14 @@ export class PeerService {
           cardSnapshot: card,
           cardUrl,
           cardReadAt: new Date(),
+          createdById: userId,
+          ownerUserId,
         });
 
     this.logger.log(
-      `External peer ${existing ? 're-imported' : 'imported'} from a pasted card: agent=${agentId} url=${cardUrl}`,
+      `External peer ${existing ? 're-imported' : 'imported'} from a pasted card: agent=${agentId} url=${cardUrl} audience=${ownerUserId ? 'one person' : 'everybody'}`,
     );
-    return this.toView(row);
+    return this.viewAfterWrite(row, party);
   }
 
   /** The same read, saving nothing — what the operator approves first. */
@@ -489,8 +659,21 @@ export class PeerService {
    * Re-reads a peer's card. A failed read keeps the old snapshot: a stale
    * description is worth more than none, and the operator is told what failed.
    */
-  async refresh(agentId: string, peerId: string): Promise<IAgentPeerView> {
-    const row = await this.requireOwned(agentId, peerId);
+  async refresh(
+    agentId: string,
+    peerId: string,
+    party: ICallerParty,
+  ): Promise<IAgentPeerView> {
+    const { row, viewer, visibility } = await this.locate(
+      agentId,
+      peerId,
+      party,
+    );
+    // Re-reading the card is managing the agent, and a card is read only by
+    // somebody shown the peer as it is.
+    if (!viewer.managesAgent || visibility !== PeerVisibilities.Full) {
+      throw this.notYours();
+    }
     const external = row.origin === PeerOrigins.External;
     const cardUrl = external
       ? row.cardUrl
@@ -518,7 +701,7 @@ export class PeerService {
         cardUrl,
         cardReadAt: new Date(),
       });
-      return this.toView(updated);
+      return this.viewAfterWrite(updated, party);
     } catch (err) {
       // A refusal from vetting already names its cause and code; only
       // transport failures need translating.
@@ -540,29 +723,102 @@ export class PeerService {
     };
   }
 
-  /** Deleting the row is what revokes the credential — there is no other copy. */
-  async remove(agentId: string, peerId: string): Promise<void> {
-    const row = await this.requireOwned(agentId, peerId);
+  /**
+   * Deleting the row is what revokes the credential — there is no other copy.
+   *
+   * Who may (CLEAN-236): the person who made the connection, and a person
+   * who manages the agent and is shown the peer as it is. Somebody who
+   * manages the agent and sees the peer only masked was not the one who
+   * opened it to visitors, and does not close it by deleting it.
+   */
+  async remove(
+    agentId: string,
+    peerId: string,
+    party: ICallerParty,
+  ): Promise<void> {
+    const { row, viewer, visibility } = await this.locate(
+      agentId,
+      peerId,
+      party,
+    );
+    if (!mayRemove(row, viewer, visibility)) throw this.notYours();
     await this.peers.delete(row.id);
     this.logger.log(
-      `Peer removed: agent=${agentId} peer=${row.peerAgentId} (credential revoked)`,
+      `Peer removed: agent=${agentId} peer=${row.peerAgentId} by=${viewer.userId} (credential revoked)`,
     );
   }
 
-  private async requireOwned(
+  /**
+   * Opens a connection to visitors, or closes it (CLEAN-236). Open, the peer
+   * serves everybody who talks to `agentId`, people who do not reach it and
+   * callers nobody is signed in behind included. That publishes the peer, so
+   * it takes a person who manages both agents; for anybody else, and for a
+   * peer outside the Ranch, the connection is not found.
+   */
+  async setVisitors(
     agentId: string,
     peerId: string,
-  ): Promise<IAgentPeerData> {
-    const row = await this.peers.findById(peerId);
-    // Same answer for "no such connection" and "not yours": one agent must not
-    // be able to probe another's peer list by guessing ids.
-    if (!row || row.agentId !== agentId) {
-      throw new NotFoundException({
-        code: PeerErrorCodes.NotFound,
-        message: 'Peer connection not found',
-      });
-    }
-    return row;
+    open: boolean,
+    party: ICallerParty,
+  ): Promise<IAgentPeerView> {
+    const { row, viewer } = await this.locate(agentId, peerId, party);
+    const managesBoth =
+      party.kind === 'person' &&
+      viewer.managesAgent &&
+      row.origin === PeerOrigins.Internal &&
+      row.peerAgentId !== null &&
+      (await this.permission.manageable(party, row.peerAgentId)) !== null;
+    if (!managesBoth) throw this.notFound();
+
+    const updated = await this.peers.setVisitors(row.id, {
+      open,
+      byUserId: viewer.userId,
+    });
+    this.logger.log(
+      `Peer ${open ? 'opened to' : 'closed to'} visitors: agent=${agentId} peer=${row.peerAgentId} by=${viewer.userId}`,
+    );
+    return this.viewAfterWrite(updated, party);
+  }
+
+  /**
+   * The connection `peerId` of `agentId`, when it exists for `party`. One
+   * answer for "no such connection", "another agent's" and "not for you":
+   * neither an agent nor a person may probe a peer list by guessing ids.
+   */
+  private async locate(
+    agentId: string,
+    peerId: string,
+    party: ICallerParty,
+  ): Promise<{
+    row: IAgentPeerData;
+    viewer: IPeerViewer;
+    visibility: PeerVisibility;
+  }> {
+    const [row, viewer] = await Promise.all([
+      this.peers.findById(peerId),
+      this.access.viewerOf(party, agentId),
+    ]);
+    if (!row || row.agentId !== agentId) throw this.notFound();
+    const visibility = peerVisibility(row, viewer);
+    if (visibility === PeerVisibilities.Hidden) throw this.notFound();
+    return { row, viewer, visibility };
+  }
+
+  private notFound(): NotFoundException {
+    return new NotFoundException({
+      code: PeerErrorCodes.NotFound,
+      message: 'Peer connection not found',
+    });
+  }
+
+  /** The caller is shown the connection and may not change it. */
+  private notYours(): ForbiddenException {
+    return new ForbiddenException({
+      code: PeerErrorCodes.Forbidden,
+      message:
+        'This connection can be changed by the person who made it, or by ' +
+        'somebody who manages the agent and has access to the peer.',
+    });
   }
 
   private mintToken(): string {
@@ -644,45 +900,133 @@ export class PeerService {
     });
   }
 
+  /** The view of a row the caller has just written, for the reply. */
+  private async viewAfterWrite(
+    row: IAgentPeerData,
+    party: ICallerParty,
+  ): Promise<IAgentPeerView> {
+    const viewer = await this.access.viewerOf(party, row.agentId);
+    const view = await this.viewFor(row, viewer, party, new Map());
+    // Whoever wrote the row was shown it a moment ago. If their access went
+    // in between, the row is no longer theirs to be told about.
+    if (!view) throw this.notFound();
+    return view;
+  }
+
   /**
-   * The public shape of a connection. `token` is dropped here, once, so no
-   * controller has to remember to: a credential that reaches a browser is a
-   * credential that has left the building.
+   * The public shape of a connection for one viewer, or null when it does
+   * not exist for them. `token` is dropped here, once, so no controller has
+   * to remember to: a credential that reaches a browser is a credential that
+   * has left the building.
    */
-  private async toView(row: IAgentPeerData): Promise<IAgentPeerView> {
-    if (row.origin === PeerOrigins.External) {
-      // No live status is knowable for a foreign agent; existence was proven
-      // by the card read, so the row never shows as "gone".
+  private async viewFor(
+    row: IAgentPeerData,
+    viewer: IPeerViewer,
+    party: ICallerParty,
+    names: Map<string, Promise<IPeerPerson>>,
+  ): Promise<IAgentPeerView | null> {
+    const visibility = peerVisibility(row, viewer);
+    if (visibility === PeerVisibilities.Hidden) return null;
+
+    const canRemove = mayRemove(row, viewer, visibility);
+
+    if (visibility === PeerVisibilities.Masked) {
+      // Skills, and nothing that says which agent has them.
       return {
         id: row.id,
         agentId: row.agentId,
         peerAgentId: null,
         origin: row.origin,
+        peerName: MASKED_PEER_NAME,
+        peerStatus: MASKED_PEER_STATUS,
+        peerExists: true,
+        card: maskCard(row.cardSnapshot),
+        cardUrl: '',
+        cardReadAt: row.cardReadAt,
+        createdAt: row.createdAt,
+        visibility,
+        createdBy: null,
+        openToVisitors: row.openToVisitors,
+        owner: null,
+        needsReview: false,
+        canRemove,
+        canSetVisitors: false,
+      };
+    }
+
+    const person = (id: string | null): Promise<IPeerPerson | null> => {
+      if (!id) return Promise.resolve(null);
+      let known = names.get(id);
+      if (!known) {
+        known = this.users
+          .findById(id)
+          .then((user) => ({ id, name: user?.name ?? null }));
+        names.set(id, known);
+      }
+      return known;
+    };
+    const [createdBy, owner] = await Promise.all([
+      person(row.createdById),
+      person(row.ownerUserId),
+    ]);
+    const shared = {
+      id: row.id,
+      agentId: row.agentId,
+      origin: row.origin,
+      card: row.cardSnapshot,
+      cardUrl: row.cardUrl,
+      cardReadAt: row.cardReadAt,
+      createdAt: row.createdAt,
+      visibility,
+      createdBy,
+      openToVisitors: row.openToVisitors,
+      owner,
+      needsReview: row.needsReview,
+      canRemove,
+    };
+
+    if (row.origin === PeerOrigins.External) {
+      // No live status is knowable for a foreign agent; existence was proven
+      // by the card read, so the row never shows as "gone".
+      return {
+        ...shared,
+        peerAgentId: null,
         peerName: row.cardSnapshot?.name ?? 'External agent',
         peerStatus: EXTERNAL_PEER_STATUS,
         peerExists: true,
-        card: row.cardSnapshot,
-        cardUrl: row.cardUrl,
-        cardReadAt: row.cardReadAt,
-        createdAt: row.createdAt,
+        canSetVisitors: false,
       };
     }
 
     const peerAgent = await this.agents.findById(row.peerAgentId!);
     return {
-      id: row.id,
-      agentId: row.agentId,
+      ...shared,
       peerAgentId: row.peerAgentId,
-      origin: row.origin,
       peerName: peerAgent?.name ?? row.cardSnapshot?.name ?? 'Unknown agent',
       peerStatus: peerAgent?.status ?? 'unknown',
       peerExists: Boolean(peerAgent),
-      card: row.cardSnapshot,
-      cardUrl: row.cardUrl,
-      cardReadAt: row.cardReadAt,
-      createdAt: row.createdAt,
+      canSetVisitors:
+        party.kind === 'person' &&
+        viewer.managesAgent &&
+        (await this.permission.manageable(party, row.peerAgentId!)) !== null,
     };
   }
+}
+
+/**
+ * Who may remove a connection they are shown: whoever made it, and somebody
+ * who manages the agent and is shown the peer as it is.
+ */
+function mayRemove(
+  row: IAgentPeerData,
+  viewer: IPeerViewer,
+  visibility: PeerVisibility,
+): boolean {
+  if (viewer.userId === null) return false;
+  if (row.createdById !== null && row.createdById === viewer.userId) {
+    return true;
+  }
+  return viewer.managesAgent && visibility === PeerVisibilities.Full;
 }
 
 /** A card is a small document; anything this size is a mistake or a probe. */

@@ -29,9 +29,11 @@ export class ShareController {
   @ApiOperation({
     operationId: 'resolveShareLink',
     summary:
-      'Exchange a share token for the little the visitor may know about the ' +
-      'agent behind it: id, name and status. Nothing else about the agent is ' +
-      'exposed. An unknown token and a revoked token answer with the exact ' +
+      'Exchange a share token for what the visitor may know about the agent ' +
+      'behind it: id, name and status, its description, the skills of its ' +
+      'template, its configured request limits (values only, never usage) ' +
+      'and what may be attached. Nothing else about the agent is exposed. ' +
+      'An unknown token and a revoked token answer with the exact ' +
       "same 404 body ({ code: 'SHARE_LINK_NOT_FOUND' }), so a link that was " +
       'turned off is indistinguishable from one that never existed. A ' +
       'malformed token is rejected as 400 before any lookup happens.',
@@ -57,6 +59,22 @@ export class ShareController {
       agentId: resolved.agentId,
       agentName: resolved.agentName,
       agentStatus: resolved.agentStatus,
+      description: resolved.description,
+      skills: resolved.skills.map((skill) => ({
+        title: skill.title,
+        description: skill.description,
+      })),
+      limits: resolved.limits && {
+        perMinute: resolved.limits.perMinute,
+        perHour: resolved.limits.perHour,
+        perDay: resolved.limits.perDay,
+      },
+      attachments: {
+        maxPerMessage: resolved.attachments.maxPerMessage,
+        maxFileBytes: resolved.attachments.maxFileBytes,
+        maxMessageBytes: resolved.attachments.maxMessageBytes,
+        kinds: [...resolved.attachments.kinds],
+      },
     };
   }
 }

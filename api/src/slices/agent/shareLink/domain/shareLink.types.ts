@@ -45,13 +45,59 @@ export interface IShareLinkState {
   rotationCount: number;
 }
 
-/** Everything a visitor learns about the agent behind a link. Deliberately
- *  slim: no config, no resources, no workflow (FR-014). */
+/** Longest description a visitor is sent. The admin form caps its field at
+ *  the same length; this also covers descriptions saved before the cap. */
+export const SHARE_DESCRIPTION_MAX = 500;
+
+/** Accepted attachment types as the families a visitor is told about. */
+export type ShareAttachmentKind =
+  | 'image'
+  | 'pdf'
+  | 'document'
+  | 'spreadsheet'
+  | 'presentation'
+  | 'text';
+
+/** A template skill as a visitor sees it: what it is called and what it is
+ *  for. No id, no body, no source. */
+export interface IShareSkill {
+  title: string;
+  description: string | null;
+}
+
+/** The configured request limits, values only. Never usage, never a wait:
+ *  the allowance is shared, so either would tell one visitor about the
+ *  others (CLEAN-224, FR-051). */
+export interface IShareLimits {
+  perMinute: number | null;
+  perHour: number | null;
+  perDay: number | null;
+}
+
+export interface IShareAttachments {
+  maxPerMessage: number;
+  maxFileBytes: number;
+  maxMessageBytes: number;
+  kinds: ShareAttachmentKind[];
+}
+
+/**
+ * Everything a visitor learns about the agent behind a link (CLEAN-237).
+ * An allowlist: what the agent is for and what it accepts. No config, no
+ * resources, no workflow, no status reason, nothing about who else is
+ * talking to it (FR-014).
+ */
 export interface IShareResolved {
   agentId: string;
   agentName: string;
   /** AgentStatusTypes as a plain string; 'running' ⇒ chat is live. */
   agentStatus: string;
+  /** The agent's own description, else its template's, else null. */
+  description: string | null;
+  skills: IShareSkill[];
+  /** null ⇒ the agent has no request limits. */
+  limits: IShareLimits | null;
+  attachments: IShareAttachments;
 }
 
 /** Machine-readable codes carried in the error body so the console can tell

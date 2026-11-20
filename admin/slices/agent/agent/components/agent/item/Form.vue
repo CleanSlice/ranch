@@ -93,8 +93,9 @@ function onSubmit() {
     props.initialValues?.config && typeof props.initialValues.config === 'object'
       ? { ...props.initialValues.config }
       : {};
-  // A2A agent card reads config.description (CLEAN-74). Empty clears the
-  // override so the card falls back to the template description.
+  // The A2A agent card (CLEAN-74) and the share page (CLEAN-237) read
+  // config.description. Empty clears the override so both fall back to the
+  // template description.
   if (description) prevConfig.description = description;
   else delete prevConfig.description;
   emit('submit', {
@@ -123,7 +124,8 @@ function onSubmit() {
       <CardHeader>
         <CardTitle>Agent details</CardTitle>
         <CardDescription>
-          Name, what this agent does (shown on its A2A card), and template.
+          Name, what this agent does (shown on its A2A card and its share
+          link), and template.
         </CardDescription>
       </CardHeader>
       <CardContent class="grid max-w-xl gap-4">
@@ -139,11 +141,13 @@ function onSubmit() {
             id="description"
             v-model="form.description"
             rows="3"
+            maxlength="500"
             placeholder="Ranch Store policy expert — returns, refunds, delivery, promo codes."
           />
           <p class="text-xs text-muted-foreground">
-            Used on the agent card so peers know when to ask this one. Leave
-            empty to fall back to the template description.
+            Shown on the agent card so peers know when to ask this one, and to
+            people who open this agent's share link. Leave empty to fall back
+            to the template description.
           </p>
         </div>
 

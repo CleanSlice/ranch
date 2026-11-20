@@ -20,18 +20,61 @@ export interface IShareLinkState {
   rotatedAt: string | null;
 }
 
+/** Accepted attachment types, as the families the info panel names. */
+export const SHARE_ATTACHMENT_KINDS = [
+  'image',
+  'pdf',
+  'document',
+  'spreadsheet',
+  'presentation',
+  'text',
+] as const;
+export type ShareAttachmentKind = (typeof SHARE_ATTACHMENT_KINDS)[number];
+
+/** A skill of the agent's template: what it is called and what it is for. */
+export interface IShareSkill {
+  title: string;
+  description: string | null;
+}
+
+/**
+ * The agent's configured request limits. Values only: the allowance is one
+ * per agent and shared by every visitor, so the API never says how much of it
+ * is spent, and the page must always say that it is shared.
+ */
+export interface IShareLimits {
+  perMinute: number | null;
+  perHour: number | null;
+  perDay: number | null;
+}
+
+export interface IShareAttachments {
+  maxPerMessage: number;
+  maxFileBytes: number;
+  maxMessageBytes: number;
+  kinds: ShareAttachmentKind[];
+}
+
 /**
  * Everything a visitor is allowed to know about the agent behind a link.
  *
- * Deliberately three fields: name to title the page, status to decide between
- * a live composer and the "agent unavailable" state (FR-015). Nothing else
- * from the agent is exposed (FR-014).
+ * Name and status run the page: the name titles it, the status decides
+ * between a live composer and the "agent unavailable" state (FR-015). The
+ * rest is the summary the info panel shows (CLEAN-237) — an allowlist the API
+ * builds field by field. Nothing else from the agent is exposed (FR-014).
  */
 export interface IShareResolved {
   agentId: string;
   agentName: string;
   /** `AgentStatusTypes` as a plain string; `'running'` ⇒ chat is live. */
   agentStatus: string;
+  /** The agent's own description, else its template's, else `null`. */
+  description: string | null;
+  skills: IShareSkill[];
+  /** `null` ⇒ the agent has no request limits. */
+  limits: IShareLimits | null;
+  /** `null` when the API did not say — an older API, or an unreadable block. */
+  attachments: IShareAttachments | null;
 }
 
 /**

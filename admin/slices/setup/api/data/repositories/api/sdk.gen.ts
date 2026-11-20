@@ -2207,7 +2207,7 @@ export class ShareLinksService {
 
 export class ShareService {
   /**
-   * Exchange a share token for the little the visitor may know about the agent behind it: id, name and status. Nothing else about the agent is exposed. An unknown token and a revoked token answer with the exact same 404 body ({ code: 'SHARE_LINK_NOT_FOUND' }), so a link that was turned off is indistinguishable from one that never existed. A malformed token is rejected as 400 before any lookup happens.
+   * Exchange a share token for what the visitor may know about the agent behind it: id, name and status, its description, the skills of its template, its configured request limits (values only, never usage) and what may be attached. Nothing else about the agent is exposed. An unknown token and a revoked token answer with the exact same 404 body ({ code: 'SHARE_LINK_NOT_FOUND' }), so a link that was turned off is indistinguishable from one that never existed. A malformed token is rejected as 400 before any lookup happens.
    */
   public static resolveShareLink<ThrowOnError extends boolean = false>(
     options: Options<ResolveShareLinkData, ThrowOnError>,

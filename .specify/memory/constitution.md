@@ -134,4 +134,4 @@ change what is required. When an amendment makes `CLAUDE.md` or a file under
 A principle that is waived in three consecutive plans is not being followed, and
 should be amended or removed rather than quietly ignored.
 
-**Version**: 1.0.2 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-20
+**Version**: 1.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-11-20

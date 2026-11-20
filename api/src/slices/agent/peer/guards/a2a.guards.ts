@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
-import { isActingToken, isEmbedToken } from '#/user/auth/domain/auth.types';
+import { isCallToken, isEmbedToken } from '#/user/auth/domain/auth.types';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { hasAtLeastRole, UserRoleTypes } from '#/user/user/domain';
 import { IPeerGateway } from '../domain/peer.gateway';
@@ -94,7 +94,7 @@ export class A2aCardGuard implements CanActivate {
     if (isEmbedToken(payload)) refuse('Not allowed to read this card');
     // Nor does an acting token: it is read from a tool call and nowhere else
     // (CLEAN-232).
-    if (isActingToken(payload)) refuse('Invalid credential');
+    if (isCallToken(payload)) refuse('Invalid credential');
 
     // Agent service tokens are deliberately not accepted here: an agent reads
     // a peer's card with the credential issued for that connection, which is

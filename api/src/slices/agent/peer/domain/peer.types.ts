@@ -96,6 +96,18 @@ export interface IAgentPeerData {
   cardSnapshot: IA2aAgentCard;
   cardUrl: string;
   cardReadAt: string;
+  /** Who made the connection. Null: made before it was recorded (CLEAN-236). */
+  createdById: string | null;
+  /** Internal rows: the peer serves every caller of `agentId`, not only the
+   *  people who reach it. Always false on an external row. */
+  openToVisitors: boolean;
+  openedById: string | null;
+  openedAt: string | null;
+  /** External rows: the one person the connection serves, or null when it
+   *  serves every caller. Always null on an internal row. */
+  ownerUserId: string | null;
+  /** Existed before CLEAN-236 and nobody has saved its visitors setting. */
+  needsReview: boolean;
   createdAt: string;
   updatedAt: string;
 }

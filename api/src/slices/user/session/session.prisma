@@ -12,6 +12,9 @@ model Session {
   lastSeenAt        DateTime  @default(now())
   revokedAt         DateTime?
   userAgent         String?
+  /// The console the sign-in was made in: 'admin' | 'app' (CLEAN-236). Null
+  /// only on rows from before that migration, which are never renewed.
+  surface           String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

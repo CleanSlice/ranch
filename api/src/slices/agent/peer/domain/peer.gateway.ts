@@ -13,6 +13,16 @@ export interface ICreatePeerInput {
   cardSnapshot: IA2aAgentCard;
   cardUrl: string;
   cardReadAt: Date;
+  /** The person the connection is made for; omitted when nobody is known. */
+  createdById?: string | null;
+  /** External rows: the one person it serves. Omitted or null ⇒ shared. */
+  ownerUserId?: string | null;
+}
+
+/** The visitors mark of an internal connection, and who set it (CLEAN-236). */
+export interface ISetVisitorsInput {
+  open: boolean;
+  byUserId: string | null;
 }
 
 export interface IUpdateSnapshotInput {
@@ -52,10 +62,15 @@ export abstract class IPeerGateway {
     agentId: string,
     peerAgentId: string,
   ): Promise<IAgentPeerData | null>;
-  /** External row imported at this canonical URL, if any (CLEAN-95). */
+  /**
+   * External row imported at this canonical URL for this audience, if any
+   * (CLEAN-95, CLEAN-236): `ownerUserId` null finds the shared row, an id
+   * finds that person's own. The two never stand in for each other.
+   */
   abstract findByCardUrl(
     agentId: string,
     cardUrl: string,
+    ownerUserId: string | null,
   ): Promise<IAgentPeerData | null>;
   /** Resolves a presented `ap_` credential to the pair it was issued for. */
   abstract findByToken(token: string): Promise<IAgentPeerData | null>;
@@ -64,6 +79,11 @@ export abstract class IPeerGateway {
   abstract updateSnapshot(
     id: string,
     input: IUpdateSnapshotInput,
+  ): Promise<IAgentPeerData>;
+  /** Sets or clears the visitors mark; saving it either way ends `needsReview`. */
+  abstract setVisitors(
+    id: string,
+    input: ISetVisitorsInput,
   ): Promise<IAgentPeerData>;
   /** Deleting the row is what revokes the credential. */
   abstract delete(id: string): Promise<void>;

@@ -82,7 +82,7 @@ import { ActingPartyService } from '#/user/auth/domain/actingParty.service';
 import {
   AuthErrorCodes,
   classifyJwtError,
-  isActingToken,
+  isCallToken,
   unauthorized,
 } from '#/user/auth/domain/auth.types';
 import {
@@ -430,7 +430,7 @@ export class BridleController {
       const payload = this.jwt.verify<Record<string, unknown>>(token);
       // An acting token names the person a tool call is made for; as a chat
       // credential it is an invalid token (CLEAN-232).
-      if (isActingToken(payload)) return { payload: null };
+      if (isCallToken(payload)) return { payload: null };
       return { payload };
     } catch (error) {
       return { payload: null, error };

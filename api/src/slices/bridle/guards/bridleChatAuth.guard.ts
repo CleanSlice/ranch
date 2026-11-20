@@ -10,7 +10,7 @@ import { ShareLinkService } from '#/agent/shareLink/domain';
 import {
   AuthErrorCodes,
   classifyJwtError,
-  isActingToken,
+  isCallToken,
   unauthorized,
 } from '#/user/auth/domain/auth.types';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
@@ -135,7 +135,7 @@ export class BridleChatAuthGuard implements CanActivate {
       const payload = this.jwt.verify<Record<string, unknown>>(token);
       // An acting token names the person a tool call is made for; as a chat
       // credential it is an invalid token (CLEAN-232).
-      if (isActingToken(payload)) return { payload: null };
+      if (isCallToken(payload)) return { payload: null };
       return { payload };
     } catch (error) {
       return { payload: null, error };

@@ -33,7 +33,7 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 
 **Purpose**: branches, generated code, a baseline
 
-- [ ] T001 Confirm branch `fix/CLEAN-236-identity-boundaries` is on up-to-date `origin/main`; commit the spec folder `specs/033-identity-boundaries/` and `.specify/feature.json` as the first commit (`docs(spec): identity boundaries (CLEAN-236)`)
+- [X] T001 Confirm branch `fix/CLEAN-236-identity-boundaries` is on up-to-date `origin/main`; commit the spec folder `specs/033-identity-boundaries/` and `.specify/feature.json` as the first commit (`docs(spec): identity boundaries (CLEAN-236)`)
 - [ ] T002 [P] Ask where the working clone of `CleanSlice/runtime` lives (it is no longer at `../runtime`); create branch `fix/CLEAN-236-identity-boundaries` there from up-to-date `origin/main`; record the baseline of `bun test` and `bun run build`
 - [ ] T003 [P] In `api/` run `bun run generate`, `bun run build`, `bun run generate:swagger`; in `admin/` and `app/` run `bun run build:api`; confirm a clean tree afterwards
 - [ ] T004 [P] Record the baseline of `NODE_OPTIONS=--experimental-vm-modules npx jest src/slices/agent/peer src/slices/bridle src/slices/user/session src/slices/user/auth src/slices/mcp` in `api/`, and of `bun test slices` in `admin/` and `app/` (known local noise: date-format tests)
@@ -56,13 +56,13 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 
 ### API
 
-- [ ] T012 Add to `api/src/slices/agent/peer/peer.prisma`: `createdById`, `openToVisitors`, `openedById`, `openedAt`, `ownerUserId`, `needsReview`; to `api/src/slices/agent/peer/delegation.prisma`: `forUserId`; to `api/src/slices/user/session/session.prisma`: `surface` (data-model.md)
-- [ ] T013 Create the migration `api/prisma/migrations/<ts>_identity_boundaries/migration.sql` with `bun run generate` then `npx prisma migrate dev --create-only`: the columns of T012, the backfill of data-model.md, the check constraint, and the two partial unique indexes that replace the one on `(agentId, cardUrl)`
-- [ ] T014 [P] Carry the new columns through `api/src/slices/agent/peer/domain/peer.types.ts`, `data/peer.mapper.ts`, `domain/peer.gateway.ts`, `data/peer.gateway.ts` (create with `createdById` and `ownerUserId`, `setVisitors`, `findByCardUrl` taking the owner); extend `data/peer.gateway.spec.ts`
-- [ ] T015 [P] Write `api/src/slices/agent/peer/domain/peerAccess.spec.ts` with the seven rows of contracts/colleagues.md §1, for a person, a guest, a trusted party and a peer party with and without `forUserId`; see it fail
-- [ ] T016 Implement `api/src/slices/agent/peer/domain/peerAccess.ts`: pure `visibility(row, facts)` and `serves(row, facts)`, and an injectable `PeerAccessService` that gathers the facts (reach through `AgentAccessService`, manage through `AgentPermissionService`, the account of a peer party's `forUserId` read from the database); export it from `domain/index.ts` and provide it in `peer.module.ts`
-- [ ] T017 [P] Add `{ kind: 'peer'; chain: string[]; connectionId: string; forUserId?: string }` to `ICallerParty` in `api/src/slices/user/auth/domain/auth.types.ts`; in `api/src/slices/mcp/tooling.ts` give it a guest's level, admit it to the `everyone` and `agent` audiences only, refuse it in `requirePerson`; extend `tooling.spec.ts`
-- [ ] T018 [P] Write `api/src/slices/agent/peer/domain/handover.spec.ts` (mint, verify, wrong audience, wrong connection, expired, not a hand-over token) and implement `domain/handover.ts` with the shape of contracts/handover.md §1, signing with the service acting tokens use
+- [X] T012 Add to `api/src/slices/agent/peer/peer.prisma`: `createdById`, `openToVisitors`, `openedById`, `openedAt`, `ownerUserId`, `needsReview`; to `api/src/slices/agent/peer/delegation.prisma`: `forUserId`; to `api/src/slices/user/session/session.prisma`: `surface` (data-model.md)
+- [X] T013 Create the migration `api/prisma/migrations/<ts>_identity_boundaries/migration.sql` with `bun run generate` then `npx prisma migrate dev --create-only`: the columns of T012, the backfill of data-model.md, the check constraint, and the two partial unique indexes that replace the one on `(agentId, cardUrl)`
+- [X] T014 [P] Carry the new columns through `api/src/slices/agent/peer/domain/peer.types.ts`, `data/peer.mapper.ts`, `domain/peer.gateway.ts`, `data/peer.gateway.ts` (create with `createdById` and `ownerUserId`, `setVisitors`, `findByCardUrl` taking the owner); extend `data/peer.gateway.spec.ts`
+- [X] T015 [P] Write `api/src/slices/agent/peer/domain/peerAccess.spec.ts` with the seven rows of contracts/colleagues.md §1, for a person, a guest, a trusted party and a peer party with and without `forUserId`; see it fail
+- [X] T016 Implement `api/src/slices/agent/peer/domain/peerAccess.ts`: pure `visibility(row, facts)` and `serves(row, facts)`, and an injectable `PeerAccessService` that gathers the facts (reach through `AgentAccessService`, manage through `AgentPermissionService`, the account of a peer party's `forUserId` read from the database); export it from `domain/index.ts` and provide it in `peer.module.ts`
+- [X] T017 [P] Add `{ kind: 'peer'; chain: string[]; connectionId: string; forUserId?: string }` to `ICallerParty` in `api/src/slices/user/auth/domain/auth.types.ts`; in `api/src/slices/mcp/tooling.ts` give it a guest's level, admit it to the `everyone` and `agent` audiences only, refuse it in `requirePerson`; extend `tooling.spec.ts`
+- [X] T018 [P] Write `api/src/slices/agent/peer/domain/handover.spec.ts` (mint, verify, wrong audience, wrong connection, expired, not a hand-over token) and implement `domain/handover.ts` with the shape of contracts/handover.md §1, signing with the service acting tokens use
 
 **Checkpoint**: migration applies on a copy of a database with connections; `peerAccess.spec.ts` green; nothing calls the rule yet.
 

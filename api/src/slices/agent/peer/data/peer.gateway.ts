@@ -5,6 +5,7 @@ import {
   IAgentLink,
   IAgentPeerData,
   ICreatePeerInput,
+  ISetVisitorsInput,
   IPeerGateway,
   IPeersServedState,
   IUpdateSnapshotInput,
@@ -67,9 +68,10 @@ export class PeerGateway extends IPeerGateway {
   async findByCardUrl(
     agentId: string,
     cardUrl: string,
+    ownerUserId: string | null,
   ): Promise<IAgentPeerData | null> {
     const record = await this.prisma.agentPeer.findFirst({
-      where: { agentId, cardUrl, origin: PeerOrigins.External },
+      where: { agentId, cardUrl, origin: PeerOrigins.External, ownerUserId },
     });
     return record ? this.mapper.toEntity(record) : null;
   }
@@ -93,6 +95,25 @@ export class PeerGateway extends IPeerGateway {
         cardSnapshot: input.cardSnapshot as unknown as Prisma.InputJsonValue,
         cardUrl: input.cardUrl,
         cardReadAt: input.cardReadAt,
+        createdById: input.createdById ?? null,
+        ownerUserId: input.ownerUserId ?? null,
+      },
+    });
+    return this.mapper.toEntity(record);
+  }
+
+  async setVisitors(
+    id: string,
+    input: ISetVisitorsInput,
+  ): Promise<IAgentPeerData> {
+    const record = await this.prisma.agentPeer.update({
+      where: { id },
+      data: {
+        openToVisitors: input.open,
+        // Who opened it; closing it leaves no opener behind.
+        openedById: input.open ? input.byUserId : null,
+        openedAt: input.open ? new Date() : null,
+        needsReview: false,
       },
     });
     return this.mapper.toEntity(record);

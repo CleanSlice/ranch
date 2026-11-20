@@ -206,7 +206,7 @@ export class PeerService {
       token ?? undefined,
     );
 
-    const existing = await this.peers.findByCardUrl(agentId, cardUrl);
+    const existing = await this.peers.findByCardUrl(agentId, cardUrl, null);
     const row = existing
       ? await this.peers.updateSnapshot(existing.id, {
           cardSnapshot: card,
@@ -263,7 +263,7 @@ export class PeerService {
       outboundToken === undefined ? undefined : outboundToken.trim() || null;
     const { cardUrl, card } = await this.readPastedCard(agentId, text);
 
-    const existing = await this.peers.findByCardUrl(agentId, cardUrl);
+    const existing = await this.peers.findByCardUrl(agentId, cardUrl, null);
     const row = existing
       ? await this.peers.updateSnapshot(existing.id, {
           cardSnapshot: card,

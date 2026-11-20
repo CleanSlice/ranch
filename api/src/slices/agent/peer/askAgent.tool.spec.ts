@@ -51,6 +51,12 @@ const connection = (name = 'Support Bot', id = 'peer-1'): IAgentPeerData => ({
   cardSnapshot: card(name),
   cardUrl: 'https://api.test/card',
   cardReadAt: '2026-09-14T10:00:00.000Z',
+  createdById: null,
+  openToVisitors: false,
+  openedById: null,
+  openedAt: null,
+  ownerUserId: null,
+  needsReview: false,
   createdAt: '2026-09-14T10:00:00.000Z',
   updatedAt: '2026-09-14T10:00:00.000Z',
 });

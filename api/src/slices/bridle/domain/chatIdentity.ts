@@ -135,7 +135,11 @@ export function parseBearer(headers: ChatHeaders | undefined): string | null {
 export const RESERVED_CLIENT_IDS = ['admin', 'cron', 'heartbeat'] as const;
 
 /** Namespaces the hub keeps. */
-export const RESERVED_CLIENT_PREFIXES = ['agent:', 'peer:'] as const;
+export const RESERVED_CLIENT_PREFIXES = [
+  'agent:',
+  'peer:',
+  'handover:',
+] as const;
 
 /**
  * Whether `id` is one an anonymous, share or embed identity must never be

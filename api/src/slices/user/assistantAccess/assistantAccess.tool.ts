@@ -127,6 +127,9 @@ export class AssistantAccessTool {
           setBy: e.updatedBy,
           ...(e.reducedByRole ? { reducedByRole: true } : {}),
         })),
+        // Until the Owner has decided about Users: who lost managing their
+        // own agents through the chat when Users started on Basic.
+        ...(overview.notice ? { usersStartOnBasic: overview.notice } : {}),
         levels: {
           Admin: this.access.levelsFor(UserRoleTypes.Admin),
           User: this.access.levelsFor(UserRoleTypes.User),

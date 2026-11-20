@@ -95,7 +95,10 @@ function harness(tools = TOOLS) {
   const service = new AssistantAccessService(
     gateway as never,
     users as never,
-    { findAdmin: async () => ({ id: 'assistant', name: 'Rancher' }) } as never,
+    {
+      findAdmin: async () => ({ id: 'assistant', name: 'Rancher' }),
+      findAll: async () => [{ id: 'agent-1', createdById: USER.id }],
+    } as never,
     {
       getTools: () =>
         tools.map(([name, topic, effect, audience, destructive]) => ({
@@ -238,6 +241,8 @@ describe('get_assistant_access', () => {
       'full',
     ]);
     expect(out.levels.Admin[0].summary).toMatch(/See and ask/);
+    // One User created an agent and Users were never decided about.
+    expect(out.usersStartOnBasic).toEqual({ usersManagingAgents: 1 });
   });
 
   it('the level definitions follow the tools', async () => {

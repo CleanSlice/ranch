@@ -115,8 +115,12 @@ function harness(tools = TOOLS) {
     findAll: jest.fn(async () => people),
   } as unknown as IUserGateway;
 
+  const createdBy: (string | null)[] = [];
   const agents = {
     findAdmin: jest.fn(async () => ({ id: 'assistant', name: 'Rancher' })),
+    findAll: jest.fn(async () =>
+      createdBy.map((createdById, i) => ({ id: `agent-${i}`, createdById })),
+    ),
   } as unknown as IAgentGateway;
 
   const registry = {
@@ -134,7 +138,7 @@ function harness(tools = TOOLS) {
   } as unknown as McpRegistryService;
 
   const service = new AssistantAccessService(gateway, users, agents, registry);
-  return { service, roles, accounts, gateway, spies };
+  return { service, roles, accounts, gateway, spies, createdBy };
 }
 
 const person = (p: { id: string; role: UserRoleTypes }) => ({
@@ -598,6 +602,38 @@ describe('the overview', () => {
       updatedAt: new Date(),
     });
     expect((await service.overview(asOwner)).exceptions).toEqual([]);
+  });
+});
+
+describe('the notice about Users starting on Basic', () => {
+  it('counts the Users who created an agent, until the Owner decides', async () => {
+    const { service, createdBy } = harness();
+    createdBy.push(USER.id, USER.id, USER_2.id, ADMIN.id, null);
+    expect((await service.overview(asOwner)).notice).toEqual({
+      usersManagingAgents: 2,
+    });
+  });
+
+  it('is gone once the Users’ setting was saved, to anything', async () => {
+    const { service, createdBy } = harness();
+    createdBy.push(USER.id);
+    await service.setRole(asOwner, UserRoleTypes.User, { level: 'basic' });
+    expect((await service.overview(asOwner)).notice).toBeNull();
+  });
+
+  it('says nothing when no User manages an agent', async () => {
+    const { service, createdBy } = harness();
+    createdBy.push(ADMIN.id, null);
+    expect((await service.overview(asOwner)).notice).toBeNull();
+  });
+
+  it('a change to Admins is not a decision about Users', async () => {
+    const { service, createdBy } = harness();
+    createdBy.push(USER.id);
+    await service.setRole(asOwner, UserRoleTypes.Admin, { level: 'standard' });
+    expect((await service.overview(asOwner)).notice).toEqual({
+      usersManagingAgents: 1,
+    });
   });
 });
 

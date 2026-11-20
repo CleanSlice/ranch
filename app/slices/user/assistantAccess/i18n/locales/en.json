@@ -1,0 +1,12 @@
+{
+  "assistantAccess": {
+    "level_basic": "Basic",
+    "level_standard": "Standard",
+    "level_full": "Full",
+    "level_custom": "Custom",
+    "badge_title": "Your level with the assistant",
+    "areas_title": "What the assistant can do for you",
+    "area_count": "{offered} of {available}",
+    "who_decides": "The Owner decides what the assistant can do for you."
+  }
+}

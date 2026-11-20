@@ -248,6 +248,40 @@ const advancedSetting = computed(() =>
           the Ranch admin.
         </p>
 
+        <div
+          v-if="store.notice"
+          class="flex flex-col gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+          role="status"
+          data-assistant-notice
+        >
+          <span>
+            Users now start on Basic: they see and ask, and change nothing.
+            {{ plural(store.notice.usersManagingAgents, 'User has', 'Users have') }}
+            agents of their own and can no longer manage them through the
+            assistant.
+          </span>
+          <span class="flex shrink-0 gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              :disabled="saving !== null"
+              data-assistant-notice-raise
+              @click="change('User', { level: 'standard' })"
+            >
+              Raise Users to Standard
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              :disabled="saving !== null"
+              data-assistant-notice-keep
+              @click="change('User', { level: 'basic' })"
+            >
+              Keep Basic
+            </Button>
+          </span>
+        </div>
+
         <div class="flex flex-col divide-y rounded-md border">
           <div
             v-for="row in rows"

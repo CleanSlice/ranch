@@ -31,7 +31,11 @@ Area        = { key, title, order, abilities: Ability[] }
 |---|---|---|
 | `GET /assistant-access` | Owner | `{ assistant: { id, name } \| null, roles: { Admin: Resolved & { accounts: number }, User: … }, exceptions: [{ userId, name, email, role, resolved: Resolved, updatedBy, updatedAt, reducedByRole: boolean }], notice: { usersManagingAgents: number } \| null }` |
 | `PUT /assistant-access/roles/:role` | Owner | Body `Setting & { version }`. `:role` is `Admin` or `User`. 409 on a stale `version`. Returns the role's `Resolved`. |
-| `DELETE /assistant-access/notice` | Owner | Dismisses the one-time notice. |
+
+The notice is not stored and has no route of its own: it is shown while the
+Users' setting has never been saved and some User created an agent. Saving
+the Users' setting, to anything ("Raise Users to Standard", "Keep Basic"), is
+the decision it asks for.
 
 ## Accounts
 

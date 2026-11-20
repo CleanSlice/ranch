@@ -11,6 +11,7 @@ import {
   type IAssistantPick,
   type IAssistantResolved,
   type IAssistantRoleData,
+  type IMyAssistantAccess,
   type ISetAssistantInput,
   type PersonRole,
 } from '../domain/assistantAccess.types';
@@ -102,7 +103,38 @@ export class AssistantAccessMapper {
       exceptions: (Array.isArray(o.exceptions) ? o.exceptions : [])
         .map((item) => this.toException(item))
         .filter((item): item is IAssistantException => item !== null),
+      notice: this.toNotice(o.notice),
     };
+  }
+
+  toMine(raw: unknown): IMyAssistantAccess | null {
+    const o = record(raw);
+    if (!o) return null;
+    const level =
+      o.level === 'owner' || o.level === 'custom' || isLevel(o.level)
+        ? o.level
+        : 'basic';
+    return {
+      enabled: o.enabled === true,
+      level,
+      matchesLevel: isLevel(o.matchesLevel) ? o.matchesLevel : null,
+      areas: (Array.isArray(o.areas) ? o.areas : [])
+        .map((item) => record(item))
+        .filter((item): item is Record<string, unknown> => item !== null)
+        .filter((item) => typeof item.key === 'string')
+        .map((item) => ({
+          key: item.key as string,
+          title: text(item.title) || (item.key as string),
+          offered: count(item.offered),
+          available: count(item.available),
+        })),
+    };
+  }
+
+  private toNotice(raw: unknown): { usersManagingAgents: number } | null {
+    const o = record(raw);
+    const n = count(o?.usersManagingAgents);
+    return o && n > 0 ? { usersManagingAgents: n } : null;
   }
 
   toCatalog(raw: unknown): IAssistantCatalog | null {

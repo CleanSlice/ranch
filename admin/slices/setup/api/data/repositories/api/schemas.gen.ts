@@ -4969,6 +4969,16 @@ export const AssistantExceptionDtoSchema = {
   ],
 } as const;
 
+export const AssistantNoticeDtoSchema = {
+  type: "object",
+  properties: {
+    usersManagingAgents: {
+      type: "number",
+    },
+  },
+  required: ["usersManagingAgents"],
+} as const;
+
 export const AssistantOverviewDtoSchema = {
   type: "object",
   properties: {
@@ -4990,8 +5000,18 @@ export const AssistantOverviewDtoSchema = {
         $ref: "#/components/schemas/AssistantExceptionDto",
       },
     },
+    notice: {
+      nullable: true,
+      description:
+        "Until the Owner has saved the Users’ setting: how many Users created agents and, starting on Basic, no longer manage them through the chat. Null afterwards, and when there are none.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssistantNoticeDto",
+        },
+      ],
+    },
   },
-  required: ["assistant", "roles", "exceptions"],
+  required: ["assistant", "roles", "exceptions", "notice"],
 } as const;
 
 export const AbilityDtoSchema = {

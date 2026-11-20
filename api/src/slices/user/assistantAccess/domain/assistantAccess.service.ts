@@ -90,6 +90,13 @@ export interface IAssistantOverview {
   assistant: { id: string; name: string } | null;
   roles: Record<AssistantRole, IAssistantRoleView & { accounts: number }>;
   exceptions: IAssistantException[];
+  /**
+   * Shown until the Owner has decided about Users: with this feature they
+   * start on Basic, and those who created agents stopped managing them
+   * through the chat. Null once the Users' setting was saved, whatever to,
+   * and when no User manages an agent.
+   */
+  notice: { usersManagingAgents: number } | null;
 }
 
 export interface IAssistantCatalogAbility {
@@ -474,13 +481,16 @@ export class AssistantAccessService {
         ASSISTANT_ACCESS_REFUSALS.roles,
       );
     }
-    const [assistant, people, rows, admins, users] = await Promise.all([
-      this.assistant(),
-      this.users.findAll(),
-      this.gateway.listAccounts(),
-      this.roleView(UserRoleTypes.Admin),
-      this.roleView(UserRoleTypes.User),
-    ]);
+    const [assistant, people, rows, admins, users, usersRow, agents] =
+      await Promise.all([
+        this.assistant(),
+        this.users.findAll(),
+        this.gateway.listAccounts(),
+        this.roleView(UserRoleTypes.Admin),
+        this.roleView(UserRoleTypes.User),
+        this.gateway.findRole(UserRoleTypes.User),
+        this.agents.findAll(),
+      ]);
     const byId = new Map(people.map((p) => [p.id, p]));
     const excepted = new Set(rows.map((r) => r.userId));
     const following = (role: AssistantRole) =>
@@ -525,6 +535,7 @@ export class AssistantAccessService {
         },
       } as IAssistantOverview['roles'],
       exceptions,
+      notice: this.noticeFor(usersRow !== null, people, agents),
     };
   }
 
@@ -567,6 +578,25 @@ export class AssistantAccessService {
         .sort((a, b) => a.order - b.order),
       alwaysOn: abilities.filter((a) => !a.governed).map(describe),
     };
+  }
+
+  /**
+   * Nothing is stored for this: the Owner saving the Users' setting, to
+   * anything, is the decision the notice asks for, and that leaves a row.
+   */
+  private noticeFor(
+    usersDecided: boolean,
+    people: readonly { id: string; role: UserRoleTypes }[],
+    agents: readonly { createdById?: string | null }[],
+  ): IAssistantOverview['notice'] {
+    if (usersDecided) return null;
+    const creators = new Set(
+      agents.map((a) => a.createdById).filter((id): id is string => !!id),
+    );
+    const usersManagingAgents = people.filter(
+      (p) => p.role === UserRoleTypes.User && creators.has(p.id),
+    ).length;
+    return usersManagingAgents > 0 ? { usersManagingAgents } : null;
   }
 
   // ------------------------------------------------- what a change would cost

@@ -8,6 +8,7 @@ import type {
   IAssistantCatalog,
   IAssistantException,
   IAssistantRoleData,
+  IMyAssistantAccess,
   ISetAssistantInput,
 } from '#assistantAccess/domain';
 
@@ -47,6 +48,9 @@ export function assistantAccessStoreSetup(service: () => AssistantAccessService)
   const exceptions = ref<IAssistantException[]>([]);
   const accounts = ref<Record<string, IAssistantAccountData>>({});
   const catalog = ref<IAssistantCatalog | null>(null);
+  const notice = ref<{ usersManagingAgents: number } | null>(null);
+  // What the assistant offers the person signed in, for their own badge.
+  const mine = ref<IMyAssistantAccess | null>(null);
 
   let catalogInFlight: Promise<IAssistantCatalog | null> | null = null;
   // Bumped when another account signs in: an answer that started for the
@@ -70,6 +74,8 @@ export function assistantAccessStoreSetup(service: () => AssistantAccessService)
     accounts.value = {};
     catalog.value = null;
     catalogInFlight = null;
+    notice.value = null;
+    mine.value = null;
   }
 
   async function fetchOverview() {
@@ -79,6 +85,15 @@ export function assistantAccessStoreSetup(service: () => AssistantAccessService)
     assistant.value = overview.assistant;
     roles.value = overview.roles;
     exceptions.value = overview.exceptions;
+    notice.value = overview.notice;
+  }
+
+  async function fetchMine() {
+    const generation = accountGeneration;
+    const loaded = await service().mine();
+    if (generation !== accountGeneration) return undefined;
+    mine.value = loaded;
+    return loaded;
   }
 
   function fetchCatalog(): Promise<IAssistantCatalog | null> {
@@ -114,6 +129,9 @@ export function assistantAccessStoreSetup(service: () => AssistantAccessService)
       // changed by setting it.
       const next = { ...saved, accounts: before.accounts };
       roles.value = { ...roles.value, [role]: next };
+      // Saving the Users' setting, to anything, is the decision the notice
+      // asked for.
+      if (role === 'User') notice.value = null;
       return next;
     } catch (err) {
       if (generation === accountGeneration && roles.value) {
@@ -164,10 +182,13 @@ export function assistantAccessStoreSetup(service: () => AssistantAccessService)
     exceptions,
     accounts,
     catalog,
+    notice,
+    mine,
     accountOf,
     resetForAccount,
     fetchOverview,
     fetchCatalog,
+    fetchMine,
     saveRole,
     fetchAccount,
     saveAccount,

@@ -114,6 +114,8 @@ const failedKey = computed(() => {
             <template v-else-if="pending">{{ $t('chat.loading') }}</template>
             <template v-else>{{ $t('chat.not_found') }}</template>
           </h1>
+          <!-- On the assistant: the level this person uses it at (CLEAN-240). -->
+          <AssistantAccessBadge v-if="agent?.isAdmin" />
           <!-- The pin state, announced as one image with a name (CLEAN-216). -->
           <span
             v-if="agent?.pinned"

@@ -38,6 +38,7 @@ const OVERVIEW: IAssistantOverview = {
   assistant: { id: 'r', name: 'Rancher' },
   roles: { Admin: role(), User: role({ level: 'basic', offered: 2, available: 3 }) },
   exceptions: [],
+  notice: { usersManagingAgents: 3 },
 };
 const CATALOG: IAssistantCatalog = { areas: [], alwaysOn: [] };
 
@@ -56,6 +57,7 @@ function fake(over: Partial<AssistantAccessService> = {}) {
       return account({ userId: id, level: 'basic', source: 'account', version: 'a2' });
     },
     resetAccount: async (id: string) => (calls.push(`reset ${id}`), account({ userId: id })),
+    mine: async () => ({ enabled: true, level: 'basic', matchesLevel: null, areas: [] }),
     ...over,
   } as unknown as AssistantAccessService;
   return { store: assistantAccessStoreSetup(() => service), calls };
@@ -78,6 +80,24 @@ describe('the assistant access store', () => {
     expect(store.assistant.value).toEqual({ id: 'r', name: 'Rancher' });
     expect(store.roles.value?.User.level).toBe('basic');
     expect(store.exceptions.value).toEqual([]);
+  });
+
+  test('the notice about Users is shown until their setting is saved', async () => {
+    const { store } = fake();
+    await store.fetchOverview();
+    expect(store.notice.value).toEqual({ usersManagingAgents: 3 });
+    await store.saveRole('Admin', { level: 'standard' });
+    expect(store.notice.value).toEqual({ usersManagingAgents: 3 });
+    await store.saveRole('User', { level: 'basic' });
+    expect(store.notice.value).toBe(null);
+  });
+
+  test('what the assistant offers the person signed in', async () => {
+    const { store } = fake();
+    await store.fetchMine();
+    expect(store.mine.value?.level).toBe('basic');
+    store.resetForAccount();
+    expect(store.mine.value).toBe(null);
   });
 
   test('the catalogue is fetched once, however many cards ask', async () => {

@@ -9,6 +9,7 @@ import {
   type IAssistantCatalog,
   type IAssistantOverview,
   type IAssistantRoleData,
+  type IMyAssistantAccess,
   type ISetAssistantInput,
 } from '../domain/assistantAccess.types';
 import { AssistantAccessMapper } from './assistantAccess.mapper';
@@ -91,6 +92,15 @@ export class AssistantAccessGateway
       });
       return this.read(res, 'Resetting the assistant setting', (raw) =>
         this.mapper.toAccount(raw),
+      );
+    });
+  }
+
+  mine(): Promise<IMyAssistantAccess> {
+    return this.execute(async () => {
+      const res = await AssistantAccessApi.getMyAssistantAccess();
+      return this.read(res, 'Reading what the assistant offers you', (raw) =>
+        this.mapper.toMine(raw),
       );
     });
   }

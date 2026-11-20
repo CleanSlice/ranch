@@ -2247,6 +2247,10 @@ export type AssistantExceptionDto = {
   reducedByRole: boolean;
 };
 
+export type AssistantNoticeDto = {
+  usersManagingAgents: number;
+};
+
 export type AssistantOverviewDto = {
   /**
    * Null while the installation has no assistant.
@@ -2254,6 +2258,10 @@ export type AssistantOverviewDto = {
   assistant: AssistantRefDto | null;
   roles: AssistantRolesDto;
   exceptions: Array<AssistantExceptionDto>;
+  /**
+   * Until the Owner has saved the Users’ setting: how many Users created agents and, starting on Basic, no longer manage them through the chat. Null afterwards, and when there are none.
+   */
+  notice: AssistantNoticeDto | null;
 };
 
 export type AbilityDto = {

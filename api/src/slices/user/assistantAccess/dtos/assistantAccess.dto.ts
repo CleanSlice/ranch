@@ -153,6 +153,11 @@ export class AssistantRefDto {
   name: string;
 }
 
+export class AssistantNoticeDto {
+  @ApiProperty()
+  usersManagingAgents: number;
+}
+
 export class AssistantOverviewDto {
   @ApiProperty({
     type: AssistantRefDto,
@@ -166,6 +171,16 @@ export class AssistantOverviewDto {
 
   @ApiProperty({ type: [AssistantExceptionDto] })
   exceptions: AssistantExceptionDto[];
+
+  @ApiProperty({
+    type: AssistantNoticeDto,
+    nullable: true,
+    description:
+      'Until the Owner has saved the Users’ setting: how many Users created ' +
+      'agents and, starting on Basic, no longer manage them through the ' +
+      'chat. Null afterwards, and when there are none.',
+  })
+  notice: AssistantNoticeDto | null;
 }
 
 export class AssistantAccountDto extends AssistantRoleDto {

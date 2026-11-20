@@ -66,6 +66,19 @@ export interface IAssistantOverview {
   assistant: { id: string; name: string } | null;
   roles: Record<AssistantRole, IAssistantRoleData>;
   exceptions: IAssistantException[];
+  /**
+   * Until the Owner has saved the Users' setting: how many Users created
+   * agents and, starting on Basic, stopped managing them through the chat.
+   */
+  notice: { usersManagingAgents: number } | null;
+}
+
+/** What the assistant offers the signed-in person. Nothing about others. */
+export interface IMyAssistantAccess {
+  enabled: boolean;
+  level: AssistantLevelOrCustom | 'owner';
+  matchesLevel: AssistantLevel | null;
+  areas: { key: string; title: string; offered: number; available: number }[];
 }
 
 /** One thing the assistant can do for a person. */

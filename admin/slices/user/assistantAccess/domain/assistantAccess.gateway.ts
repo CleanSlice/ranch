@@ -4,6 +4,7 @@ import type {
   IAssistantCatalog,
   IAssistantOverview,
   IAssistantRoleData,
+  IMyAssistantAccess,
   ISetAssistantInput,
 } from './assistantAccess.types';
 
@@ -20,4 +21,5 @@ export abstract class IAssistantAccessGateway {
     input: ISetAssistantInput,
   ): Promise<IAssistantAccountData>;
   abstract resetAccount(userId: string): Promise<IAssistantAccountData>;
+  abstract mine(): Promise<IMyAssistantAccess>;
 }

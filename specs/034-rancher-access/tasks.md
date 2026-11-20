@@ -26,7 +26,7 @@
 - [X] T001 Prepare the worktree: `bun install`, `cd api && bun run generate && bun run build && bun run generate:swagger`, confirm `cd api && bun run test -- tool-metadata toolAudience toolReach` is green before any change
 - [X] T002 [P] Create the API slice shell `api/src/slices/user/assistantAccess/` (`assistantAccess.module.ts`, `index.ts`, empty `domain/`, `data/`, `dtos/`) and register the module where `AgentAccessModule` is registered
 - [X] T003 [P] Create the admin slice shell `admin/slices/user/assistantAccess/` (`nuxt.config.ts` with alias `#assistantAccess`, `index.d.ts`, `plugins/di.ts`) following `admin/slices/user/agentAccess/`
-- [ ] T004 [P] Create the app slice shell `app/slices/user/assistantAccess/` (`nuxt.config.ts`, `index.d.ts`, `plugins/di.ts`, `i18n/locales/en.json` with an empty `assistantAccess` object) following `app/slices/share/`
+- [X] T004 [P] Create the app slice shell `app/slices/user/assistantAccess/` (`nuxt.config.ts`, `index.d.ts`, `plugins/di.ts`, `i18n/locales/en.json` with an empty `assistantAccess` object) following `app/slices/share/`
 
 ---
 
@@ -72,7 +72,7 @@
 
 - [X] T020 [P] [US1] Add to `api/src/slices/user/agentAccess/domain/agentAccess.service.spec.ts`: a `limited` account whose allowed list does not name the assistant still `reaches(assistantId)` when its switch is on, and does not when it is off; the Owner and non-persons always reach it; `reachableIds().where()` never excludes the assistant when on and always excludes it when off
 - [X] T021 [P] [US1] Add to the same spec: `view()` never returns the assistant's id in `allowed` or `denied`; `change()` naming the assistant's id is refused with `ASSISTANT_NOT_LISTED` and saves nothing
-- [ ] T022 [P] [US1] Add to `api/src/slices/mcp/toolReach.spec.ts`: an Admin limited to two ordinary agents, assistant on → `list_agents` returns those two plus the assistant; assistant off → `get_agent` on the assistant's id answers the same "not found" as an unknown id
+- [X] T022 [P] [US1] Add to `api/src/slices/mcp/toolReach.spec.ts`: an Admin limited to two ordinary agents, assistant on → `list_agents` returns those two plus the assistant; assistant off → `get_agent` on the assistant's id answers the same "not found" as an unknown id
 - [X] T023 [P] [US1] Write `api/src/slices/user/assistantAccess/assistantAccess.migration.spec.ts` for the pure function of T029: entries `[denied assistant]` → account row `enabled: false`; `[allowed assistant, allowed X]` → no row, entry for X kept; `[allowed X]` with `limited` → no row; every assistant entry removed; `limited` untouched
 - [X] T024 [P] [US1] Add to `admin/slices/user/agentAccess/` a test `utils/assistantRow.test.ts`: the editor's rows never include an agent with `isAdmin`, and a search that matches only the assistant's name yields the "set above" state
 
@@ -168,9 +168,9 @@
 
 **Independent Test**: two accounts with their own setting appear with the right level; dropping one from the list returns it to its role (quickstart §3.3).
 
-- [ ] T056 [P] [US5] Add to `assistantAccess.service.spec.ts`: `overview().exceptions` lists every account row with name, email, role, resolved setting, `updatedBy` name and `updatedAt`; an exception whose choice exceeds the account's current role ceiling reports `reducedByRole: true`; `notice.usersManagingAgents` counts Users who created at least one agent while Users are on Basic and the notice is not dismissed
-- [ ] T057 [US5] Fill `exceptions` and `notice` in `overview()` and add `DELETE /assistant-access/notice` (dismissal stored as a setting through `api/src/slices/setting`) until T056 passes; regenerate the admin API client
-- [ ] T058 [US5] Add the "Different for these accounts" list (Open · Reset; "Everyone follows their role." when empty; "reduced to the Users' ceiling" mark) and the one-time notice with "Raise Users to Standard" / "Dismiss" to `RoleCard.vue`, backed by `exceptions` and `notice` in the store
+- [X] T056 [P] [US5] Add to `assistantAccess.service.spec.ts`: `overview().exceptions` lists every account row with name, email, role, resolved setting, `updatedBy` name and `updatedAt`; an exception whose choice exceeds the account's current role ceiling reports `reducedByRole: true`; `notice.usersManagingAgents` counts Users who created at least one agent while Users are on Basic and the notice is not dismissed
+- [X] T057 [US5] Fill `exceptions` and `notice` in `overview()` and add `DELETE /assistant-access/notice` (dismissal stored as a setting through `api/src/slices/setting`) until T056 passes (as built: the notice is derived from whether the Users' setting was ever saved, so no dismissal route or stored flag); regenerate the admin API client
+- [X] T058 [US5] Add the "Different for these accounts" list (Open · Reset; "Everyone follows their role." when empty; "reduced to the Users' ceiling" mark) and the one-time notice with "Raise Users to Standard" / "Dismiss" to `RoleCard.vue`, backed by `exceptions` and `notice` in the store
 
 ---
 
@@ -196,8 +196,8 @@
 - [X] T063 [P] [US7] Add to `assistantAccess.controller.spec.ts`: `GET /me/assistant-access` for any signed-in person returns the same shape as the tool, `enabled: false` with empty areas when off, everything for the Owner
 - [X] T064 [US7] Implement `myAccess(person)` in the service, the `get_my_assistant_access` tool (`person`, read; description tells the model to call it before saying it cannot do something) and the `GET /me/assistant-access` route until T062 and T063 pass; regenerate both consoles' API clients
 - [X] T065 [US7] Put the guidance where it reaches a running assistant without a restart: in the `description` of `get_my_assistant_access` in `api/src/slices/user/assistantAccess/assistantAccess.tool.ts` ("call this before telling a person you cannot do something; if it is left out for them, say it is not included for their account and that the Owner decides; never describe what others have"). Do NOT edit the Rancher template's `SOUL.md`: it is an agent-owned file (`AGENT_OWNED_ROOT_FILES` in `api/src/slices/agent/file/data/file.gateway.ts`, CLEAN-56), so a template edit never reaches an assistant that already exists, and it sits at its prompt limit (CLEAN-230). Add a case to `api/src/slices/rancher/rancherTemplate.spec.ts` only if the description names a tool a User reads
-- [ ] T066 [P] [US7] Implement `admin/slices/user/assistantAccess/components/assistantAccess/Badge.vue` per contracts/ui.md §D (level badge with a popover of areas and "The Owner decides what the assistant can do for you.") and mount it in the assistant's chat header in `admin/slices/rancher/components/rancher/Provider.vue` for non-Owners
-- [ ] T067 [P] [US7] In `app`: implement `app/slices/user/assistantAccess/{domain,data,stores}/` for `GET /me/assistant-access` (one store, fetched when the account changes, reset in `app/slices/user/auth/plugins/accountScope.client.ts`), a `components/assistantAccess/Badge.vue` shown on the assistant in `app/slices/agent/components/agent/workspace/Sheet.vue`, copy in `app/slices/user/assistantAccess/i18n/locales/en.json`, then `bun run i18n:sync` (docs/i18n.md; if the key is refused, write `ru.json` and run the sync again so it adopts it)
+- [X] T066 [P] [US7] Implement `admin/slices/user/assistantAccess/components/assistantAccess/Badge.vue` per contracts/ui.md §D (level badge with a popover of areas and "The Owner decides what the assistant can do for you.") and mount it in the assistant's chat header in `admin/slices/rancher/components/rancher/Provider.vue` for non-Owners
+- [X] T067 [P] [US7] In `app`: implement `app/slices/user/assistantAccess/{domain,data,stores}/` for `GET /me/assistant-access` (one store, fetched when the account changes, reset in `app/slices/user/auth/plugins/accountScope.client.ts`), a `components/assistantAccess/Badge.vue` shown on the assistant in `app/slices/agent/components/agent/workspace/Sheet.vue`, copy in `app/slices/user/assistantAccess/i18n/locales/en.json`, then `bun run i18n:sync` (docs/i18n.md; if the key is refused, write `ru.json` and run the sync again so it adopts it)
 
 ---
 
@@ -234,9 +234,9 @@
 
 - [X] T078 [P] Update `docs/agent-tools.md`: the `effect` field in "The `@Tool` metadata" and the review checklist; a section "The assistant's grant" (what it narrows, what it never governs, where the policy lives); the new tools in the reach and audience tables
 - [X] T079 [P] Update the Agent-tools line in `CLAUDE.md` and principle V in `.specify/memory/constitution.md` to name `effect` among the required metadata (both in the same commit, per the constitution's governance rule); update the `<!-- ranch:agent-tools -->` block of `.claude/skills/graft/SKILL.md` if it is tracked
-- [ ] T080 [P] Twin-console check: grep `assistantAccess`, `isAdmin`, `adminReach` in `admin/slices` and `app/slices`; record for the PR which console needed what and why `app` edits nothing
-- [ ] T081 Run from the repo root `bun run typecheck && bun run locale:check && bun run i18n:check && bun run test:scripts`, then `cd api && bun run test`, `cd admin && bun run test`, `cd app && bun run test`; report any failure with its output
-- [ ] T082 Run quickstart.md §1–§7 on a local stack (API from the worktree, both consoles); §8 is T077; screenshot card A, block B and sheet C for the PR; note anything not exercised
+- [X] T080 [P] Twin-console check: grep `assistantAccess`, `isAdmin`, `adminReach` in `admin/slices` and `app/slices`; record for the PR which console needed what and why `app` edits nothing
+- [X] T081 Run from the repo root `bun run typecheck && bun run locale:check && bun run i18n:check && bun run test:scripts`, then `cd api && bun run test`, `cd admin && bun run test`, `cd app && bun run test`; report any failure with its output
+- [X] T082 Run quickstart.md §1–§7 on a local stack (API from the worktree, both consoles); §8 is T077; screenshot card A, block B and sheet C for the PR; note anything not exercised
 - [ ] T083 Bump the root `package.json` version above the highest `v*` tag, open the PR into `main` (what changed for Admins and Users on update, the twin-console note, the screenshots), link it on CLEAN-240
 
 ---

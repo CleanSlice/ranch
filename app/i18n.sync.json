@@ -488,6 +488,16 @@
       "list.loading": "8b31692427de",
       "list.title": "56b564b75c7f"
     },
+    "user/assistantAccess:ru": {
+      "assistantAccess.area_count": "578e157ee199",
+      "assistantAccess.areas_title": "d3828fd42102",
+      "assistantAccess.badge_title": "0474ac0ae000",
+      "assistantAccess.level_basic": "0e35f6e9742e",
+      "assistantAccess.level_custom": "494ca78f7374",
+      "assistantAccess.level_full": "008dacb6d1e8",
+      "assistantAccess.level_standard": "ef6691545d2c",
+      "assistantAccess.who_decides": "d253a1dca0cb"
+    },
     "user/auth:ru": {
       "account.closed_body": "0be53513ddac",
       "account.closed_cta": "27a0d553bf29",

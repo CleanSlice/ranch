@@ -5,6 +5,7 @@ import type {
   IAssistantCatalog,
   IAssistantOverview,
   IAssistantRoleData,
+  IMyAssistantAccess,
   ISetAssistantInput,
 } from './assistantAccess.types';
 
@@ -39,5 +40,9 @@ export class AssistantAccessService {
 
   resetAccount(userId: string): Promise<IAssistantAccountData> {
     return this.gateway.resetAccount(userId);
+  }
+
+  mine(): Promise<IMyAssistantAccess> {
+    return this.gateway.mine();
   }
 }

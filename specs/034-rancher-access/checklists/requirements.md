@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,9 +31,9 @@
 
 ## Notes
 
-- Two [NEEDS CLARIFICATION] markers remain, both waiting on the requester:
-  FR-009 (default level per role) and FR-016 (whether an Admin may set the
-  assistant for a User). Resolve them before `/speckit-plan`.
+- Both clarifications were answered on 2026-11-20 (FR-009: Full for Admins,
+  Basic for Users; FR-016: an Admin may set the assistant for a User within
+  their own level) and are recorded in the spec's Clarifications section.
 - The Background corrects the premise of the request: an Admin with no lists
   already reaches the assistant; it was an Allowed list of other agents that
   hid it. The spec is built on that finding.

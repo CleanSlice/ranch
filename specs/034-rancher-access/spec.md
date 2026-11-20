@@ -57,6 +57,19 @@ Terms used below:
 - **Reach**: as in specs/032 — whether an account's lists let it see and use
   an ordinary agent.
 
+## Clarifications
+
+### Session 2026-11-20
+
+- Q: What level does a role get while the Owner has configured nothing? → A:
+  Full for Admins, Basic for Users. An Admin who uses the assistant today
+  loses nothing when the feature arrives. A User keeps looking and asking;
+  managing agents they created through the chat becomes something the Owner
+  switches on (Standard), for all Users or for one.
+- Q: May an Admin set the assistant for a User? → A: Yes, for Users they may
+  already edit under specs/032, and never above what the Admin gets
+  themselves. Roles, other Admins and their own account stay the Owner's.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Limiting an account to some agents no longer takes the assistant away (Priority: P1)
@@ -358,9 +371,7 @@ that the Owner decides it.
     installation settings.
   - **Full** — everything the person's role can do in the console.
 - **FR-009**: The default level for a role with nothing configured MUST be
-  [NEEDS CLARIFICATION: Basic for both roles, as the request says "minimal by
-  default" — or Full for Admins and Basic for Users, so that Admins who use
-  the assistant today lose nothing when the feature arrives?]
+  Full for Admins and Basic for Users.
 - **FR-010**: Which level a given ability belongs to MUST follow from two
   things the platform already knows about it — its area and whether it only
   reads — so that an ability added later lands in the right levels without
@@ -382,8 +393,6 @@ that the Owner decides it.
 - **FR-016**: An Admin MUST be able to set the assistant for a User they may
   edit under specs/032, to no more than the Admin gets themselves, and MUST
   NOT be able to set it for any role, for an Admin, or for themselves.
-  [NEEDS CLARIFICATION: should Admins be able to set this for Users at all,
-  or is the assistant's reach the Owner's alone, like who the assistant is?]
 - **FR-017**: Everything in FR-013 to FR-016 MUST be available through the
   assistant in chat, to the same people, with the same ceilings.
 - **FR-018**: A change that takes abilities away from people, made in chat,
@@ -462,8 +471,10 @@ that the Owner decides it.
 - **SC-006**: In a test that asks the assistant, as each role at each level,
   for one ability from every area: it offers exactly what the setting and the
   role ceiling allow, and nothing else, in 100% of cases.
-- **SC-007**: No account ends an update of the installation with less access
-  to the assistant than the Owner had chosen for it before.
+- **SC-007**: No Admin ends an update of the installation with less from the
+  assistant than they had before, unless the assistant was marked Denied for
+  them. Users end it on Basic, which is the one deliberate reduction (see
+  Clarifications).
 - **SC-008**: A person asking for an ability left out of their setting is told
   so in the first answer, 100% of the time, with no ability named that belongs
   to other accounts.
@@ -482,6 +493,9 @@ that the Owner decides it.
   it, not about managing it.
 - The areas are the groups the assistant's abilities already carry. This spec
   does not regroup them.
+- Users who managed agents they created through the assistant lose that on
+  update, until the Owner raises Users (or the one account) to Standard. The
+  update tells the Owner so once, on the assistant's page.
 - "Basic" is the "minimal tools to work with the platform comfortably" of the
   request: look around, ask, get explanations, keep personal things. It
   changes nothing that belongs to anyone else.

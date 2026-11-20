@@ -36,7 +36,7 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 - [X] T001 Confirm branch `fix/CLEAN-236-identity-boundaries` is on up-to-date `origin/main`; commit the spec folder `specs/033-identity-boundaries/` and `.specify/feature.json` as the first commit (`docs(spec): identity boundaries (CLEAN-236)`)
 - [X] T002 [P] Ask where the working clone of `CleanSlice/runtime` lives (it is no longer at `../runtime`); create branch `fix/CLEAN-236-identity-boundaries` there from up-to-date `origin/main`; record the baseline of `bun test` and `bun run build`
 - [X] T003 [P] In `api/` run `bun run generate`, `bun run build`, `bun run generate:swagger`; in `admin/` and `app/` run `bun run build:api`; confirm a clean tree afterwards
-- [ ] T004 [P] Record the baseline of `NODE_OPTIONS=--experimental-vm-modules npx jest src/slices/agent/peer src/slices/bridle src/slices/user/session src/slices/user/auth src/slices/mcp` in `api/`, and of `bun test slices` in `admin/` and `app/` (known local noise: date-format tests)
+- [X] T004 [P] Record the baseline of `NODE_OPTIONS=--experimental-vm-modules npx jest src/slices/agent/peer src/slices/bridle src/slices/user/session src/slices/user/auth src/slices/mcp` in `api/`, and of `bun test slices` in `admin/` and `app/` (known local noise: date-format tests)
 
 ---
 
@@ -239,7 +239,7 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 - [X] T088 [P] `docs/guides/a2a.md` (who sees and uses a connection, open to visitors, a colleague's question, outside colleagues) and `docs/guides/auth.md` (a sign-in per console, the header, chat identities)
 - [X] T089 [P] `.specify/memory/constitution.md` and `CLAUDE.md`: no rule changes; confirm both still agree with `docs/agent-tools.md` after T087 and say so in the PR
 - [X] T090 Write `specs/033-identity-boundaries/e2e/all.mjs`; run every scenario of quickstart.md §4 and every command of §3; fix what fails
-- [ ] T091 Regenerate `api/swagger-spec.json` and both console SDKs; `npx nuxt typecheck` in `admin/` and `app/`; `bun run locale:check`, `i18n:check`, `test:scripts` at the root
+- [X] T091 Regenerate `api/swagger-spec.json` and both console SDKs; `npx nuxt typecheck` in `admin/` and `app/`; `bun run locale:check`, `i18n:check`, `test:scripts` at the root
 - [ ] T092 Bump the root `package.json` version; open the Ranch PR into `main` with CLEAN-236, stating which console was checked for each twin slice (T078, T085) and the release order; put the PR link on the ticket
 - [ ] T093 Release: merge the runtime PR, tag the runtime release, restart the agents; then merge the Ranch PR and watch `Release Platform`; run quickstart.md §5 on the live installation and report each line
 

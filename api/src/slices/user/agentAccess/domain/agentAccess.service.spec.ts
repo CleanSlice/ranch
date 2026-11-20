@@ -557,3 +557,55 @@ describe('AgentAccessService: an account that no longer exists', () => {
     expect(await service.accountReachesExisting(OWNER.id, 'A')).toBe(true);
   });
 });
+
+/**
+ * CLEAN-236. A reach with some agents taken out, for a question narrower
+ * than "may they use the agent": the conversations of an agent only the
+ * Owner manages are not an Admin's to read because they may talk to it.
+ */
+describe('AgentReach.without', () => {
+  const entries = (list: 'allowed' | 'denied', ...ids: string[]) =>
+    ids.map((agentId) => ({ agentId, list }));
+
+  it('takes agents out of a reach that hid nothing', () => {
+    const reach = AgentReach.ALL.without(['R']);
+
+    expect(reach.has('R')).toBe(false);
+    expect(reach.has('A')).toBe(true);
+    expect(reach.where()).toEqual({ notIn: ['R'] });
+    // The reach it was made from is untouched.
+    expect(AgentReach.ALL.has('R')).toBe(true);
+  });
+
+  it('adds to a denied list, and takes out of an allowed one', () => {
+    const denied = new AgentReach({
+      limited: false,
+      entries: entries('denied', 'B'),
+    }).without(['R']);
+    expect(denied.where()).toEqual({ notIn: ['B', 'R'] });
+
+    const allowed = new AgentReach({
+      limited: true,
+      entries: entries('allowed', 'A', 'R'),
+    }).without(['R']);
+    expect(allowed.where()).toEqual({ in: ['A'] });
+    expect(allowed.has('R')).toBe(false);
+    expect(allowed.has('A')).toBe(true);
+    expect(allowed.has('Z')).toBe(false);
+  });
+
+  it('is the same reach when nothing is taken out', () => {
+    const reach = new AgentReach({ limited: false, entries: [] });
+    expect(reach.without([])).toBe(reach);
+  });
+
+  it('an account that reaches nothing still reaches nothing', () => {
+    const none = new AgentReach({
+      limited: true,
+      entries: [],
+      accountMissing: true,
+    }).without(['R']);
+    expect(none.has('A')).toBe(false);
+    expect(none.where()).toEqual({ in: [] });
+  });
+});

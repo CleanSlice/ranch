@@ -25,6 +25,11 @@ import {
   AGENT_MANAGER_RESOLVER,
   type IAgentManagerResolver,
 } from '../../interfaces/agent-manager.interface';
+import {
+  PEER_PARTY_RESOLVER,
+  TURN_META_KEY,
+  type IPeerPartyResolver,
+} from '../../interfaces/peer-party.interface';
 import { ToolCatalogService } from '../tool-catalog.service';
 import {
   audienceAllows,
@@ -33,6 +38,7 @@ import {
   callerParty,
   callerPerson,
   setCallerManagesAgents,
+  setCallerTurnClient,
   withCallerParty,
 } from '../../tooling';
 import type {
@@ -71,6 +77,14 @@ export class McpToolsHandler extends McpHandlerBase {
    * resolver decides what it is worth. No resolver, or one that throws, is a
    * guest for an agent's token. A person's own console token still speaks
    * for that person: `callerParty` reads that from the bearer.
+   *
+   * An actor of the kind `peer` is another agent's question, handed over
+   * through a connection (CLEAN-236). The peer slice reads its token; what
+   * does not check out is a guest, as everywhere.
+   *
+   * `_meta["ranch/turn"]` says which conversation of the runtime the call
+   * belongs to. It is noted on the view for `ask_agent` to route its
+   * progress step by, and grants nothing.
    */
   private async callRequestFor(
     httpRequest: Request,
@@ -95,7 +109,9 @@ export class McpToolsHandler extends McpHandlerBase {
     }
 
     let party: ICallerParty | undefined;
-    if (resolver && typeof resolver.resolve === 'function') {
+    if (actor?.kind === 'peer') {
+      party = await this.peerPartyFor(bearer, actor.token);
+    } else if (resolver && typeof resolver.resolve === 'function') {
       try {
         party = await resolver.resolve(bearer, actor);
       } catch (e) {
@@ -112,8 +128,43 @@ export class McpToolsHandler extends McpHandlerBase {
       httpRequest,
       party ?? callerParty(httpRequest),
     );
+    const turn = mcpRequest?.params?._meta?.[TURN_META_KEY];
+    const client =
+      typeof turn === 'object' && turn !== null
+        ? (turn as { client?: unknown }).client
+        : undefined;
+    if (typeof client === 'string' && client) {
+      setCallerTurnClient(view, client);
+    }
     await this.noteManagedAgents(view);
     return view;
+  }
+
+  /**
+   * The party of a call that states a hand-over. Only an agent's own token
+   * can carry one; a missing resolver, a throw, or a token that does not
+   * check out all come to the same thing, a guest.
+   */
+  private async peerPartyFor(
+    bearer: IAuthTokenPayload | undefined,
+    token: unknown,
+  ): Promise<ICallerParty> {
+    try {
+      const resolver = this.moduleRef.get<IPeerPartyResolver>(
+        PEER_PARTY_RESOLVER,
+        { strict: false },
+      );
+      if (resolver && typeof resolver.resolvePeer === 'function') {
+        return await resolver.resolvePeer(bearer, token);
+      }
+    } catch (e) {
+      this.logger.warn(
+        `peer party could not be resolved, treating the call as a guest's: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+    return { kind: 'guest' };
   }
 
   /**

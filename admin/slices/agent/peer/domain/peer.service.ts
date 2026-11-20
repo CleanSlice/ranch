@@ -63,6 +63,14 @@ export class PeerService {
     return this.gateway.refresh(agentId, peerId);
   }
 
+  setVisitors(
+    agentId: string,
+    peerId: string,
+    open: boolean,
+  ): Promise<IAgentPeer> {
+    return this.gateway.setVisitors(agentId, peerId, open);
+  }
+
   remove(agentId: string, peerId: string): Promise<void> {
     return this.gateway.remove(agentId, peerId);
   }

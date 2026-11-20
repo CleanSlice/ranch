@@ -10,7 +10,7 @@ import { ShareLinkService } from '#/agent/shareLink/domain';
 import {
   AuthErrorCodes,
   classifyJwtError,
-  isActingToken,
+  isCallToken,
   unauthorized,
 } from '#/user/auth/domain/auth.types';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
@@ -93,7 +93,11 @@ export class BridleChatAuthGuard implements CanActivate {
         );
         if (!admitted) throw new NotFoundException(CHAT_AGENT_NOT_FOUND);
         req.user = verified.payload as unknown as IAuthTokenPayload;
-        req.chatAuth = { clientId: identity.clientId, kind: 'jwt' };
+        req.chatAuth = {
+          clientId: identity.clientId,
+          kind: 'jwt',
+          ...(identity.isAdmin ? { isAdmin: true } : {}),
+        };
         return true;
       }
       // Bad signature, expired, or no usable subject — only fatal when there
@@ -135,7 +139,7 @@ export class BridleChatAuthGuard implements CanActivate {
       const payload = this.jwt.verify<Record<string, unknown>>(token);
       // An acting token names the person a tool call is made for; as a chat
       // credential it is an invalid token (CLEAN-232).
-      if (isActingToken(payload)) return { payload: null };
+      if (isCallToken(payload)) return { payload: null };
       return { payload };
     } catch (error) {
       return { payload: null, error };

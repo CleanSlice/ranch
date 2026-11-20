@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Session } from '@prisma/client';
-import { ICreateSessionData, ISessionData } from '../domain/session.types';
+import {
+  ICreateSessionData,
+  ISessionData,
+  sessionSurfaceOf,
+} from '../domain/session.types';
 
 @Injectable()
 export class SessionMapper {
@@ -14,6 +18,7 @@ export class SessionMapper {
       lastSeenAt: record.lastSeenAt,
       revokedAt: record.revokedAt,
       userAgent: record.userAgent,
+      surface: sessionSurfaceOf(record.surface),
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -27,6 +32,7 @@ export class SessionMapper {
       expiresAt: data.expiresAt,
       absoluteExpiresAt: data.absoluteExpiresAt,
       userAgent: data.userAgent ?? null,
+      surface: data.surface,
     };
   }
 }

@@ -33,15 +33,34 @@ describe('parseBearer', () => {
 });
 
 describe('clientIdFromJwtPayload', () => {
-  it('collapses owners and admins onto the shared admin identity', () => {
+  // CLEAN-236. Every Owner and Admin used to be the client `admin`: one
+  // conversation per agent for all of them, in which an Admin read what the
+  // Owner wrote and a message sent during a turn joined it with the power of
+  // whoever started it.
+  it('gives the Owner the conversation the administrators shared, and every Admin their own', () => {
     expect(clientIdFromJwtPayload({ sub: 'u1', roles: ['Owner'] })).toEqual({
       clientId: 'admin',
       isAdmin: true,
     });
-    expect(clientIdFromJwtPayload({ sub: 'u1', roles: ['Admin'] })).toEqual({
-      clientId: 'admin',
+    expect(clientIdFromJwtPayload({ sub: 'u2', roles: ['Admin'] })).toEqual({
+      clientId: 'u2',
       isAdmin: true,
     });
+    expect(clientIdFromJwtPayload({ sub: 'u3', roles: ['Admin'] })).toEqual({
+      clientId: 'u3',
+      isAdmin: true,
+    });
+  });
+
+  it('an Admin token with no sub proves nobody in particular, and is unusable', () => {
+    expect(clientIdFromJwtPayload({ roles: ['Admin'] })).toBeNull();
+    expect(clientIdFromJwtPayload({ sub: '', roles: ['Admin'] })).toBeNull();
+  });
+
+  it('an Admin never becomes the Owner’s client by naming themselves so', () => {
+    expect(
+      clientIdFromJwtPayload({ sub: 'admin', roles: ['Admin'] }),
+    ).toBeNull();
   });
 
   it('uses the sub for everyone else', () => {
@@ -148,13 +167,16 @@ describe('headerValue', () => {
 });
 
 describe('clientIdFromJwtPayload — embed tokens (CLEAN-175)', () => {
-  // The chat is the one surface an embed token opens, so the identity rule
-  // must not change when the claim is present: admins still share the admin
-  // conversation, everyone else gets their sub.
-  it('maps an admin embed token to the shared admin identity', () => {
-    expect(
-      clientIdFromJwtPayload({ sub: 'kiosk', roles: ['Owner'], typ: 'embed' }),
-    ).toEqual({ clientId: 'admin', isAdmin: true });
+  // An embed token is whatever the holder of an API key asked it to be. One
+  // minted with an administrator's role used to be the client `admin`, which
+  // is the Owner's own conversation now (CLEAN-236): it is its `sub`, and
+  // still an administrator to the agent.
+  it('maps an admin embed token to its sub, never to the Owner’s conversation', () => {
+    for (const role of ['Owner', 'Admin']) {
+      expect(
+        clientIdFromJwtPayload({ sub: 'kiosk', roles: [role], typ: 'embed' }),
+      ).toEqual({ clientId: 'kiosk', isAdmin: true });
+    }
   });
 
   it('maps a visitor embed token to its sub', () => {

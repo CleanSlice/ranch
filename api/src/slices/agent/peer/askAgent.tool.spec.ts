@@ -10,6 +10,12 @@ import type { IPeerGateway } from './domain/peer.gateway';
 import type { DelegationService } from './domain/delegation.service';
 import type { A2aServerService } from './domain/a2a.server.service';
 import type { Request } from 'express';
+import { UserRoleTypes } from '#/user/user/domain';
+import { asGuest, asPeer, asPerson, asTrustedAgent } from '#/mcp/testing';
+import {
+  peerAccessOver,
+  type IPeerWorld,
+} from './domain/__fixtures__/peerAccess';
 
 /**
  * What the model sees and what it is told. These cases are mostly about
@@ -51,6 +57,12 @@ const connection = (name = 'Support Bot', id = 'peer-1'): IAgentPeerData => ({
   cardSnapshot: card(name),
   cardUrl: 'https://api.test/card',
   cardReadAt: '2026-09-14T10:00:00.000Z',
+  createdById: null,
+  openToVisitors: false,
+  openedById: null,
+  openedAt: null,
+  ownerUserId: null,
+  needsReview: false,
   createdAt: '2026-09-14T10:00:00.000Z',
   updatedAt: '2026-09-14T10:00:00.000Z',
 });
@@ -67,14 +79,23 @@ const externalConnection = (
   outboundToken: 'ext-secret',
 });
 
-const agentRequest = (sub = 'agent:a') =>
+const bareRequest = (sub = 'agent:a') =>
   ({ user: { sub, email: '', roles: [] } }) as unknown as Request;
+
+/**
+ * The agent's runtime, in a turn that is the Owner's. The Owner reaches
+ * every agent, so in the cases that are not about access the caller decides
+ * nothing (CLEAN-236); the ones that are say who the turn is for.
+ */
+const agentRequest = (sub = 'agent:a') =>
+  asPerson(bareRequest(sub), UserRoleTypes.Owner, 'user-owner');
 
 function makeHarness(
   options: {
     connections?: IAgentPeerData[];
     outcome?: unknown;
     chain?: string[];
+    world?: IPeerWorld;
   } = {},
 ) {
   const peerMocks = {
@@ -99,10 +120,17 @@ function makeHarness(
     timeoutMs: 120_000,
   } as unknown as A2aServerService;
 
+  const agents = {
+    findById: (id: string) =>
+      Promise.resolve({ id, name: id, isAdmin: false, createdById: null }),
+  };
+  const { access } = peerAccessOver(agents, options.world);
+
   const tool = new AskAgentTool(
     peerMocks as unknown as IPeerGateway,
     { run } as unknown as DelegationService,
     a2aServer,
+    access,
   );
 
   const args = {
@@ -423,5 +451,174 @@ describe('AskAgentTool — calling it', () => {
       expect.objectContaining({ contextId: 'ctx-42' }),
       120_000,
     );
+  });
+});
+
+/**
+ * CLEAN-236. What the agent knows of its peers in a turn is what serves the
+ * caller of that turn. `connection()` is a peer of this Ranch, agent `b`;
+ * the Admin is denied it.
+ */
+describe('AskAgentTool — a roster per caller', () => {
+  const world: IPeerWorld = {
+    denied: { 'user-admin': ['agent-Support Bot'] },
+  };
+  const asAdmin = () =>
+    asPerson(bareRequest(), UserRoleTypes.Admin, 'user-admin');
+  const asUser = () => asPerson(bareRequest(), UserRoleTypes.User, 'user-user');
+  const nobody: Array<[string, () => Request]> = [
+    ['a visitor', () => asGuest(bareRequest())],
+    ['a runtime that names nobody', () => bareRequest()],
+    ['the agent on its own schedule', () => asTrustedAgent(bareRequest())],
+    ['another agent’s question', () => asPeer(bareRequest())],
+  ];
+  const open = (name = 'Support Bot', id = 'peer-1'): IAgentPeerData => ({
+    ...connection(name, id),
+    openToVisitors: true,
+  });
+
+  it('lists a peer for a person who reaches it', async () => {
+    const { tool } = makeHarness({ world });
+
+    expect(await tool.isListedForRequest(asUser())).toBe(true);
+    expect(await tool.describeForRequest(asUser())).toContain(
+      '"Support Bot" (peer: agent-Support Bot)',
+    );
+  });
+
+  it('has no tool at all for a person who reaches none of the peers', async () => {
+    const { tool } = makeHarness({ world });
+
+    expect(await tool.isListedForRequest(asAdmin())).toBe(false);
+    expect(await tool.describeForRequest(asAdmin())).toBeNull();
+  });
+
+  it.each(nobody)('has no tool at all for %s', async (_who, request) => {
+    const { tool } = makeHarness({ world });
+
+    expect(await tool.isListedForRequest(request())).toBe(false);
+    expect(await tool.describeForRequest(request())).toBeNull();
+  });
+
+  it('leaves out the peer a person does not reach and keeps the rest, with no gap', async () => {
+    const other = connection('Billing Bot', 'peer-2');
+    const { tool } = makeHarness({
+      world,
+      connections: [connection(), other],
+    });
+
+    const description = (await tool.describeForRequest(asAdmin())) ?? '';
+    expect(description).toContain('"Billing Bot" (peer: agent-Billing Bot)');
+    expect(description).not.toMatch(/Support Bot|peer-1/);
+    expect(description.match(/^- /gm)).toHaveLength(1);
+  });
+
+  it.each([['a person who does not reach it', asAdmin] as const, ...nobody])(
+    'open to visitors: lists it for %s as a colleague, by its skills and its connection id',
+    async (_who, request) => {
+      const { tool } = makeHarness({ world, connections: [open()] });
+
+      expect(await tool.isListedForRequest(request())).toBe(true);
+      const description = (await tool.describeForRequest(request())) ?? '';
+      expect(description).toContain('- "Colleague 1" (peer: peer-1)');
+      expect(description).toContain('Skills: Returns policy');
+      // Not its name, not its agent id, and not its description: the
+      // default description of a card is the agent's name.
+      expect(description).not.toMatch(/Support Bot|agent-|answers order/);
+    },
+  );
+
+  it('numbers the colleagues it cannot name, and names the ones it can beside them', async () => {
+    const reached = connection('Billing Bot', 'peer-3');
+    const { tool } = makeHarness({
+      world: {
+        denied: { 'user-admin': ['agent-Support Bot', 'agent-Legal Bot'] },
+      },
+      connections: [
+        open('Support Bot', 'peer-1'),
+        open('Legal Bot', 'peer-2'),
+        reached,
+      ],
+    });
+
+    const description = (await tool.describeForRequest(asAdmin())) ?? '';
+    expect(description).toContain('"Colleague 1" (peer: peer-1)');
+    expect(description).toContain('"Colleague 2" (peer: peer-2)');
+    expect(description).toContain('"Billing Bot" (peer: agent-Billing Bot)');
+    expect(description).not.toMatch(/Support Bot|Legal Bot/);
+  });
+
+  it('still records what the pod was served from the whole set, whoever asked', async () => {
+    const { tool, peers } = makeHarness({ world });
+
+    await tool.describeForRequest(asAdmin());
+
+    expect(peers.recordPeersServed).toHaveBeenCalledWith(
+      'a',
+      hashPeerIds(['peer-1']),
+    );
+  });
+
+  it('hands the delegation the caller of the turn', async () => {
+    const { tool, args, run } = makeHarness({ world });
+
+    await tool.ask(args, null, asAdmin());
+
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        party: {
+          kind: 'person',
+          userId: 'user-admin',
+          role: UserRoleTypes.Admin,
+        },
+      }),
+      120_000,
+    );
+  });
+
+  it('answers for a masked peer as "a colleague", in every outcome', async () => {
+    const masked = (over: Record<string, unknown>) => ({
+      kind: 'done',
+      peerName: 'a colleague',
+      masked: true,
+      contextId: 'ctx-1',
+      durationMs: 3120,
+      ...over,
+    });
+    const say = async (over: Record<string, unknown>) => {
+      const { tool, args } = makeHarness({ outcome: masked(over) });
+      return textOf(await tool.ask(args, null, asGuest(bareRequest())));
+    };
+
+    expect(
+      await say({ status: DelegationStatuses.Answered, text: '30 days.' }),
+    ).toMatch(/^Reply from a colleague \(context_id: ctx-1, 3\.1s\):/);
+    expect(
+      await say({ status: DelegationStatuses.Answered, text: '' }),
+    ).toMatch(/^A colleague answered .* but the reply was empty/);
+    expect(
+      await say({
+        status: DelegationStatuses.Rejected,
+        errorCode: DelegationErrorCodes.RejectedLoop,
+      }),
+    ).toMatch(/^A colleague refused the task:/);
+    expect(
+      await say({
+        status: DelegationStatuses.Failed,
+        errorCode: DelegationErrorCodes.Timeout,
+      }),
+    ).toMatch(/^Could not reach a colleague:/);
+  });
+
+  it('names in a refusal only the peers the delegation said it has for this caller', async () => {
+    const { tool, args } = makeHarness({
+      outcome: { kind: 'no_match', peers: ['Colleague 1'] },
+    });
+
+    const text = textOf(
+      await tool.ask({ ...args, peer: 'b' }, null, asGuest(bareRequest())),
+    );
+
+    expect(text).toBe('No peer matches "b". Your peers are: "Colleague 1".');
   });
 });

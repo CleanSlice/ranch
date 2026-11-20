@@ -19,6 +19,7 @@ export class DelegationMapper {
       contextId: record.contextId,
       turnId: record.turnId,
       clientId: record.clientId,
+      forUserId: record.forUserId,
       task: record.task,
       reason: record.reason,
       matchedSkills: toSkills(record.matchedSkills),

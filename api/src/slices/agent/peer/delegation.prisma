@@ -29,6 +29,10 @@ model AgentDelegation {
   // the delegation ran with no visible timeline to push a step into.
   turnId        String?
   clientId      String?
+  // The person the chain of hand-overs was started for (CLEAN-236). Null for
+  // a chain started for nobody. For the audit trail only: reach is asked
+  // live, never from this column.
+  forUserId     String?
   task          String
   // The calling model's one-line reason for choosing this peer; shown to the
   // person in the delegation step.

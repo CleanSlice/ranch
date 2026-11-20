@@ -9,6 +9,8 @@ import { IChatGateway, ChatSyncService, ChatInsightService } from './domain';
 import { ChatGateway } from './data/chat.gateway';
 import { ChatMapper } from './data/chat.mapper';
 import { ChatSourceGateway } from './data/chatSource.gateway';
+import { ChatParticipantService } from './domain/chatParticipant.service';
+import { UserModule } from '#/user/user/user.module';
 import { IChatSourceGateway, ChatSourceService } from './domain';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { SourceModule } from '#/reins/source/source.module';
@@ -28,6 +30,8 @@ import { TemplateModule } from '#/agent/template/template.module';
     // What an agent may cite is what it may read — the same binding rule
     // query_knowledge applies, read through the agent and template gateways.
     forwardRef(() => TemplateModule),
+    // The name of the account a conversation is with (CLEAN-236).
+    forwardRef(() => UserModule),
   ],
   controllers: [ChatController, MyChatController],
   providers: [
@@ -36,6 +40,7 @@ import { TemplateModule } from '#/agent/template/template.module';
     ChatInsightService,
     ChatTool,
     ChatSourceService,
+    ChatParticipantService,
     { provide: IChatSourceGateway, useClass: ChatSourceGateway },
     {
       provide: IChatGateway,

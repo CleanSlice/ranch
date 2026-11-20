@@ -200,11 +200,17 @@ function toggle(id: string) {
             <Badge
               variant="secondary"
               class="flex-none"
-              :title="row.peerAgentId === null ? 'External agent' : undefined"
+              :title="
+                row.visibility === 'masked'
+                  ? 'A colleague outside your access, open to visitors'
+                  : row.peerAgentId === null
+                    ? 'External agent'
+                    : undefined
+              "
             >
               {{ row.peerName
               }}<span
-                v-if="row.peerAgentId === null"
+                v-if="row.visibility !== 'masked' && row.peerAgentId === null"
                 class="ml-1 text-sky-700 dark:text-sky-400"
                 >· ext</span
               >

@@ -35,3 +35,21 @@ export function asGuest<T extends Request>(httpRequest: T): T {
   setCallerParty(httpRequest, { kind: 'guest' });
   return httpRequest;
 }
+
+/**
+ * A colleague's question (CLEAN-236): the turn this agent runs because
+ * another agent handed it a task, for `forUserId` when a person started the
+ * chain.
+ */
+export function asPeer<T extends Request>(
+  httpRequest: T,
+  opts: { chain?: string[]; connectionId?: string; forUserId?: string } = {},
+): T {
+  setCallerParty(httpRequest, {
+    kind: 'peer',
+    chain: opts.chain ?? ['agent-asker'],
+    connectionId: opts.connectionId ?? 'connection-1',
+    ...(opts.forUserId ? { forUserId: opts.forUserId } : {}),
+  });
+  return httpRequest;
+}

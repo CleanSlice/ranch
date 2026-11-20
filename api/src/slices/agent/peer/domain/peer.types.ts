@@ -22,13 +22,26 @@ export const PEER_TOKEN_RE = /^ap_[A-Za-z0-9_-]{43}$/;
 
 /**
  * Bridle client id a peer conversation registers under. One conversation per
- * (caller, context) pair, and the prefix keeps it apart from `admin`, `share-`,
- * `anon-`, `http-` and `sync-` ids in the chat history.
+ * (connection, context) pair, and the prefix keeps it apart from `admin`,
+ * `share-`, `anon-`, `http-` and `sync-` ids in the chat history.
+ *
+ * Named by the connection, not by the agent that asks (CLEAN-236): the id is
+ * shown in the receiving agent's list of conversations, to somebody who may
+ * not reach the asking agent, and a connection id says nothing to anybody
+ * who cannot list that agent's peers. Conversations stored before this keep
+ * the agent id in their name.
  */
 export const PEER_CLIENT_PREFIX = 'peer:';
 
-export function peerClientId(callerAgentId: string, contextId: string): string {
-  return `${PEER_CLIENT_PREFIX}${callerAgentId}:${contextId}`;
+export function peerClientId(connectionId: string, contextId: string): string {
+  return `${PEER_CLIENT_PREFIX}${connectionId}:${contextId}`;
+}
+
+/** The connection id inside a peer conversation's client id, or null. */
+export function connectionIdOfPeerClient(clientId: string): string | null {
+  if (!clientId.startsWith(PEER_CLIENT_PREFIX)) return null;
+  const [connectionId] = clientId.slice(PEER_CLIENT_PREFIX.length).split(':');
+  return connectionId || null;
 }
 
 /** Thinking-step id prefix, so a delegation's two pushes replace each other. */
@@ -74,6 +87,10 @@ export const PeerErrorCodes = {
   SelfUrl: 'PEER_SELF_URL',
   // A 1.0 card with no JSON-RPC interface (CLEAN-97).
   Binding: 'PEER_BINDING',
+  // The connection is shown to the caller, who may not change it (CLEAN-236).
+  Forbidden: 'PEER_FORBIDDEN',
+  // Opening a connection to visitors without `confirm` (CLEAN-236).
+  VisitorsNeedsConfirm: 'PEER_VISITORS_NEEDS_CONFIRM',
 } as const;
 
 export type PeerErrorCode =
@@ -96,15 +113,37 @@ export interface IAgentPeerData {
   cardSnapshot: IA2aAgentCard;
   cardUrl: string;
   cardReadAt: string;
+  /** Who made the connection. Null: made before it was recorded (CLEAN-236). */
+  createdById: string | null;
+  /** Internal rows: the peer serves every caller of `agentId`, not only the
+   *  people who reach it. Always false on an external row. */
+  openToVisitors: boolean;
+  openedById: string | null;
+  openedAt: string | null;
+  /** External rows: the one person the connection serves, or null when it
+   *  serves every caller. Always null on an internal row. */
+  ownerUserId: string | null;
+  /** Existed before CLEAN-236 and nobody has saved its visitors setting. */
+  needsReview: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-/** A peer connection joined with what the peer agent looks like right now. */
+/** A person named on a connection. `name` is null once the account is gone. */
+export interface IPeerPerson {
+  id: string;
+  name: string | null;
+}
+
+/**
+ * A peer connection joined with what the peer agent looks like right now, as
+ * one viewer may see it (CLEAN-236, `peerAccess.ts`). A connection that does
+ * not exist for the viewer has no view at all.
+ */
 export interface IAgentPeerView {
   id: string;
   agentId: string;
-  /** Null for external rows. */
+  /** Null for external rows, and on a masked view. */
   peerAgentId: string | null;
   origin: PeerOrigin;
   peerName: string;
@@ -117,6 +156,56 @@ export interface IAgentPeerView {
   cardUrl: string;
   cardReadAt: string;
   createdAt: string;
+  /**
+   * `masked`: the peer serves this viewer through a connection open to
+   * visitors, and the viewer does not reach it. Only its skills are shown;
+   * name, id, status, address and who connected it are not.
+   */
+  visibility: 'full' | 'masked';
+  /** Who made the connection. Null: made before it was recorded. */
+  createdBy: IPeerPerson | null;
+  /** Internal rows: serves every caller of the agent, not only who reaches it. */
+  openToVisitors: boolean;
+  /** External rows: the one person the connection serves; null ⇒ everybody. */
+  owner: IPeerPerson | null;
+  /** Existed before CLEAN-236 and its visitors setting was never saved. */
+  needsReview: boolean;
+  /** The viewer may remove or re-read it. */
+  canRemove: boolean;
+  /** The viewer manages both agents and may open or close it to visitors. */
+  canSetVisitors: boolean;
+}
+
+/** What a masked peer is called wherever a person reads it. */
+export const MASKED_PEER_NAME = 'A colleague';
+
+/** `peerStatus` of a masked view: the peer's live status is not the viewer's. */
+export const MASKED_PEER_STATUS = 'hidden';
+
+/**
+ * The card of a masked peer: its skills and nothing else. The asking model
+ * cannot pick a colleague without knowing what it can do, so the skills
+ * stay. The description goes by rule, not by judgment: the default one is
+ * literally "Ranch agent «name».", and an own one may say anything.
+ */
+export function maskCard(
+  card: IA2aAgentCard | null | undefined,
+): IA2aAgentCard {
+  return {
+    name: MASKED_PEER_NAME,
+    description: '',
+    version: '',
+    supportedInterfaces: [],
+    capabilities: {},
+    defaultInputModes: [],
+    defaultOutputModes: [],
+    skills: (card?.skills ?? []).map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description,
+      tags: skill.tags ?? [],
+    })),
+  };
 }
 
 /** Whether the running pod has loaded the current peer set (CLEAN-95). */
@@ -201,6 +290,8 @@ export interface IAgentDelegationData {
   /** The caller's thinking turn, when one was known at the time. */
   turnId: string | null;
   clientId: string | null;
+  /** The person the chain was started for; null when nobody was (CLEAN-236). */
+  forUserId: string | null;
   task: string;
   reason: string;
   matchedSkills: IMatchedSkill[];
@@ -212,6 +303,15 @@ export interface IAgentDelegationData {
   durationMs: number | null;
 }
 
+/**
+ * A hand-over as one viewer is shown it (CLEAN-236). `masked`: it went to a
+ * peer that serves the viewer through a connection open to visitors, without
+ * their reaching it, so the row carries neither the peer nor its answer.
+ */
+export interface IAgentDelegationView extends IAgentDelegationData {
+  visibility: 'full' | 'masked';
+}
+
 export interface ICreateDelegationData {
   agentId: string;
   peerId: string;
@@ -220,6 +320,7 @@ export interface ICreateDelegationData {
   contextId: string;
   turnId?: string | null;
   clientId?: string | null;
+  forUserId?: string | null;
   task: string;
   reason: string;
   matchedSkills: IMatchedSkill[];

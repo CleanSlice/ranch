@@ -115,6 +115,22 @@ export class AgentPermissionService implements IAgentManagerResolver {
   }
 
   /**
+   * The agents this caller reaches and still does not manage because they
+   * are the Owner's alone: the Ranch admin agent, for anybody but the Owner.
+   * What a list scoped by reach takes out when the question is one of
+   * managing, such as reading the conversations people had with an agent
+   * (CLEAN-236).
+   */
+  async ownerOnlyIds(caller: ICallerParty): Promise<string[]> {
+    if (caller.kind === 'trusted') return [];
+    if (caller.kind === 'person' && caller.role === UserRoleTypes.Owner) {
+      return [];
+    }
+    const ranch = await this.agents.findAdmin();
+    return ranch ? [ranch.id] : [];
+  }
+
+  /**
    * Whether a person manages at least one agent: what lists the
    * `manage-agent` tools for them. An Owner or Admin always does; anybody
    * else only by having created an agent. Whether they still reach it is

@@ -11,7 +11,7 @@ import {
   AuthErrorCodes,
   classifyJwtError,
   IAuthTokenPayload,
-  isActingToken,
+  isCallToken,
   isEmbedToken,
   unauthorized,
 } from '../domain/auth.types';
@@ -85,12 +85,13 @@ export class JwtAuthGuard implements CanActivate {
       );
       throw unauthorized(AuthErrorCodes.TokenInvalid);
     }
-    if (isActingToken(payload)) {
-      // An acting token names the person a tool call is made for. It travels
-      // in the call's `_meta`, next to the agent's own bearer; presented as
-      // the bearer it opens nothing (CLEAN-232).
+    if (isCallToken(payload)) {
+      // An acting token names the person a tool call is made for, a
+      // hand-over token the chain a colleague's question came through. Both
+      // travel in the call's `_meta`, next to the agent's own bearer;
+      // presented as the bearer they open nothing (CLEAN-232, CLEAN-236).
       this.logger.warn(
-        `Rejected acting token as a bearer sub=${payload.sub} ${req.method} ${req.url}`,
+        `Rejected ${String(payload.typ)} token as a bearer sub=${payload.sub} ${req.method} ${req.url}`,
       );
       throw unauthorized(AuthErrorCodes.TokenInvalid);
     }

@@ -803,7 +803,12 @@ describe('BridleClientWsHandler — access lists (CLEAN-231)', () => {
 
     await handler.handleConnection(client);
 
-    expect(client.data).toMatchObject({ clientId: 'admin', console: SESSION });
+    // An Admin is their own client since CLEAN-236, and still an administrator.
+    expect(client.data).toMatchObject({
+      clientId: 'u1',
+      isAdmin: true,
+      console: SESSION,
+    });
     expect(registered).toHaveLength(1);
     expect(disconnected()).toBe(0);
   });

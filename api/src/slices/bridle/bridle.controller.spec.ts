@@ -48,6 +48,11 @@ interface IStubs {
   limitRemaining?: { remaining: number; resetSec: number };
   /** Stands in for `ConsoleReachService.admits` (CLEAN-231); default: yes. */
   admits?: (session: unknown, agentId: string) => Promise<boolean>;
+  /**
+   * Stands in for `ConsoleReachService.manages` (CLEAN-236). Default: a
+   * console session manages the agent, nobody else does.
+   */
+  manages?: (session: unknown, agentId: string) => Promise<boolean>;
 }
 
 function makeController(stubs: IStubs = {}) {
@@ -241,6 +246,10 @@ function makeController(stubs: IStubs = {}) {
     stubs.admits ??
       ((_session: unknown, _agentId: string) => Promise.resolve(true)),
   );
+  const manages = jest.fn(
+    stubs.manages ??
+      ((session: unknown, _agentId: string) => Promise.resolve(!!session)),
+  );
 
   const controller = new BridleController(
     hub as never,
@@ -263,6 +272,7 @@ function makeController(stubs: IStubs = {}) {
     // filtered unless a test says otherwise.
     {
       admits,
+      manages,
       reached: jest.fn((_session: unknown, items: unknown[]) =>
         Promise.resolve(items),
       ),
@@ -432,18 +442,24 @@ describe('BridleController — identity precedence', () => {
     expect(shareCalls).toHaveLength(0);
   });
 
-  it('still maps console admins to the shared admin identity', async () => {
-    const { controller, registered } = makeController({
-      verify: () => ({ sub: 'user-9', roles: ['Admin'] }),
-    });
+  // CLEAN-236. Every Owner and Admin used to be the client `admin`.
+  it('gives the Owner the admin identity and an Admin their own', async () => {
+    const identityOf = async (payload: Record<string, unknown>) => {
+      const { controller, registered } = makeController({
+        verify: () => payload,
+      });
+      await controller.sendMessageSync(
+        AGENT,
+        request({ authorization: 'Bearer jwt-token' }),
+        { text: 'hello' } as never,
+      );
+      return registered[0].clientId;
+    };
 
-    await controller.sendMessageSync(
-      AGENT,
-      request({ authorization: 'Bearer jwt-token' }),
-      { text: 'hello' } as never,
+    expect(await identityOf({ sub: 'user-1', roles: ['Owner'] })).toBe('admin');
+    expect(await identityOf({ sub: 'user-9', roles: ['Admin'] })).toBe(
+      'user-9',
     );
-
-    expect(registered[0].clientId).toBe('admin');
   });
 
   it('answers 404 to a console person whose access lists hide the agent, on both routes', async () => {
@@ -1089,13 +1105,80 @@ describe('BridleController — transcripts on a jwt channel (CLEAN-175)', () => 
     ).rejects.toMatchObject({ status: 403 });
   });
 
-  it('lets an admin read any channel from the console', async () => {
-    const { controller, fileCalls } = makeController({
-      verify: () => ({ sub: 'user-1', roles: ['Admin'] }),
-    });
+  // Supervision (CLEAN-236). It used to come with the client id every Owner
+  // and Admin shared; it is now an administrator who manages the agent.
+  const asAdmin = (over: Record<string, unknown> = {}) => ({
+    verify: () => ({
+      sub: 'user-1',
+      sid: 'session-1',
+      roles: ['Admin'],
+      ...over,
+    }),
+  });
+
+  it('lets an administrator who manages the agent read another channel of it', async () => {
+    const { controller, fileCalls } = makeController(asAdmin());
 
     await controller.transcript(AGENT, BEARER, { channel: OWN } as never);
     expect(fileCalls[0].path).toContain(`bridle:${OWN}.jsonl`);
+
+    // The Owner's own conversation with it too.
+    await controller.transcript(AGENT, BEARER, { channel: 'admin' } as never);
+    expect(fileCalls[1].path).toContain('bridle:admin.jsonl');
+  });
+
+  it('refuses an administrator who does not manage the agent, the Owner’s conversation included', async () => {
+    // The Ranch admin agent: an Admin may talk to it and manages nothing.
+    const { controller, fileCalls } = makeController({
+      ...asAdmin(),
+      manages: () => Promise.resolve(false),
+    });
+    const forbidden = { status: 403, response: { code: 'CHANNEL_FORBIDDEN' } };
+
+    for (const channel of ['admin', OWN, 'user-2']) {
+      await expect(
+        controller.transcript(AGENT, BEARER, { channel } as never),
+      ).rejects.toMatchObject(forbidden);
+    }
+    expect(fileCalls).toHaveLength(0);
+  });
+
+  it('an Admin who names no channel reads their own, not the Owner’s', async () => {
+    const { controller, fileCalls } = makeController({
+      ...asAdmin(),
+      manages: () => Promise.resolve(false),
+    });
+
+    const out = await controller.transcript(AGENT, BEARER, {} as never);
+
+    expect(out.channel).toBe('user-1');
+    expect(fileCalls[0].path).toContain('bridle:user-1.jsonl');
+  });
+
+  it('the Owner who names no channel reads the conversation the administrators shared', async () => {
+    const { controller, fileCalls } = makeController(
+      asAdmin({ roles: ['Owner'] }),
+    );
+
+    const out = await controller.transcript(AGENT, BEARER, {} as never);
+
+    expect(out.channel).toBe('admin');
+    expect(fileCalls[0].path).toContain('bridle:admin.jsonl');
+  });
+
+  it('an embed token minted with an administrator’s role reads its own channel and no other', async () => {
+    const { controller, fileCalls } = makeController({
+      verify: () => ({ sub: 'kiosk', roles: ['Owner'], typ: 'embed' }),
+    });
+
+    await controller.transcript(AGENT, BEARER, { channel: 'kiosk' } as never);
+    expect(fileCalls).toHaveLength(1);
+    for (const channel of ['admin', OWN]) {
+      await expect(
+        controller.transcript(AGENT, BEARER, { channel } as never),
+      ).rejects.toMatchObject({ status: 403 });
+    }
+    expect(fileCalls).toHaveLength(1);
   });
 
   it('keeps anonymous channels open as before', async () => {

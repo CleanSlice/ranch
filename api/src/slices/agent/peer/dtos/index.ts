@@ -2,6 +2,7 @@ export * from './agentCard.dto';
 export * from './agentPeer.dto';
 export * from './agentPeerCandidate.dto';
 export * from './connectPeer.dto';
+export * from './peerVisitors.dto';
 export * from './agentDelegation.dto';
 export * from './listDelegations.query.dto';
 export * from './peersState.dto';

@@ -25,7 +25,9 @@ model AgentPeer {
   peerAgentId   String?
   peerAgent     Agent?    @relation("AgentPeerTarget", fields: [peerAgentId], references: [id], onDelete: Cascade)
   // 'internal' | 'external'. External rows are imported by URL and deduped on
-  // (agentId, cardUrl) — see the partial unique index in the migration.
+  // (agentId, cardUrl) among shared rows and on (agentId, cardUrl,
+  // ownerUserId) among personal ones: two partial unique indexes, see the
+  // CLEAN-236 migration.
   origin        String    @default("internal")
   // `ap_` + 32 random bytes base64url (~256 bits). Scoped to this pair only;
   // deleting the row revokes it. Null on external rows: the foreign agent
@@ -36,13 +38,28 @@ model AgentPeer {
   cardSnapshot  Json
   cardUrl       String
   cardReadAt    DateTime
+  // Who made the connection (CLEAN-236). Null: made before it was recorded,
+  // or by an account that is gone. No relation, like Agent.createdById.
+  createdById   String?
+  // Internal rows only. False: the peer serves the people who reach it.
+  // True: it serves every caller of `agentId`, set by somebody who manages
+  // both agents (`openedById`, `openedAt`).
+  openToVisitors Boolean  @default(false)
+  openedById    String?
+  openedAt      DateTime?
+  // External rows only. Set: the one person the connection serves. Null: it
+  // serves every caller of `agentId`.
+  ownerUserId   String?
+  // Set by the CLEAN-236 migration on rows that existed before it; cleared
+  // the first time the visitors setting of the row is saved.
+  needsReview   Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   delegations AgentDelegation[]
 
   // One connection per direction (NULL peerAgentId rows don't collide here;
-  // external dedup is the partial unique index on (agentId, cardUrl)).
+  // external dedup is the two partial unique indexes named above).
   @@unique([agentId, peerAgentId])
   @@index([agentId])
   @@index([peerAgentId])

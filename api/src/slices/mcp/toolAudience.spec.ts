@@ -56,7 +56,7 @@ const CLASS_AUDIENCE: Record<string, ToolAudienceTypes> = {
   'agent/limit/agentLimit.tool.ts': 'admin',
   'agent/peer/askAgent.tool.ts': 'agent',
   'agent/peer/peerAdmin.tool.ts': 'manage-agent',
-  'agent/peer/peerSelf.tool.ts': 'agent',
+  'agent/peer/peerSelf.tool.ts': 'person',
   'agent/secret/secret.tool.ts': 'manage-agent',
   'agent/shareLink/shareLink.tool.ts': 'admin',
   'agent/template/templateAdmin.tool.ts': 'admin',
@@ -175,6 +175,7 @@ const MANAGE_AGENT_TOOLS = [
   'import_agent_from_card',
   'refresh_agent_peer',
   'remove_agent_peer',
+  'set_agent_peer_visitors',
 ].sort();
 
 function toolFiles(dir: string): string[] {

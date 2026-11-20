@@ -68,8 +68,25 @@ const ADMIN_LEVEL = ROLE_LEVELS[UserRoleTypes.Admin];
 
 function isCallerParty(value: unknown): value is ICallerParty {
   if (typeof value !== 'object' || value === null) return false;
-  const party = value as { kind?: unknown; userId?: unknown; role?: unknown };
+  const party = value as {
+    kind?: unknown;
+    userId?: unknown;
+    role?: unknown;
+    chain?: unknown;
+    connectionId?: unknown;
+    forUserId?: unknown;
+  };
   if (party.kind === 'trusted' || party.kind === 'guest') return true;
+  if (party.kind === 'peer') {
+    return (
+      Array.isArray(party.chain) &&
+      party.chain.every((id) => typeof id === 'string') &&
+      typeof party.connectionId === 'string' &&
+      party.connectionId.length > 0 &&
+      (party.forUserId === undefined ||
+        (typeof party.forUserId === 'string' && party.forUserId.length > 0))
+    );
+  }
   return (
     party.kind === 'person' &&
     typeof party.userId === 'string' &&
@@ -139,6 +156,13 @@ function tokenLevel(httpRequest: Request): number {
   return role ? ROLE_LEVELS[role] : 0;
 }
 
+/**
+ * A guest and a peer are both nobody here. A colleague's question arrives
+ * with the name of the person its chain was started for, and that name
+ * decides whom the agent may ask next, never what it may do (CLEAN-236): a
+ * question written by another agent's model must not run with the Owner's
+ * power because the Owner asked that agent something.
+ */
 function partyLevel(party: ICallerParty): number {
   if (party.kind === 'trusted') return OWNER_LEVEL;
   if (party.kind === 'person') return ROLE_LEVELS[party.role] ?? 0;
@@ -180,6 +204,37 @@ export function callerPerson(
   return party.kind === 'person'
     ? { userId: party.userId, role: party.role }
     : null;
+}
+
+// ── Which conversation the call belongs to (CLEAN-236) ──────
+
+const TURN_CLIENT_PROPERTY = 'ranchTurnClient';
+
+/**
+ * Note the hub client the runtime says this call's turn belongs to
+ * (`_meta["ranch/turn"].client`). The MCP handler does this on the per-call
+ * view. It is a routing hint and nothing else: `ask_agent` uses it to show
+ * its progress step in the conversation that asked, and the hub ignores a
+ * client that has no running turn with the calling agent.
+ */
+export function setCallerTurnClient(
+  httpRequest: Request,
+  client: string,
+): void {
+  Object.defineProperty(httpRequest, TURN_CLIENT_PROPERTY, {
+    value: client,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+}
+
+/** The hub client of the turn this call belongs to, when the runtime said. */
+export function callerTurnClient(httpRequest: Request): string | null {
+  const client = (httpRequest as unknown as Record<string, unknown> | null)?.[
+    TURN_CLIENT_PROPERTY
+  ];
+  return typeof client === 'string' && client ? client : null;
 }
 
 // ── Who may manage an agent (CLEAN-232, contract section 5) ──
@@ -315,10 +370,9 @@ export const GUEST_REFUSAL = 'This needs a signed-in administrator.';
 export const PERSON_REFUSAL = 'This needs a signed-in person.';
 
 function refuseBelow(httpRequest: Request): never {
+  const kind = callerParty(httpRequest).kind;
   throw new ForbiddenException(
-    callerParty(httpRequest).kind === 'guest'
-      ? GUEST_REFUSAL
-      : OPERATOR_REFUSAL,
+    kind === 'guest' || kind === 'peer' ? GUEST_REFUSAL : OPERATOR_REFUSAL,
   );
 }
 

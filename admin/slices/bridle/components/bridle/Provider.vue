@@ -15,6 +15,8 @@ import { Button } from '#theme/components/ui/button'
 import { Bot, ChevronDown, Circle, MessageSquarePlus, RotateCw } from 'lucide-vue-next'
 import { cn } from '#theme/utils/cn'
 import { authedFetch } from '#auth/utils/authedFetch'
+import { useAuthStore } from '#auth/stores/auth'
+import { ownChannel } from '../../utils/ownChannel'
 import { renderMarkdown } from '../../utils/markdown'
 import { shouldShowOfflineHint } from '../../utils/offlineHint'
 
@@ -24,7 +26,7 @@ const props = withDefaults(defineProps<{
   apiUrl: string
   agentId: string
   // Which of the agent's conversations this is. The admin panel has one —
-  // every Owner/Admin shares the `admin` channel.
+  // the viewer's own conversation with the agent.
   channel?: string
   title?: string
   placeholder?: string
@@ -66,7 +68,9 @@ const props = withDefaults(defineProps<{
   // "Restart now" — because the API answers each with "Agent not found".
   manageable?: boolean
 }>(), {
-  channel: 'admin',
+  // The viewer's own conversation: `admin` for the Owner, their user id for
+  // an Admin (CLEAN-236).
+  channel: () => ownChannel(useAuthStore().user),
   title: 'Agent Chat',
   placeholder: 'Type a message...',
   showStatus: true,

@@ -83,4 +83,16 @@ export class AgentDelegationDto {
 
   @ApiProperty({ type: Number, nullable: true, example: 3120 })
   durationMs: number | null;
+
+  @ApiProperty({
+    description:
+      "How the caller is shown this row (CLEAN-236). 'masked': the task went " +
+      'to a peer that serves the caller through a connection open to ' +
+      'visitors, without their having access to it. `peerName` is then a ' +
+      'constant, and `peerAgentId` and `excerpt` are null. A task handed to ' +
+      'a peer the caller may not see at all is not in the list.',
+    enum: ['full', 'masked'],
+    example: 'full',
+  })
+  visibility: 'full' | 'masked';
 }

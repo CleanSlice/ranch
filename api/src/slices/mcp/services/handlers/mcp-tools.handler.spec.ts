@@ -17,8 +17,12 @@ import {
   AGENT_MANAGER_RESOLVER,
   type IAgentManagerResolver,
 } from '../../interfaces/agent-manager.interface';
+import {
+  PEER_PARTY_RESOLVER,
+  type IPeerPartyResolver,
+} from '../../interfaces/peer-party.interface';
 import type { ToolAudienceTypes } from '../../decorators';
-import { callerParty } from '../../tooling';
+import { callerParty, callerTurnClient } from '../../tooling';
 import type { ICallerParty } from '#/user/auth/domain/auth.types';
 import { UserRoleTypes } from '#/user/user/domain';
 
@@ -49,6 +53,8 @@ interface HarnessOptions {
   resolver?: IActingPartyResolver;
   /** Whether a person manages any agent. None wired: nobody below Admin. */
   manager?: IAgentManagerResolver;
+  /** Whose question a call is part of (CLEAN-236). None wired: a guest's. */
+  peers?: IPeerPartyResolver;
 }
 
 /** `_meta["ranch/actor"]`, as a runtime states it. */
@@ -117,6 +123,7 @@ function makeHarness(tools: FakeTool[], options: HarnessOptions = {}) {
       if (token === AGENT_MANAGER_RESOLVER && options.manager) {
         return options.manager;
       }
+      if (token === PEER_PARTY_RESOLVER && options.peers) return options.peers;
       throw new Error('no such provider');
     }),
   } as unknown as ModuleRef;
@@ -138,13 +145,20 @@ function makeHarness(tools: FakeTool[], options: HarnessOptions = {}) {
   const handler = new McpToolsHandler(moduleRef, registry);
   handler.registerHandlers(mcpServer, httpRequest);
 
-  const meta = (actor?: Actor) =>
-    actor ? { _meta: { 'ranch/actor': actor } } : {};
+  const meta = (actor?: Actor, turn?: unknown) =>
+    actor || turn !== undefined
+      ? {
+          _meta: {
+            ...(actor ? { 'ranch/actor': actor } : {}),
+            ...(turn !== undefined ? { 'ranch/turn': turn } : {}),
+          },
+        }
+      : {};
   const list = (actor?: Actor) =>
     handlers.get(ListToolsRequestSchema)!({ params: meta(actor) });
-  const call = (name: string, actor?: Actor) =>
+  const call = (name: string, actor?: Actor, turn?: unknown) =>
     handlers.get(CallToolRequestSchema)!({
-      params: { name, arguments: {}, ...meta(actor) },
+      params: { name, arguments: {}, ...meta(actor, turn) },
     });
 
   return { list, call, httpRequest, moduleRef, registry };
@@ -784,5 +798,190 @@ describe('McpToolsHandler — per-caller calling', () => {
 
     expect(result.content[0].text).toBe('ran');
     expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * CLEAN-236. A tool call can be part of a question another agent handed
+ * over. The runtime states it as an actor of the kind `peer`, with the token
+ * it was handed; the peer slice says what the token is worth. The real
+ * verification has its own spec (agent/peer/domain/handover.spec.ts).
+ */
+describe('McpToolsHandler — another agent’s question (CLEAN-236)', () => {
+  const RANCH = {
+    user: { sub: 'agent:ranch', email: '', roles: [UserRoleTypes.Owner] },
+  };
+  const PEER_PARTY: ICallerParty = {
+    kind: 'peer',
+    chain: ['agent-a'],
+    connectionId: 'connection-1',
+    forUserId: 'user-o',
+  };
+  const peers = (
+    answer: (token: unknown) => Promise<ICallerParty> = (token) =>
+      Promise.resolve(token === 'good' ? PEER_PARTY : { kind: 'guest' }),
+  ): { resolvePeer: jest.Mock } => ({
+    resolvePeer: jest.fn((_bearer, token) => answer(token)),
+  });
+  const asPeerOf = (token: unknown): Actor => ({ kind: 'peer', token });
+
+  const tools = (run = jest.fn(async () => ok('done'))): FakeTool[] => [
+    { name: 'query_knowledge', instance: { run }, audience: 'everyone' },
+    { name: 'ask_agent', instance: { run }, audience: 'agent' },
+    { name: 'connect_my_peer', instance: { run }, audience: 'person' },
+    { name: 'list_agents', instance: { run }, audience: 'reader' },
+    { name: 'connect_agent_peer', instance: { run }, audience: 'manage-agent' },
+    { name: 'delete_agent', instance: { run }, audience: 'admin' },
+    { name: 'delete_user', instance: { run }, audience: 'owner' },
+  ];
+  const namesOf = (result: { tools: { name: string }[] }) =>
+    result.tools.map((t) => t.name);
+
+  it('is handed to the tool as a peer party, with its chain and the person it was started for', async () => {
+    const seen: ICallerParty[] = [];
+    const run = jest.fn(async (_a: unknown, _c: unknown, req: Request) => {
+      seen.push(callerParty(req));
+      return ok('done');
+    });
+    const resolver = peers();
+    const { call } = makeHarness(tools(run as never), {
+      request: RANCH,
+      resolver: partyResolver(),
+      peers: resolver,
+    });
+
+    await call('ask_agent', asPeerOf('good'));
+
+    expect(seen).toEqual([PEER_PARTY]);
+    expect(resolver.resolvePeer).toHaveBeenCalledWith(RANCH.user, 'good');
+  });
+
+  it('gets a visitor’s tools and no others, on the Ranch admin agent and for a chain the Owner started', async () => {
+    const run = jest.fn(async () => ok('done'));
+    const { list, call } = makeHarness(tools(run), {
+      request: RANCH,
+      resolver: partyResolver(),
+      peers: peers(),
+    });
+
+    expect(namesOf(await list(asPeerOf('good')))).toEqual([
+      'query_knowledge',
+      'ask_agent',
+    ]);
+    // Refused by name too: the tools that would rewire or manage the agent.
+    for (const name of [
+      'connect_my_peer',
+      'list_agents',
+      'connect_agent_peer',
+      'delete_agent',
+      'delete_user',
+    ]) {
+      const refused = await call(name, asPeerOf('good'));
+      expect([name, refused.isError]).toEqual([name, true]);
+      expect(refused.content[0].text).toBe(
+        `Tool "${name}" is not available to this caller.`,
+      );
+    }
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('a token that does not check out is a guest, and so is every way of having no answer', async () => {
+    const seen: ICallerParty[] = [];
+    const run = jest.fn(async (_a: unknown, _c: unknown, req: Request) => {
+      seen.push(callerParty(req));
+      return ok('done');
+    });
+    const harnesses = [
+      // The peer slice says no.
+      { peers: peers() },
+      // Nothing is wired to answer.
+      {},
+      // The answer cannot be had.
+      { peers: peers(() => Promise.reject(new Error('database down'))) },
+    ];
+
+    for (const wired of harnesses) {
+      const { call } = makeHarness(tools(run as never), {
+        request: RANCH,
+        resolver: partyResolver(),
+        ...wired,
+      });
+      await call('query_knowledge', asPeerOf('forged'));
+    }
+
+    expect(seen).toEqual([
+      { kind: 'guest' },
+      { kind: 'guest' },
+      { kind: 'guest' },
+    ]);
+  });
+
+  it('is never read through the acting-party resolver, which knows nothing of it', async () => {
+    const known = partyResolver();
+    const resolve = jest.fn<
+      ReturnType<IActingPartyResolver['resolve']>,
+      Parameters<IActingPartyResolver['resolve']>
+    >((bearer, actor) => known.resolve(bearer, actor));
+    const { call } = makeHarness(tools(), {
+      request: RANCH,
+      resolver: { resolve },
+      peers: peers(),
+    });
+
+    await call('query_knowledge', asPeerOf('good'));
+
+    expect(resolve).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * CLEAN-236. `_meta["ranch/turn"]` says which conversation of the runtime a
+ * call belongs to, so that `ask_agent` shows its progress in the chat that
+ * asked. It is a hint about routing and nothing else.
+ */
+describe('McpToolsHandler — the conversation a call belongs to (CLEAN-236)', () => {
+  const harness = () => {
+    const seen: Array<{ client: string | null; party: ICallerParty }> = [];
+    const run = jest.fn(async (_a: unknown, _c: unknown, req: Request) => {
+      seen.push({ client: callerTurnClient(req), party: callerParty(req) });
+      return ok('done');
+    });
+    return {
+      seen,
+      ...makeHarness([{ name: 'ask_agent', instance: { run } }], {
+        resolver: partyResolver(),
+      }),
+    };
+  };
+
+  it('reaches the tool on the per-call view, and never on the shared request', async () => {
+    const { call, seen, httpRequest } = harness();
+
+    await Promise.all([
+      call('ask_agent', undefined, { client: 'user-1' }),
+      call('ask_agent', undefined, { client: 'share-abc' }),
+    ]);
+
+    expect(seen.map((s) => s.client).sort()).toEqual(['share-abc', 'user-1']);
+    expect(callerTurnClient(httpRequest)).toBeNull();
+  });
+
+  it('is absent when the runtime names none, or names nonsense', async () => {
+    const { call, seen } = harness();
+
+    await call('ask_agent');
+    for (const turn of [{}, { client: '' }, { client: 7 }, 'user-1', null]) {
+      await call('ask_agent', undefined, turn);
+    }
+
+    expect(seen.map((s) => s.client)).toEqual(Array(6).fill(null));
+  });
+
+  it('grants nothing: a call that names a conversation is still a guest’s', async () => {
+    const { call, seen } = harness();
+
+    await call('ask_agent', undefined, { client: 'admin' });
+
+    expect(seen).toEqual([{ client: 'admin', party: { kind: 'guest' } }]);
   });
 });

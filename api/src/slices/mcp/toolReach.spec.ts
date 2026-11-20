@@ -136,6 +136,9 @@ function only<T>(name: string, methods: Record<string, unknown>): T {
 
 const agents = only<IAgentGateway>('agents', {
   findAll: () => Promise.resolve(AGENTS),
+  // No Ranch admin agent among them: what an Admin may not supervise is
+  // covered by the chat slice's own specs.
+  findAdmin: () => Promise.resolve(null),
   findById: (id: string) =>
     Promise.resolve(AGENTS.find((a) => a.id === id) ?? null),
   hasCreatedBy: () => Promise.resolve(false),
@@ -298,12 +301,7 @@ const limits = new AgentLimitTool(
   permission,
   access,
 );
-const peers = new PeerAdminTool(
-  never('peers'),
-  never('cards'),
-  never('delegations'),
-  permission,
-);
+const peers = new PeerAdminTool(never('peers'), permission);
 const secrets = new SecretTool(agents, never('secrets'), permission);
 const shareLinks = new ShareLinkTool(never('shareLinks'), agents, access);
 const chatTool = new ChatTool(
@@ -312,6 +310,7 @@ const chatTool = new ChatTool(
   never('sync'),
   never('insight'),
   access,
+  permission,
 );
 const logs = new LogTool(agents, never('logService'), permission);
 const oauth = new McpOauthTool(never('oauth'), access);
@@ -440,6 +439,12 @@ const BY_AGENT_ID: Record<string, ToolCall> = {
     peers.connectAgentPeer({ agentId, peerAgentId: A }, null, req),
   remove_agent_peer: (agentId, req) =>
     peers.removeAgentPeer({ agentId, peerId: 'p', confirm: true }, null, req),
+  set_agent_peer_visitors: (agentId, req) =>
+    peers.setAgentPeerVisitors(
+      { agentId, peerId: 'p', open: true, confirm: true },
+      null,
+      req,
+    ),
   // secret.tool.ts
   list_agent_secrets: (agentId, req) =>
     secrets.listAgentSecrets({ agentId }, null, req),

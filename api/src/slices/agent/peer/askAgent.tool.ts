@@ -5,15 +5,14 @@ import type { Request } from 'express';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import type { IDynamicallyDescribedTool } from '#/mcp/interfaces/dynamic-description.interface';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
+import { callerParty, callerTurnClient } from '#/mcp/tooling';
 import { IPeerGateway } from './domain/peer.gateway';
+import { PeerAccessService } from './domain/peerAccess';
+import { rosterFor, type IRosterEntry } from './domain/peerRoster';
 import { DelegationService } from './domain/delegation.service';
 import { A2aServerService } from './domain/a2a.server.service';
 import { causeText } from './domain/delegationStep';
-import {
-  DelegationStatuses,
-  hashPeerIds,
-  type IAgentPeerData,
-} from './domain/peer.types';
+import { DelegationStatuses, hashPeerIds } from './domain/peer.types';
 
 interface ToolResult {
   content: { type: 'text'; text: string }[];
@@ -89,6 +88,13 @@ const schema = z.object({
  * Delegation, served to the agent runtime through the MCP channel it already
  * uses (CLEAN-74). Living in the API rather than in the runtime image is what
  * lets peers ship without rebuilding a single agent.
+ *
+ * Every agent gets the tool, and what is in it depends on who the turn is
+ * for (CLEAN-236): the roster in the description, and the peers a call may
+ * name, are the connections that serve that caller (`peerAccess.ts`). A peer
+ * the caller does not reach is not there to be named, described or asked,
+ * unless its connection is open to visitors; then it is `Colleague N`, with
+ * its skills and without its name.
  */
 @ToolAudience('agent')
 @Injectable()
@@ -101,7 +107,25 @@ export class AskAgentTool
     private readonly peers: IPeerGateway,
     private readonly delegations: DelegationService,
     private readonly a2aServer: A2aServerService,
+    private readonly access: PeerAccessService,
   ) {}
+
+  /**
+   * The peers this call's caller is served by. The serve-state is recorded
+   * from the whole peer set on the way: "has the running pod asked for its
+   * peers" is a fact about the agent, not about who it is talking to.
+   */
+  private async rosterOf(
+    agentId: string,
+    httpRequest: Request,
+  ): Promise<IRosterEntry[]> {
+    const [connections, viewer] = await Promise.all([
+      this.peers.listByAgent(agentId),
+      this.access.viewerOf(callerParty(httpRequest), agentId),
+    ]);
+    await this.recordServed(agentId, connections);
+    return rosterFor(connections, viewer);
+  }
 
   /** Best-effort serve-state write; the tool list must survive its failure. */
   private async recordServed(
@@ -123,34 +147,33 @@ export class AskAgentTool
   }
 
   /**
-   * An agent with no peers must not see this tool at all. A description saying
-   * "you have none" would still be an advertisement for colleagues that do not
-   * exist, and models act on tool lists, not on caveats inside them.
+   * An agent with no peers for this caller must not see this tool at all. A
+   * description saying "you have none" would still be an advertisement for
+   * colleagues that do not exist, and models act on tool lists, not on
+   * caveats inside them.
    */
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     const agentId = extractAgentId(httpRequest);
     if (!agentId) return false;
-    const connections = await this.peers.listByAgent(agentId);
-    // This IS the moment the running pod learns its peer set — record it,
-    // even when the set is empty, so the console can say "armed" honestly
-    // (CLEAN-95). Best-effort: an indicator must never break a tools/list.
-    await this.recordServed(agentId, connections);
-    return connections.length > 0;
+    // This IS the moment the running pod learns its peer set — recorded in
+    // `rosterOf`, even when the set is empty, so the console can say "armed"
+    // honestly (CLEAN-95). Best-effort: an indicator must never break a
+    // tools/list.
+    return (await this.rosterOf(agentId, httpRequest)).length > 0;
   }
 
   async describeForRequest(httpRequest: Request): Promise<string | null> {
     const agentId = extractAgentId(httpRequest);
     if (!agentId) return null;
 
-    const connections = await this.peers.listByAgent(agentId);
-    await this.recordServed(agentId, connections);
-    if (connections.length === 0) return null;
+    const roster = await this.rosterOf(agentId, httpRequest);
+    if (roster.length === 0) return null;
 
     return [
       BASE_DESCRIPTION,
       '',
       'Your peers:',
-      ...connections.map((c) => describePeer(c)),
+      ...roster.map((entry) => describePeer(entry)),
     ].join('\n');
   }
 
@@ -183,14 +206,18 @@ export class AskAgentTool
     const outcome = await this.delegations.run(
       {
         callerAgentId: agentId,
+        party: callerParty(httpRequest),
         peer: parsed.data.peer,
         task: parsed.data.task,
         reason: parsed.data.reason,
         contextId: parsed.data.context_id,
         // This agent may itself be serving a delegation right now. Carrying
         // that chain forward is what lets the far end refuse a loop it can see
-        // and this end cannot.
+        // and this end cannot. A call that states its hand-over brings the
+        // chain itself (the party); this is for a runtime that cannot.
         inboundChain: this.a2aServer.currentChain(agentId),
+        // The conversation the call belongs to, when the runtime said.
+        turnClient: callerTurnClient(httpRequest),
       },
       this.a2aServer.timeoutMs,
     );
@@ -205,49 +232,52 @@ export class AskAgentTool
     }
 
     const took = `${(outcome.durationMs / 1000).toFixed(1)}s`;
+    // «Name» for a peer the caller reaches; "a colleague" for one that serves
+    // them through a connection open to visitors.
+    const who = outcome.masked ? outcome.peerName : `«${outcome.peerName}»`;
+    const Who = who.charAt(0).toUpperCase() + who.slice(1);
 
     if (outcome.status === DelegationStatuses.Answered) {
       if (!outcome.text) {
         // Said explicitly: an empty tool result reads to a model like "no
         // news", and it will fill the gap itself (CLEAN-97).
         return ok(
-          `«${outcome.peerName}» answered (context_id: ${outcome.contextId}, ${took}), but the reply was empty — no text, data or links. Tell the user it returned nothing; do not invent what it might have said.`,
+          `${Who} answered (context_id: ${outcome.contextId}, ${took}), but the reply was empty — no text, data or links. Tell the user it returned nothing; do not invent what it might have said.`,
         );
       }
       return ok(
-        `Reply from «${outcome.peerName}» (context_id: ${outcome.contextId}, ${took}):\n\n${outcome.text}`,
+        `Reply from ${who} (context_id: ${outcome.contextId}, ${took}):\n\n${outcome.text}`,
       );
     }
 
     if (outcome.status === DelegationStatuses.Rejected) {
       return err(
-        `«${outcome.peerName}» refused the task: ${outcome.cause ?? causeText(outcome.errorCode ?? null)}. ${DO_NOT_GUESS}`,
+        `${Who} refused the task: ${outcome.cause ?? causeText(outcome.errorCode ?? null)}. ${DO_NOT_GUESS}`,
       );
     }
 
     return err(
-      `Could not reach «${outcome.peerName}»: ${causeText(outcome.errorCode ?? null)}. ${DO_NOT_GUESS}`,
+      `Could not reach ${who}: ${causeText(outcome.errorCode ?? null)}. ${DO_NOT_GUESS}`,
     );
   }
 }
 
 /**
  * One line per peer, carrying exactly what a choice needs: what it is, how to
- * name it, and what its card claims it can do.
+ * name it, and what its card claims it can do. A masked peer has a label, the
+ * connection id as its handle and its skills; the description is left out by
+ * rule, since the default one is the agent's name.
  */
-function describePeer(connection: IAgentPeerData): string {
-  const card = connection.cardSnapshot;
-  const name = card?.name ?? connection.peerAgentId ?? connection.id;
-  const description = card?.description ?? '';
+function describePeer(entry: IRosterEntry): string {
+  const card = entry.row.cardSnapshot;
+  const description = entry.masked ? '' : (card?.description ?? '');
   const skills = (card?.skills ?? [])
     .map((s) => `${s.name} (${s.description})`)
     .join('; ');
 
   // External peers have no agent id here; the connection id names them just
-  // as reliably — matchPeer resolves both (CLEAN-95).
-  const parts = [
-    `- "${name}" (peer: ${connection.peerAgentId ?? connection.id})`,
-  ];
+  // as reliably, and it is all a masked peer is known by (CLEAN-95).
+  const parts = [`- "${entry.label}" (peer: ${entry.handle})`];
   if (description) parts.push(` — ${description}`);
   if (skills) parts.push(` Skills: ${skills}`);
   return parts.join('');

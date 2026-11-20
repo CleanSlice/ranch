@@ -21,6 +21,7 @@ const store = usePeerStore();
 const adding = ref(false);
 const busyPeerId = ref<string | null>(null);
 const confirmingRemoval = ref<IAgentPeer | null>(null);
+const confirmingVisitors = ref<IAgentPeer | null>(null);
 const actionError = ref<string | null>(null);
 const copied = ref(false);
 /** Set by a peer row's "Feed" button; narrows the delegation feed. */
@@ -143,6 +144,44 @@ async function refresh(peer: IAgentPeer) {
   } catch (err) {
     actionError.value =
       err instanceof Error ? err.message : 'Could not refresh that card';
+  } finally {
+    busyPeerId.value = null;
+  }
+}
+
+/**
+ * The visitors switch of a row (CLEAN-236). Closing is harmless and happens
+ * at once. Opening publishes the peer to everybody who can talk to this
+ * agent, so it waits for the operator to say so.
+ */
+async function setVisitors(peer: IAgentPeer, open: boolean) {
+  if (open) {
+    confirmingVisitors.value = peer;
+    return;
+  }
+  await saveVisitors(peer, false);
+}
+
+async function confirmVisitors() {
+  const peer = confirmingVisitors.value;
+  if (!peer) return;
+  await saveVisitors(peer, true);
+  confirmingVisitors.value = null;
+}
+
+async function saveVisitors(peer: IAgentPeer, open: boolean) {
+  busyPeerId.value = peer.id;
+  actionError.value = null;
+  try {
+    await store.setVisitors(props.agent.id, peer.id, open);
+    toast.success(
+      open
+        ? `«${peer.peerName}» is open to visitors`
+        : `«${peer.peerName}» serves only people who have access to it`,
+    );
+  } catch (err) {
+    actionError.value =
+      err instanceof Error ? err.message : 'Could not change who it serves';
   } finally {
     busyPeerId.value = null;
   }
@@ -396,6 +435,7 @@ function goToKnowledge() {
             @refresh="refresh(peer)"
             @remove="confirmingRemoval = peer"
             @select="toggleFilter(peer)"
+            @visitors="(open: boolean) => setVisitors(peer, open)"
           />
 
           <!-- add node -->
@@ -443,6 +483,16 @@ function goToKnowledge() {
       :busy="Boolean(busyPeerId)"
       @update:open="(open: boolean) => !open && (confirmingRemoval = null)"
       @confirm="confirmRemoval"
+    />
+
+    <ConfirmDialog
+      :open="Boolean(confirmingVisitors)"
+      :title="`Open «${confirmingVisitors?.peerName}» to visitors?`"
+      :description="`Everybody who talks to «${agent.name}» will be served by it: people who have no access to «${confirmingVisitors?.peerName}», and visitors nobody is signed in behind. They are shown that a colleague was asked, never which one. You can close it again at any time.`"
+      confirm-label="Open to visitors"
+      :busy="Boolean(busyPeerId)"
+      @update:open="(open: boolean) => !open && (confirmingVisitors = null)"
+      @confirm="confirmVisitors"
     />
   </div>
 </template>

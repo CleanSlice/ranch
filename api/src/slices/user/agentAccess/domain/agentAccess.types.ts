@@ -158,6 +158,26 @@ export class AgentReach {
   /** Everybody the lists do not apply to. */
   static readonly ALL = new AgentReach(null);
 
+  /**
+   * This reach with some agents taken out of it, whatever the lists say. For
+   * a question that is narrower than "may they use the agent": the
+   * conversations of an agent only the Owner manages are not an Admin's to
+   * read because they may talk to it (CLEAN-236).
+   */
+  without(agentIds: readonly string[]): AgentReach {
+    if (agentIds.length === 0) return this;
+    const entry =
+      (list: IAgentAccessEntry['list']) =>
+      (agentId: string): IAgentAccessEntry => ({ agentId, list });
+    return new AgentReach({
+      limited: this.allowed !== null,
+      entries: [
+        ...[...this.denied, ...agentIds].map(entry('denied')),
+        ...[...(this.allowed ?? [])].map(entry('allowed')),
+      ],
+    });
+  }
+
   /** True when no agent is hidden from this caller. */
   get unrestricted(): boolean {
     return this.allowed === null && this.denied.size === 0;

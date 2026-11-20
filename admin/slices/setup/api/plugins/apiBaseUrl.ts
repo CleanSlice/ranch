@@ -1,5 +1,6 @@
 import type { InternalAxiosRequestConfig } from 'axios';
 import { client } from '../data/repositories/api/client.gen';
+import { RANCH_CONSOLE, RANCH_CONSOLE_HEADER } from '../console';
 
 /** Marks a request the response interceptor already re-issued once. */
 interface RetriableRequestConfig extends InternalAxiosRequestConfig {
@@ -16,15 +17,18 @@ export default defineNuxtPlugin({
     const nuxtApp = useNuxtApp();
     const apiUrl = config.public.apiUrl as string;
 
-    // `withCredentials` carries the HttpOnly `ranch_session` cookie to
+    // `withCredentials` carries this console's HttpOnly session cookie to
     // `/auth/refresh` and `/auth/logout`; every other route authenticates
-    // with the bearer attached below.
+    // with the bearer attached below. The console header says which of the
+    // two session cookies on the API host is ours (CLEAN-236).
     client.setConfig({
       ...(apiUrl ? { baseURL: apiUrl } : {}),
       withCredentials: true,
     });
     if (apiUrl) client.instance.defaults.baseURL = apiUrl;
     client.instance.defaults.withCredentials = true;
+    client.instance.defaults.headers.common[RANCH_CONSOLE_HEADER] =
+      RANCH_CONSOLE;
 
     useHead({
       meta: [{ name: 'ranch-api-url', content: apiUrl }],
@@ -45,6 +49,8 @@ export default defineNuxtPlugin({
         requestConfig.baseURL = apiUrl;
       }
       requestConfig.withCredentials = true;
+      // Pinned per request for the same reason as the base URL above.
+      requestConfig.headers.set(RANCH_CONSOLE_HEADER, RANCH_CONSOLE);
       if (!import.meta.client) return requestConfig;
       if (requestConfig.headers.has('Authorization')) return requestConfig;
       const token = getAuthStore().accessToken;

@@ -1,3 +1,4 @@
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 import {
   BadGatewayException,
   BadRequestException,
@@ -75,6 +76,14 @@ interface Harness {
   insight: jest.Mocked<Pick<ChatInsightService, 'summarize'>>;
 }
 
+/** `agent-ranch` is the Ranch admin agent; nothing else is. */
+const RANCH_AGENT = 'agent-ranch';
+const agentRows = {
+  findAdmin: () => Promise.resolve({ id: RANCH_AGENT, isAdmin: true }),
+  findById: (id: string) =>
+    Promise.resolve({ id, isAdmin: id === RANCH_AGENT, createdById: null }),
+};
+
 function harness(access: AgentAccessService = openAccess()): Harness {
   const chats = {
     list: jest.fn().mockResolvedValue({ items: [session()], total: 1 }),
@@ -112,6 +121,7 @@ function harness(access: AgentAccessService = openAccess()): Harness {
     sync as unknown as ChatSyncService,
     insight as unknown as ChatInsightService,
     access,
+    permissionOver(agentRows),
   );
   return { tool, chats, reader, sync, insight };
 }
@@ -240,8 +250,71 @@ describe('get_chat', () => {
     ).toBe(textOf(unknown));
     expect(reader.read).not.toHaveBeenCalled();
     await tool.listChats({}, null, admin());
+    // … less the Ranch admin agent, whose conversations are the Owner's.
     expect(chats.list).toHaveBeenCalledWith(
-      expect.objectContaining({ agentScope: { notIn: ['agent-a'] } }),
+      expect.objectContaining({
+        agentScope: { notIn: ['agent-a', RANCH_AGENT] },
+      }),
+    );
+  });
+});
+
+/**
+ * CLEAN-236. These tools read what other people said to an agent. An Admin
+ * may talk to the Ranch admin agent and manages nothing of it, so the
+ * Owner's conversation with it is not theirs to read from here, now that it
+ * is no longer a conversation they are part of.
+ */
+describe('the conversations of the Ranch admin agent are the Owner’s to read', () => {
+  const asAdmin = () =>
+    asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Admin, 'user-1');
+  const asOwner = () =>
+    asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Owner, 'user-o');
+  const ranchChat = () =>
+    session({ agentId: RANCH_AGENT, externalUserId: 'admin' });
+
+  it('an Admin is answered as for a chat that does not exist, and reads none of its turns', async () => {
+    const { tool, chats, reader } = harness();
+    chats.findById.mockResolvedValue(ranchChat());
+
+    const hidden = textOf(
+      await tool.getChat({ id: 'chat-1' }, null, asAdmin()),
+    );
+    expect(hidden).toContain('Chat chat-1 not found');
+    expect(
+      textOf(await tool.getChatMessages({ id: 'chat-1' }, null, asAdmin())),
+    ).toBe(hidden);
+    expect(reader.read).not.toHaveBeenCalled();
+  });
+
+  it('an Admin’s list leaves that agent out, and naming it finds nothing', async () => {
+    const { tool, chats } = harness();
+
+    await tool.listChats({}, null, asAdmin());
+    expect(chats.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agentScope: { notIn: [RANCH_AGENT] } }),
+    );
+
+    chats.list.mockClear();
+    const named = await tool.listChats(
+      { agentId: RANCH_AGENT },
+      null,
+      asAdmin(),
+    );
+    expect(textOf(named)).toContain('not found');
+    expect(chats.list).not.toHaveBeenCalled();
+  });
+
+  it('the Owner reads them as any other', async () => {
+    const { tool, chats } = harness();
+    chats.findById.mockResolvedValue(ranchChat());
+
+    expect(
+      textOf(await tool.getChat({ id: 'chat-1' }, null, asOwner())),
+    ).toContain('Refund for order 42');
+    await tool.listChats({}, null, asOwner());
+    expect(chats.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agentScope: undefined }),
     );
   });
 });

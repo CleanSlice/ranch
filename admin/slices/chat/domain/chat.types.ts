@@ -47,6 +47,17 @@ export interface IChatSession {
   archived: boolean;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The signed-in person the conversation is with (CLEAN-236): an account by
+   * its id, or the Owner for `externalUserId: 'admin'`. `name` is null once
+   * the account is gone. Null for a visitor, a messenger chat, another agent.
+   */
+  person?: { name: string | null; role: string | null } | null;
+  /**
+   * Set when another agent handed the conversation over. `name` is that
+   * agent's, when the viewer has access to it; null otherwise.
+   */
+  peer?: { name: string | null } | null;
 }
 
 // Admins can inspect tool/system events; end users only see the first three.

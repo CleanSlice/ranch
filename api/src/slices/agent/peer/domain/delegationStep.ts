@@ -3,6 +3,7 @@ import {
   DELEGATION_STEP_PREFIX,
   DelegationErrorCodes,
   DelegationStatuses,
+  MASKED_PEER_NAME,
   type DelegationErrorCode,
   type IAgentDelegationData,
 } from './peer.types';
@@ -50,27 +51,45 @@ function seconds(ms: number | null): string {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
-function labelFor(row: IAgentDelegationData): string {
+/**
+ * How the peer is named to the person watching. A masked peer serves them
+ * through a connection open to visitors without their reaching it, so it is
+ * "a colleague" and nothing more (CLEAN-236).
+ */
+function nameOf(row: IAgentDelegationData, masked: boolean): string {
+  return masked ? 'a colleague' : `«${row.peerName}»`;
+}
+
+function labelFor(row: IAgentDelegationData, masked: boolean): string {
+  const who = nameOf(row, masked);
   switch (row.status) {
     case DelegationStatuses.Answered:
-      return `Answered by «${row.peerName}»`;
+      return `Answered by ${who}`;
     case DelegationStatuses.Rejected:
-      return `«${row.peerName}» refused the task`;
+      return masked
+        ? 'A colleague refused the task'
+        : `${who} refused the task`;
     case DelegationStatuses.Failed:
-      return `Could not reach «${row.peerName}»`;
+      return `Could not reach ${who}`;
     default:
-      return `Asking «${row.peerName}»`;
+      return `Asking ${who}`;
   }
 }
 
 /** Markdown, because that is what a thinking step's detail is rendered as. */
-function detailFor(row: IAgentDelegationData): string {
+function detailFor(row: IAgentDelegationData, masked: boolean): string {
   const skills = row.matchedSkills.map((s) => s.name).join(', ');
   const lines = [
-    `**Peer:** ${row.peerName}${skills ? ` — ${skills}` : ''}`,
+    // No "Peer:" line for a masked peer: the skill that matched is said, the
+    // agent that has it is not.
+    masked
+      ? skills
+        ? `**Skill:** ${skills}`
+        : null
+      : `**Peer:** ${row.peerName}${skills ? ` — ${skills}` : ''}`,
     `**Why:** ${row.reason}`,
     `**Task:** ${row.task}`,
-  ];
+  ].filter((line): line is string => line !== null);
 
   if (row.status === DelegationStatuses.Waiting) {
     lines.push('**Status:** waiting for an answer…');
@@ -90,20 +109,22 @@ function detailFor(row: IAgentDelegationData): string {
 
 export function buildDelegationStep(
   row: IAgentDelegationData,
+  options: { masked?: boolean } = {},
 ): IBridleThinkingStep {
   const waiting = row.status === DelegationStatuses.Waiting;
+  const masked = options.masked === true;
   return {
     id: delegationStepId(row.id),
-    label: labelFor(row),
-    detail: detailFor(row),
+    label: labelFor(row, masked),
+    detail: detailFor(row, masked),
     // The same id twice: the second push replaces the first in place, which is
     // what turns "Asking…" into "Answered by…" rather than stacking two steps.
     state: waiting ? 'active' : 'done',
     kind: 'delegation',
     delegation: {
       delegationId: row.id,
-      peerAgentId: row.peerAgentId,
-      peerName: row.peerName,
+      peerAgentId: masked ? null : row.peerAgentId,
+      peerName: masked ? MASKED_PEER_NAME : row.peerName,
       matchedSkills: row.matchedSkills,
       reason: row.reason,
       task: row.task,

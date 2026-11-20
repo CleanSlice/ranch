@@ -184,6 +184,8 @@ describe('scrubEvent', () => {
     'x-api-key',
     'session',
     'ranch_session',
+    'ranch_session_admin',
+    'ranch_session_app',
     'jwt',
     'dsn',
   ];
@@ -263,10 +265,14 @@ describe('scrubEvent on what Ranch actually carries', () => {
         data: { message: 'my card number is 4111' },
         headers: {
           Authorization: 'Bearer eyJhbGciOi',
-          cookie: 'ranch_session=s3cret',
+          cookie: 'ranch_session_admin=s3cret; ranch_session_app=s3cret',
           'content-type': 'application/json',
         },
-        cookies: { ranch_session: 's3cret' },
+        cookies: {
+          ranch_session: 's3cret',
+          ranch_session_admin: 's3cret',
+          ranch_session_app: 's3cret',
+        },
       },
     });
     const flat = JSON.stringify(event);

@@ -168,6 +168,24 @@ export class PeerGateway extends BaseGateway {
     });
   }
 
+  /**
+   * Open a connection to visitors, or close it (CLEAN-236). `confirm` is
+   * sent on both: the console asks the operator itself before it gets here.
+   */
+  setVisitors(
+    agentId: string,
+    peerId: string,
+    open: boolean,
+  ): Promise<IAgentPeer> {
+    return this.execute(async () => {
+      const res = await PeersService.setAgentPeerVisitors({
+        path: { agentId, peerId },
+        body: { open, confirm: true },
+      });
+      return unwrapOrThrow(res, 'Changing who the peer serves') as IAgentPeer;
+    });
+  }
+
   remove(agentId: string, peerId: string): Promise<void> {
     return this.execute(async () => {
       const res = await PeersService.removeAgentPeer({

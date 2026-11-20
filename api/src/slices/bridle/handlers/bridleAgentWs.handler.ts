@@ -208,7 +208,9 @@ export class BridleAgentWsHandler
         (
           await this.chatSources.forMessages([event.messageId], {
             clientId: event.clientId,
-            isAdmin: event.clientId === 'admin',
+            // Whether an administrator is on that conversation, which the
+            // id alone no longer says (CLEAN-236).
+            isAdmin: this.hub.isAdminChannel(event.clientId, agentId),
           })
         ).get(event.messageId) ?? [];
       this.hub.handleAgentEvent(agentId, {

@@ -12,9 +12,14 @@ import { Request, Response } from 'express';
 import { InitService } from './domain';
 import { CreateOwnerDto, InitStatusDto } from './dtos';
 import { AuthDto } from '#/user/auth/dtos';
-import { userAgentOf } from '#/user/auth/auth.controller';
+import {
+  ApiConsoleHeader,
+  consoleOf,
+  dropLegacyCookie,
+  userAgentOf,
+} from '#/user/auth/auth.controller';
 import { SessionService } from '#/user/session/domain/session.service';
-import { SESSION_COOKIE_NAME } from '#/user/session/domain/session.types';
+import { sessionCookieName } from '#/user/session/domain/session.types';
 import { Public } from '#/user/auth/guards';
 
 @ApiTags('setup')
@@ -37,26 +42,34 @@ export class InitController {
   @Public()
   @Post('init')
   @HttpCode(201)
+  @ApiConsoleHeader()
   @ApiOperation({
     summary:
-      'Create the first owner. Fails if one already exists. Sets the session cookie like login.',
+      'Create the first owner. Fails if one already exists. Sets the session cookie like login, for the console named in X-Ranch-Console.',
   })
   async init(
     @Body() dto: CreateOwnerDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthDto> {
+    // The first Owner is signed in to the console the setup page is part
+    // of. A setup done by a script names none and gets the token alone.
+    const surface = consoleOf(req);
     const result = await this.initService.createOwner(
       dto.name,
       dto.email,
       dto.password,
+      surface,
       userAgentOf(req),
     );
-    res.cookie(
-      SESSION_COOKIE_NAME,
-      result.cookie.value,
-      this.sessions.cookieOptions(result.cookie.maxAgeSeconds),
-    );
+    dropLegacyCookie(req, res, this.sessions);
+    if (surface) {
+      res.cookie(
+        sessionCookieName(surface),
+        result.cookie.value,
+        this.sessions.cookieOptions(result.cookie.maxAgeSeconds),
+      );
+    }
     return {
       accessToken: result.accessToken,
       expiresIn: result.expiresIn,

@@ -19,7 +19,7 @@ import { JwtService } from '@nestjs/jwt';
 import {
   AuthErrorCodes,
   classifyJwtError,
-  isActingToken,
+  isCallToken,
 } from '#/user/auth/domain/auth.types';
 import { Server, Socket } from 'socket.io';
 import {
@@ -284,7 +284,7 @@ export class BridleClientWsHandler
         payload = this.jwt.verify<Record<string, unknown>>(auth.token);
         // An acting token names the person a tool call is made for; at the
         // handshake it is an invalid token (CLEAN-232).
-        if (isActingToken(payload)) payload = null;
+        if (isCallToken(payload)) payload = null;
       } catch (err) {
         payload = null;
         verifyError = err;
@@ -299,8 +299,8 @@ export class BridleClientWsHandler
         clientId = identity.clientId;
         email = payload?.email as string | undefined;
         kind = 'jwt';
-        // The person, apart from the channel: owners and admins share the
-        // `admin` conversation, but each keeps their own `sub` (CLEAN-80).
+        // The person, apart from the channel: the Owner's conversation is
+        // `admin`, and their `sub` is still who they are (CLEAN-80).
         const sub = payload?.sub;
         if (typeof sub === 'string' && sub) {
           user = { id: sub, ...(email ? { email } : {}) };

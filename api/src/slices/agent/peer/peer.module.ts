@@ -6,6 +6,7 @@ import { SkillModule } from '#/skill/skill.module';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { BridleModule } from '#/bridle/bridle.module';
 import { SettingModule } from '#/setting/setting.module';
+import { UserModule } from '#/user/user/user.module';
 import { IPeerGateway } from './domain/peer.gateway';
 import { IDelegationGateway } from './domain/delegation.gateway';
 import { AgentCardService } from './domain/agentCard.service';
@@ -18,6 +19,9 @@ import { DelegationMapper } from './data/delegation.mapper';
 import { A2aCardGuard, A2aPeerGuard } from './guards/a2a.guards';
 import { A2aClient } from './domain/a2a.client';
 import { PeerService } from './domain/peer.service';
+import { PeerAccessService } from './domain/peerAccess';
+import { HandoverService } from './domain/handover';
+import { PEER_PARTY_RESOLVER } from '#/mcp/interfaces/peer-party.interface';
 import { DelegationService } from './domain/delegation.service';
 import { AskAgentTool } from './askAgent.tool';
 import { PeerAdminTool } from './peerAdmin.tool';
@@ -43,6 +47,8 @@ import { PeerLinkController } from './peerLink.controller';
     KnowledgeModule,
     forwardRef(() => BridleModule),
     SettingModule,
+    // The account behind a colleague's question (`PeerAccessService`).
+    forwardRef(() => UserModule),
   ],
   controllers: [A2aController, PeerController, PeerLinkController],
   providers: [
@@ -52,6 +58,12 @@ import { PeerLinkController } from './peerLink.controller';
     { provide: IDelegationGateway, useClass: DelegationGateway },
     AgentCardService,
     A2aClient,
+    // The one rule every listing, tool and hand-over asks (CLEAN-236).
+    PeerAccessService,
+    // Signs and reads the token a handed-over question carries, and tells
+    // the MCP layer whose question a tool call is part of.
+    HandoverService,
+    { provide: PEER_PARTY_RESOLVER, useExisting: HandoverService },
     PeerService,
     DelegationService,
     // MCP tool: ask_agent. Discovered by the #mcp registry like every
@@ -66,6 +78,11 @@ import { PeerLinkController } from './peerLink.controller';
     A2aCardGuard,
     A2aPeerGuard,
   ],
-  exports: [AgentCardService, IPeerGateway, IDelegationGateway],
+  exports: [
+    AgentCardService,
+    IPeerGateway,
+    IDelegationGateway,
+    PeerAccessService,
+  ],
 })
 export class PeerModule {}

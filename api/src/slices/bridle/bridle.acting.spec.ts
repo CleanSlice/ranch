@@ -1,3 +1,4 @@
+import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 import type { Socket } from 'socket.io';
 import { UserRoleTypes } from '#/user/user/domain';
 import {
@@ -87,7 +88,11 @@ function makeHub(assistant?: {
 
   // The real reach rule over access lists that hide nothing (CLEAN-231): a
   // console person here reaches the agent, so what is tested stays the token.
-  const reach = new ConsoleReachService(openAccess(), agentGateway as never);
+  const reach = new ConsoleReachService(
+    openAccess(),
+    agentGateway as never,
+    permissionOver(agentGateway),
+  );
 
   const handler = new BridleClientWsHandler(
     hub,
@@ -257,7 +262,9 @@ describe('the hub mints an acting token: a console person on the socket', () => 
     }
   });
 
-  it('names the sender, not the conversation: two admins on the shared channel', async () => {
+  // CLEAN-236. They used to share the conversation `admin`, and with it a
+  // running turn: the Admin's message joined the Owner's task there.
+  it('two administrators on one agent are two conversations, each with its own token and the word that an administrator is sending', async () => {
     const h = makeHub();
     const owner = await h.connect({
       token: h.consoleToken('user-o', UserRoleTypes.Owner),
@@ -270,10 +277,13 @@ describe('the hub mints an acting token: a console person on the socket', () => 
     await h.say(owner, 'from the owner');
 
     const [fromAdmin, fromOwner] = h.toAgent;
-    // One conversation, as before CLEAN-232 …
-    expect(fromAdmin.clientId).toBe('admin');
+    // The Owner keeps the conversation they all had; the Admin has their own.
+    expect(fromAdmin.clientId).toBe('user-a');
     expect(fromOwner.clientId).toBe('admin');
-    // … and two people.
+    // The runtime read "an administrator" off the id `admin`. It is said now.
+    expect(fromAdmin).toMatchObject({ admin: true });
+    expect(fromOwner).toMatchObject({ admin: true });
+    // Two people.
     expect(await h.resolve(fromAdmin.acting?.token)).toMatchObject({
       userId: 'user-a',
       role: UserRoleTypes.Admin,
@@ -557,13 +567,14 @@ describe('the hub mints an acting token: the HTTP message routes', () => {
     });
   });
 
-  it('names the requester as the user, not whoever else has the shared channel open', async () => {
+  it('names the requester as the user, in their own conversation, whoever else is talking to the agent', async () => {
     const h = makeHub();
-    // The Owner has the shared `admin` conversation open on a socket …
+    // The Owner has their conversation with the agent open on a socket …
     await h.connect({ token: h.consoleToken('user-o', UserRoleTypes.Owner) });
-    // … and an Admin sends into the same conversation over HTTP. The hub
-    // used to take `user` from the first socket on the channel, so the
-    // message said "from the Owner" beside the Admin's acting token.
+    // … and an Admin sends over HTTP. That used to land in the same
+    // conversation (`admin`), and before CLEAN-232 the hub took `user` from
+    // the first socket on it, so the message said "from the Owner" beside
+    // the Admin's acting token. It is the Admin's own conversation now.
     const asAdmin = bearer(h.consoleToken('user-a', UserRoleTypes.Admin));
 
     await h.controller.sendMessage(
@@ -574,7 +585,8 @@ describe('the hub mints an acting token: the HTTP message routes', () => {
     );
 
     const first = h.last();
-    expect(first.clientId).toBe('admin');
+    expect(first.clientId).toBe('user-a');
+    expect(first).toMatchObject({ admin: true });
     expect(first.user).toEqual({ id: 'user-a', email: 'user-a@example.test' });
     expect(await h.resolve(first.acting?.token)).toMatchObject({
       userId: 'user-a',
@@ -590,6 +602,8 @@ describe('the hub mints an acting token: the HTTP message routes', () => {
 
     const second = h.last();
     expect(second.text).toBe('two');
+    expect(second.clientId).toBe('user-a');
+    expect(second).toMatchObject({ admin: true });
     expect(second.user).toEqual({ id: 'user-a', email: 'user-a@example.test' });
     expect(await h.resolve(second.acting?.token)).toMatchObject({
       userId: 'user-a',

@@ -17,6 +17,9 @@ function makeHandler(entries: IChatSourceEntry[] = []) {
   const recorded: IRecordSourcesInput[] = [];
   const hub = {
     isAgentSocket: () => true,
+    // Whether an administrator is on the conversation is the hub's to say
+    // since CLEAN-236; `admin` is the Owner's own.
+    isAdminChannel: jest.fn((clientId: string) => clientId === 'admin'),
     handleAgentEvent: (_agentId: string, data: IBridleOutgoingEvent) => {
       routed.push(data);
     },

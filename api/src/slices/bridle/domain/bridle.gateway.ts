@@ -189,11 +189,25 @@ export abstract class IBridleGateway {
    * every console that renders thinking.
    *
    * Derived purely from the thinking events already passing through the hub,
-   * so it costs nothing and stays correct without the runtime knowing. With
-   * two people chatting to one agent at once, the most recent turn wins —
-   * a tool call carries no clue which conversation it belongs to.
+   * so it costs nothing and stays correct without the runtime knowing.
+   *
+   * `clientId` is the conversation the tool call says it belongs to
+   * (CLEAN-236): the answer is then that client's running turn with this
+   * agent, or null. Without it the hub can only tell when the agent has
+   * exactly one turn running. With two it answers null: the most recent one
+   * used to win, which showed one person the task and the answer of another
+   * person's delegation.
    */
-  abstract findActiveTurn(agentId: string): IActiveTurn | null;
+  abstract findActiveTurn(
+    agentId: string,
+    clientId?: string | null,
+  ): IActiveTurn | null;
+  /**
+   * Whether an administrator is on this conversation (CLEAN-236): the
+   * Owner's own, or one with a socket whose token carried the role. What a
+   * frame pushed to it may show, where that used to be read off the id.
+   */
+  abstract isAdminChannel(clientId: string, agentId: string): boolean;
   /**
    * Whether the agent is in the middle of a turn for this conversation: a
    * message was handed over and nothing that ends a turn came back, a stream

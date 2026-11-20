@@ -13,8 +13,28 @@ export {
   type ToolResult,
 } from '#/mcp/tooling';
 
-/** Peers as a model needs them: what it is, what it claims, is it usable. */
+/**
+ * Peers as a model needs them: what it is, what it claims, is it usable, who
+ * connected it and whom it serves. A masked peer (CLEAN-236) is one the
+ * person is served by without having access to it: its skills, and a note
+ * saying so, with no name, address or status.
+ */
 export function toToolPeer(view: IAgentPeerView) {
+  const skills = (view.card?.skills ?? []).map((s) => ({
+    name: s.name,
+    description: s.description,
+  }));
+  if (view.visibility === 'masked') {
+    return {
+      peerId: view.id,
+      name: view.peerName,
+      note:
+        'Open to visitors, and outside what this person has access to: it ' +
+        'can be asked, and it cannot be named, changed or removed by them.',
+      openToVisitors: true,
+      skills,
+    };
+  }
   return {
     peerId: view.id,
     name: view.peerName,
@@ -23,11 +43,20 @@ export function toToolPeer(view: IAgentPeerView) {
     exists: view.peerExists,
     address: view.cardUrl,
     description: view.card?.description ?? '',
-    skills: (view.card?.skills ?? []).map((s) => ({
-      name: s.name,
-      description: s.description,
-    })),
+    skills,
     cardReadAt: view.cardReadAt,
+    connectedBy: view.createdBy
+      ? (view.createdBy.name ?? 'an account that no longer exists')
+      : 'not recorded (connected before this was kept)',
+    ...(view.origin === 'internal'
+      ? { openToVisitors: view.openToVisitors }
+      : {
+          serves: view.owner
+            ? `only ${view.owner.name ?? 'the account that added it'}`
+            : 'everybody who talks to the agent',
+        }),
+    ...(view.needsReview ? { needsReview: true } : {}),
+    canRemove: view.canRemove,
   };
 }
 

@@ -37,7 +37,9 @@ the other.
 
 ### III. Secrets stay behind `api/`
 
-Vendor credentials live in `.env.project` and are read only by `api/`.
+Vendor credentials live in `.env.project` and are read only by `api/`. That file
+is a copy of what Infisical holds, rewritten by `bun run env:pull`; nobody edits
+it by hand.
 `runtimeConfig.public` is shipped to the browser in full: a key placed there is
 public the moment it deploys, and rotating it is the only remedy.
 

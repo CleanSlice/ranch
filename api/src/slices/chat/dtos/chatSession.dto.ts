@@ -1,5 +1,32 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+/** The signed-in person a conversation is with (CLEAN-236). */
+export class ChatPersonDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Null once the account no longer exists.',
+    example: 'Ada Lovelace',
+  })
+  name: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Admin' })
+  role: string | null;
+}
+
+/** The agent a conversation was handed over by (CLEAN-236). */
+export class ChatPeerDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The asking agent's name, when the caller has access to that agent. " +
+      "Null otherwise: the conversation is then a colleague's, and no more.",
+    example: 'Front Desk',
+  })
+  name: string | null;
+}
+
 export class ChatSessionDto {
   @ApiProperty({ example: 'chat-9f2c…' })
   id: string;
@@ -53,6 +80,25 @@ export class ChatSessionDto {
   @ApiProperty() createdAt: Date;
 
   @ApiProperty() updatedAt: Date;
+
+  @ApiPropertyOptional({
+    type: ChatPersonDto,
+    nullable: true,
+    description:
+      'The signed-in person the conversation is with, by name: an account, ' +
+      'or the Owner for `externalUserId: "admin"`. Null for a visitor, a ' +
+      'messenger chat and another agent.',
+  })
+  person?: ChatPersonDto | null;
+
+  @ApiPropertyOptional({
+    type: ChatPeerDto,
+    nullable: true,
+    description:
+      'Set when the conversation is a question another agent handed over ' +
+      '(`externalUserId` starts with `peer:`). Null otherwise.',
+  })
+  peer?: ChatPeerDto | null;
 }
 
 export class ChatListResponseDto {

@@ -5,11 +5,13 @@ import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   callerIsOwner,
+  callerParty,
+  callerPerson,
   CONFIRM_SENTENCE,
   confirmed,
   GUEST_REFUSAL,
-  manageCaller,
   OPERATOR_REFUSAL,
+  PERSON_REFUSAL,
 } from '#/mcp/tooling';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { UserRoleTypes } from '#/user/user/domain';
@@ -47,30 +49,43 @@ export const SELF_SERVICE_SETTING = {
  * answered that it had no tool for registering A2A services — correctly, since
  * it could not see the operator tools at all.
  *
- * These tools take no agent id. That is the whole security model: an agent can
- * only ever change its own peer set, never another's, so the worst a prompt
- * injection in a document can do is give the agent reading it a colleague
- * somebody can see and remove in the console. Every address still goes through
- * `PeerService`, so the SSRF checks, the refusal of our own addresses and the
- * A2A 1.0 / JSON-RPC vetting all hold (CLEAN-95, CLEAN-97).
+ * These tools take no agent id: an agent can only ever change its own peer
+ * set, never another's. That used to be the whole security model, and it was
+ * not enough (CLEAN-236). "Its own" said nothing about who was asking, so
+ * the agent connected a colleague for anybody: a User limited to one agent
+ * was told the names of all the others, and a visitor of a public agent
+ * could point it at an address of their choosing, after which the questions
+ * it handed over left the installation.
+ *
+ * So the tools are a signed-in person's (`person` audience), run for that
+ * person, and `PeerService` asks the same rule the console asks:
+ *
+ *  - the agents named are the ones the person reaches, and only one of
+ *    those can be connected; any other answers as one that does not exist;
+ *  - the peers listed are the ones that exist for the person
+ *    (`peerAccess.ts`), and one they did not connect is theirs to remove
+ *    only when they manage this agent;
+ *  - an address outside the Ranch serves everybody when the person manages
+ *    this agent, and that person alone when they do not.
+ *
+ * A visitor, a messenger user, a turn the agent started for itself and
+ * another agent's question get none of them. Every address still goes
+ * through `PeerService`, so the SSRF checks, the refusal of our own
+ * addresses and the A2A 1.0 / JSON-RPC vetting all hold (CLEAN-95, CLEAN-97).
  *
  * An installation that does not want this turns the setting off and the tools
  * vanish from every agent's list.
  *
  * One agent is the exception (CLEAN-232): the Ranch admin agent. Its peers
- * are the Owner's, like everything else about it, and "its own" is not a
- * small thing there: a colleague of the agent that acts with Owner power is
- * somebody it may hand a conversation to. So for the agent whose token
- * carries operator power these tools are listed and run only when the turn
- * is the Owner's or the agent's own (a trusted party). A User, an Admin, a
- * share visitor or a messenger user talking to it cannot give it a
- * colleague, take one away, or read whom it asks. An ordinary agent's token
- * is unaffected: whoever talks to it may still connect it, as before, to
- * any agent but that one. The Ranch admin agent is not a colleague an
- * ordinary agent can take: `PeerService.connect` answers "not found" for
- * it and `list_ranch_agents` does not name it.
+ * are the Owner's, like everything else about it. A colleague of the agent
+ * that acts with Owner power is somebody it may hand a conversation to. So
+ * for the agent whose token carries operator power these tools are listed
+ * and run only when the turn is the Owner's. And on either end of a
+ * connection that agent is the Owner's to connect: for anybody else
+ * `PeerService.connect` answers "not found" and `list_ranch_agents` does
+ * not name it.
  */
-@ToolAudience('agent')
+@ToolAudience('person')
 @Injectable()
 export class PeerSelfTool implements IConditionallyListedTool {
   private readonly logger = new Logger(PeerSelfTool.name);
@@ -82,15 +97,17 @@ export class PeerSelfTool implements IConditionallyListedTool {
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     if (!callerAgentId(httpRequest)) return false;
+    if (callerPerson(httpRequest) === null) return false;
     if (this.isOwnersAgentForSomebodyElse(httpRequest)) return false;
     return this.selfServiceEnabled();
   }
 
   /**
-   * The Ranch admin agent, in a turn that is neither the Owner's nor its
-   * own. The agent is told by its token, which carries operator power only
-   * for that agent; `callerIsOwner` is the lesser of the token and the party
-   * the call is made for, so it holds for the Owner and for a trusted party.
+   * The Ranch admin agent, in a turn that is not the Owner's. The agent is
+   * told by its token, which carries operator power only for that agent;
+   * `callerIsOwner` is the lesser of the token and the party the call is
+   * made for. A turn of the agent's own passes here and is stopped by the
+   * rule that a person is needed.
    */
   private isOwnersAgentForSomebodyElse(httpRequest: Request): boolean {
     const roles =
@@ -140,6 +157,11 @@ export class PeerSelfTool implements IConditionallyListedTool {
         'These tools can only be called by an agent runtime.',
       );
     }
+    if (callerPerson(httpRequest) === null) {
+      // A visitor, a messenger user, the agent on its own schedule, another
+      // agent's question. No agent and no console is named to them.
+      throw new ForbiddenException(PERSON_REFUSAL);
+    }
     if (this.isOwnersAgentForSomebodyElse(httpRequest)) {
       // The words every other Owner-only tool uses: a person who lacks the
       // role, or nobody signed in at all.
@@ -165,9 +187,11 @@ export class PeerSelfTool implements IConditionallyListedTool {
     title: 'My peers',
     template: 'Who are your peers?',
     description:
-      'The colleagues you can delegate to, with what each one advertises. ' +
-      'Read this before connecting anything someone asks for — you may have ' +
-      'it already — and whenever you need to tell a person who you can reach.',
+      'The colleagues you can delegate to for the person you are talking ' +
+      'to, with what each one advertises, who connected it and whether ' +
+      'they may remove it. Read this before connecting anything someone ' +
+      'asks for — you may have it already — and whenever you need to tell a ' +
+      'person who you can reach.',
     parameters: z.object({}),
   })
   async listMyPeers(
@@ -177,7 +201,7 @@ export class PeerSelfTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     const agentId = await this.requireSelf(httpRequest);
     return withRefusalAdvice(async () => {
-      const peers = await this.peers.list(agentId);
+      const peers = await this.peers.list(agentId, callerParty(httpRequest));
       return ok({
         peers: peers.map(toToolPeer),
         note: peers.length
@@ -196,9 +220,11 @@ export class PeerSelfTool implements IConditionallyListedTool {
     title: 'Agents of this Ranch',
     template: 'Which agents on this Ranch could you ask for help?',
     description:
-      'The other agents living on this Ranch, each marked with whether it is ' +
-      'already your colleague. Use it to turn a name a person said into the ' +
-      'id connect_my_peer needs.',
+      'The other agents of this Ranch that the person you are talking to ' +
+      'has access to, each marked with whether it is already your ' +
+      'colleague. Use it to turn a name a person said into the id ' +
+      'connect_my_peer needs. It is not the list of every agent: say ' +
+      '"the agents you have access to", never how many there are in all.',
     parameters: z.object({}),
   })
   async listRanchAgents(
@@ -209,7 +235,7 @@ export class PeerSelfTool implements IConditionallyListedTool {
     const agentId = await this.requireSelf(httpRequest);
     return withRefusalAdvice(
       async () =>
-        ok(await this.peers.candidates(agentId, manageCaller(httpRequest))),
+        ok(await this.peers.candidates(agentId, callerParty(httpRequest))),
       SELF_HINTS,
     );
   }
@@ -262,9 +288,11 @@ export class PeerSelfTool implements IConditionallyListedTool {
     template: 'Add the agent «name» as your peer',
     description:
       'Take an agent of this Ranch as your colleague, so you can hand it ' +
-      'tasks with ask_agent. Directed: it gains nothing in return. Nothing is ' +
-      'saved if its card cannot be read. Tell the person what it can do once ' +
-      'it is connected — the reply tells you.',
+      'tasks with ask_agent. Only an agent the person has access to. ' +
+      'Directed: it gains nothing in return. It will answer through you for ' +
+      'the people who have access to it themselves, and for nobody else. ' +
+      'Nothing is saved if its card cannot be read. Tell the person what it ' +
+      'can do once it is connected — the reply tells you.',
     parameters: z.object({
       peerAgentId: z
         .string()
@@ -278,15 +306,9 @@ export class PeerSelfTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     const agentId = await this.requireSelf(httpRequest);
     return withRefusalAdvice(async () => {
-      const hadPeers = (await this.peers.list(agentId)).length > 0;
-      // An ordinary agent's token manages nothing, whoever it speaks for,
-      // so it is a guest to the rule about the Ranch admin agent: that one
-      // is not found for it, and it is not in list_ranch_agents either.
-      const peer = await this.peers.connect(
-        agentId,
-        peerAgentId,
-        manageCaller(httpRequest),
-      );
+      const party = callerParty(httpRequest);
+      const hadPeers = (await this.peers.list(agentId, party)).length > 0;
+      const peer = await this.peers.connect(agentId, peerAgentId, party);
       this.logger.log(
         `Agent connected its own peer: agent=${agentId} peer=${peerAgentId}`,
       );
@@ -313,7 +335,9 @@ export class PeerSelfTool implements IConditionallyListedTool {
       'not A2A 1.0 over JSON-RPC, or resolves to a private address. Giving ' +
       'the same address twice updates that colleague instead of duplicating ' +
       'it. An address belonging to this Ranch is refused — those go through ' +
-      'connect_my_peer.',
+      'connect_my_peer. When the person does not manage you, the colleague ' +
+      'is theirs alone: you ask it only in your conversations with them. ' +
+      'The reply says which it is; tell the person.',
     parameters: z.object({
       url: z
         .string()
@@ -336,14 +360,21 @@ export class PeerSelfTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     const agentId = await this.requireSelf(httpRequest);
     return withRefusalAdvice(async () => {
-      const hadPeers = (await this.peers.list(agentId)).length > 0;
-      const peer = await this.peers.connectByUrl(agentId, url, credential);
+      const party = callerParty(httpRequest);
+      const hadPeers = (await this.peers.list(agentId, party)).length > 0;
+      const peer = await this.peers.connectByUrl(
+        agentId,
+        url,
+        credential,
+        party,
+      );
       this.logger.log(
         `Agent imported its own external peer: agent=${agentId} url=${peer.cardUrl}`,
       );
       return ok(
         `«${peer.peerName}» (${peer.cardUrl}) is now your colleague. ` +
-          `${advertises(peer)} ${usabilityLine(peer.peerName, hadPeers)}`,
+          `${audienceLine(peer)} ${advertises(peer)} ` +
+          `${usabilityLine(peer.peerName, hadPeers)}`,
       );
     }, SELF_HINTS);
   }
@@ -385,15 +416,21 @@ export class PeerSelfTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     const agentId = await this.requireSelf(httpRequest);
     return withRefusalAdvice(async () => {
-      const hadPeers = (await this.peers.list(agentId)).length > 0;
-      const peer = await this.peers.connectByCard(agentId, card, credential);
+      const party = callerParty(httpRequest);
+      const hadPeers = (await this.peers.list(agentId, party)).length > 0;
+      const peer = await this.peers.connectByCard(
+        agentId,
+        card,
+        credential,
+        party,
+      );
       this.logger.log(
         `Agent connected a peer from a pasted card: agent=${agentId} url=${peer.cardUrl}`,
       );
       return ok(
         `«${peer.peerName}» is now your colleague, from the card you were ` +
-          `given. Delegations go to ${peer.cardUrl}. ${advertises(peer)} ` +
-          `${usabilityLine(peer.peerName, hadPeers)}`,
+          `given. Delegations go to ${peer.cardUrl}. ${audienceLine(peer)} ` +
+          `${advertises(peer)} ${usabilityLine(peer.peerName, hadPeers)}`,
       );
     }, SELF_HINTS);
   }
@@ -406,8 +443,11 @@ export class PeerSelfTool implements IConditionallyListedTool {
     template: 'Drop your peer «name»',
     destructive: true,
     description:
-      'Drop one of your colleagues. For an agent of this Ranch the credential ' +
-      'issued for the pair stops working. Reversible — connect it again later. ' +
+      'Drop one of your colleagues. The person can drop one they connected ' +
+      'themselves, or any they have access to when they manage you; ' +
+      'list_my_peers says which (`canRemove`). For an agent of this Ranch ' +
+      'the credential issued for the pair stops working. Reversible — ' +
+      'connect it again later. ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       peerId: z
@@ -428,11 +468,12 @@ export class PeerSelfTool implements IConditionallyListedTool {
     const refusal = confirmed(args, `drop your peer connection ${peerId}`);
     if (refusal) return refusal;
     return withRefusalAdvice(async () => {
-      await this.peers.remove(agentId, peerId);
+      const party = callerParty(httpRequest);
+      await this.peers.remove(agentId, peerId, party);
       this.logger.log(
         `Agent removed its own peer: agent=${agentId} connection=${peerId}`,
       );
-      const left = await this.peers.list(agentId);
+      const left = await this.peers.list(agentId, party);
       return ok(
         left.length
           ? `Removed. You still have ${left.length} colleague${left.length === 1 ? '' : 's'}: ` +
@@ -455,7 +496,18 @@ const SELF_HINTS: RefusalHints = {
     'You already have it — list_my_peers shows it. Tell the person it is ' +
     'already connected.',
   [PeerErrorCodes.NotFound]: 'Check the ids with list_my_peers.',
+  [PeerErrorCodes.Forbidden]:
+    'Tell the person it is not theirs to remove: whoever connected it can, ' +
+    'or somebody who manages you.',
 };
+
+/** Whom an external colleague just added will be asked for. */
+function audienceLine(peer: { owner: { name: string | null } | null }): string {
+  return peer.owner
+    ? 'It is this person’s own colleague: you will ask it only in your ' +
+        'conversations with them, since they do not manage you.'
+    : 'It serves everybody who talks to you.';
+}
 
 /**
  * Whether the agent can use the colleague it just gained, and it genuinely

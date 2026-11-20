@@ -268,6 +268,7 @@ const EXPECTED: Record<string, 'id' | 'agentId'> = {
   'POST /agents/:agentId/peers/preview': 'agentId',
   'GET /agents/:agentId/peers/state': 'agentId',
   'POST /agents/:agentId/peers/:peerId/refresh': 'agentId',
+  'PUT /agents/:agentId/peers/:peerId/visitors': 'agentId',
   'DELETE /agents/:agentId/peers/:peerId': 'agentId',
   'GET /agents/:agentId/delegations': 'agentId',
 };

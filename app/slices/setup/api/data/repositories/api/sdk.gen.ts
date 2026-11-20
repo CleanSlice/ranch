@@ -310,6 +310,8 @@ import type {
   GetAgentPeersStateResponse,
   RefreshAgentPeerData,
   RefreshAgentPeerResponse,
+  SetAgentPeerVisitorsData,
+  SetAgentPeerVisitorsResponse,
   RemoveAgentPeerData,
   RemoveAgentPeerResponse,
   ListAgentDelegationsData,
@@ -474,7 +476,7 @@ export class SetupService {
   }
 
   /**
-   * Create the first owner. Fails if one already exists. Sets the session cookie like login.
+   * Create the first owner. Fails if one already exists. Sets the session cookie like login, for the console named in X-Ranch-Console.
    */
   public static initControllerInit<ThrowOnError extends boolean = false>(
     options: Options<InitControllerInitData, ThrowOnError>,
@@ -3807,7 +3809,7 @@ export class PeersService {
   }
 
   /**
-   * Agents this one can delegate to, with the card snapshot taken when each was connected or last refreshed. Directed: this never lists the agents that can delegate TO this one.
+   * Agents this one can delegate to, as the caller may see them, with the card snapshot taken when each was connected or last refreshed. A peer the caller has no access to is absent, unless the connection is open to visitors: then it is listed with visibility 'masked', skills only. Directed: this never lists the agents that can delegate TO this one.
    */
   public static listAgentPeers<ThrowOnError extends boolean = false>(
     options: Options<ListAgentPeersData, ThrowOnError>,
@@ -3823,7 +3825,7 @@ export class PeersService {
   }
 
   /**
-   * Connect a peer. Either `peerAgentId` (another agent of this installation — mints a pair credential and reads the card with it) or `url` (an external A2A agent imported by address, optionally with a credential; re-importing the same address updates the entry in place). Nothing is kept if the card cannot be read. The agent picks the tool up on its next restart. With `peerAgentId` the caller must be able to manage that agent too: one they may not manage answers 404, like one that does not exist.
+   * Connect a peer. Either `peerAgentId` (another agent of this installation — mints a pair credential and reads the card with it) or `url` (an external A2A agent imported by address, optionally with a credential; re-importing the same address updates the entry in place). Nothing is kept if the card cannot be read. The agent picks the tool up on its next restart. With `peerAgentId` the caller must have access to that agent: one they do not answers 404, like one that does not exist.
    */
   public static connectAgentPeer<ThrowOnError extends boolean = false>(
     options: Options<ConnectAgentPeerData, ThrowOnError>,
@@ -3843,7 +3845,7 @@ export class PeersService {
   }
 
   /**
-   * Every other agent of this installation the caller may manage, each marked with whether it is already a peer. Excludes the agent itself.
+   * Every other agent of this installation the caller has access to, each marked with whether it is already a peer. Excludes the agent itself. These are exactly the agents POST peers accepts.
    */
   public static listAgentPeerCandidates<ThrowOnError extends boolean = false>(
     options: Options<ListAgentPeerCandidatesData, ThrowOnError>,
@@ -3911,6 +3913,26 @@ export class PeersService {
   }
 
   /**
+   * Open a connection to visitors, or close it. Open, the peer serves everybody who talks to this agent, people with no access to the peer and visitors included, and is shown to them without its name. Internal peers only, and only for a caller who manages both agents: otherwise 404, like a connection that does not exist. Opening needs `confirm: true`.
+   */
+  public static setAgentPeerVisitors<ThrowOnError extends boolean = false>(
+    options: Options<SetAgentPeerVisitorsData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      SetAgentPeerVisitorsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{agentId}/peers/{peerId}/visitors",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
    * Disconnect a peer. This revokes the credential issued for the pair — there is no other copy of it — so the connection cannot be used again.
    */
   public static removeAgentPeer<ThrowOnError extends boolean = false>(
@@ -3927,7 +3949,7 @@ export class PeersService {
   }
 
   /**
-   * Recent tasks this agent handed to its peers, newest first: who was asked, why, how long it took and how it ended.
+   * Recent tasks this agent handed to its peers, newest first: who was asked, why, how long it took and how it ended. A task handed to a peer the caller has no access to is absent; through a connection open to visitors it is listed without the peer and without its reply.
    */
   public static listAgentDelegations<ThrowOnError extends boolean = false>(
     options: Options<ListAgentDelegationsData, ThrowOnError>,

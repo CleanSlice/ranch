@@ -132,12 +132,29 @@ describe('MyChatController.detail', () => {
     await expect(ctrl.detail('c1', req(SUB))).resolves.toEqual(OWNED);
   });
 
-  it("lets an owner/admin read the shared 'admin' session", async () => {
+  // CLEAN-236. `admin` was the conversation of every Owner and Admin; it is
+  // the Owner's own now, and an Admin's is under their own id like a User's.
+  it("lets the Owner read the 'admin' session, which is theirs", async () => {
+    const adminChat = { ...OWNED, externalUserId: 'admin' };
+    const { ctrl } = makeController(jest.fn(async () => adminChat));
+    await expect(
+      ctrl.detail('c1', req(SUB, [UserRoleTypes.Owner])),
+    ).resolves.toEqual(adminChat);
+  });
+
+  it("answers an Admin for the 'admin' session as for a chat that does not exist", async () => {
     const adminChat = { ...OWNED, externalUserId: 'admin' };
     const { ctrl } = makeController(jest.fn(async () => adminChat));
     await expect(
       ctrl.detail('c1', req(SUB, [UserRoleTypes.Admin])),
-    ).resolves.toEqual(adminChat);
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('lets an Admin read the session under their own id', async () => {
+    const { ctrl } = makeController(jest.fn(async () => OWNED));
+    await expect(
+      ctrl.detail('c1', req(SUB, [UserRoleTypes.Admin])),
+    ).resolves.toEqual(OWNED);
   });
 
   it('404s when the chat belongs to someone else (no existence leak)', async () => {

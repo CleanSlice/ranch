@@ -11,11 +11,18 @@ import {
   ok,
   requireAgent,
   requireOperator,
+  audienceAllows,
+  callerLevel,
+  callerParty,
+  callerPerson,
+  manageCaller,
+  requirePerson,
   setCallerManagesAgents,
+  setCallerParty,
   stripSecrets,
 } from './tooling';
 import { UserRoleTypes } from '#/user/user/domain';
-import { asGuest, asPerson, asTrustedAgent } from './testing';
+import { asGuest, asPeer, asPerson, asTrustedAgent } from './testing';
 
 const request = (sub: string, roles: UserRoleTypes[]): Request =>
   ({ user: { sub, email: '', roles } }) as unknown as Request;
@@ -216,5 +223,78 @@ describe('agentNotFound', () => {
     expect(agentNotFoundAdvice(below)).toBe(
       'there is no such agent for this caller',
     );
+  });
+});
+
+// A colleague's question (CLEAN-236). The party carries the chain and, at
+// most, the name of the person the chain was started for. That name is asked
+// about reach elsewhere; here it must buy nothing.
+describe('a peer party', () => {
+  const owners = () => request('agent:admin', [UserRoleTypes.Owner]);
+  const plain = () => request('agent:b', [UserRoleTypes.Agent]);
+
+  it('is kept as stated, with its chain and the person it is for', () => {
+    const req = asPeer(plain(), {
+      chain: ['agent-a'],
+      connectionId: 'c-1',
+      forUserId: 'user-owner',
+    });
+    expect(callerParty(req)).toEqual({
+      kind: 'peer',
+      chain: ['agent-a'],
+      connectionId: 'c-1',
+      forUserId: 'user-owner',
+    });
+  });
+
+  it('has no power, even on the Ranch admin agent and even for the Owner', () => {
+    const req = asPeer(owners(), { forUserId: 'user-owner' });
+    expect(callerLevel(req)).toBe(0);
+    expect(callerIsOperator(req)).toBe(false);
+    expect(callerPerson(req)).toBeNull();
+    expect(manageCaller(req).kind).toBe('peer');
+  });
+
+  it('is admitted to the everyone and agent audiences and to no other', () => {
+    const req = asPeer(owners(), { forUserId: 'user-owner' });
+    setCallerManagesAgents(req, true);
+    expect(audienceAllows('everyone', req)).toBe(true);
+    expect(audienceAllows('agent', req)).toBe(true);
+    for (const audience of [
+      'person',
+      'reader',
+      'manage-agent',
+      'admin',
+      'owner',
+    ] as const) {
+      expect([audience, audienceAllows(audience, req)]).toEqual([
+        audience,
+        false,
+      ]);
+    }
+  });
+
+  it('is refused as nobody signed in, never sent to a console', () => {
+    const req = asPeer(owners());
+    expect(() => requirePerson(req)).toThrow(
+      new ForbiddenException('This needs a signed-in person.'),
+    );
+    expect(() => requireOperator(req)).toThrow(
+      new ForbiddenException('This needs a signed-in administrator.'),
+    );
+  });
+
+  it('a malformed one reads as nobody at all', () => {
+    for (const bad of [
+      { kind: 'peer' },
+      { kind: 'peer', chain: 'agent-a', connectionId: 'c-1' },
+      { kind: 'peer', chain: ['agent-a'], connectionId: '' },
+      { kind: 'peer', chain: [1], connectionId: 'c-1' },
+      { kind: 'peer', chain: [], connectionId: 'c-1', forUserId: '' },
+    ]) {
+      const req = plain();
+      setCallerParty(req, bad as never);
+      expect([bad, callerParty(req)]).toEqual([bad, { kind: 'guest' }]);
+    }
   });
 });

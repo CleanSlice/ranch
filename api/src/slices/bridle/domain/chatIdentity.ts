@@ -27,6 +27,8 @@ export type ChatRequesterKinds = 'jwt' | 'share' | 'anonymous';
 export interface IChatAuth {
   clientId: string;
   kind: 'jwt' | 'share';
+  /** A `jwt` whose token carries an administrator's role (CLEAN-236). */
+  isAdmin?: boolean;
 }
 
 /**
@@ -38,11 +40,17 @@ export interface IAttachmentRequester {
   kind: ChatRequesterKinds;
   /**
    * The console login behind a `jwt` requester — the JWT `sub` and email.
-   * `clientId` folds owners and admins into `admin` for a shared history;
-   * this keeps them apart where it matters (per-person MCP tokens,
-   * CLEAN-80). Absent for share visitors and anonymous callers.
+   * `clientId` is `admin` for the Owner, whose user id is elsewhere needed
+   * as it is (per-person MCP tokens, CLEAN-80). Absent for share visitors
+   * and anonymous callers.
    */
   user?: { id: string; email?: string };
+  /**
+   * The token carries an administrator's role (CLEAN-236). It used to be
+   * read off the client id, when every Owner and Admin shared `admin`; an
+   * Admin's client id is their own now, so it is stated.
+   */
+  isAdmin?: boolean;
   /**
    * Set only when the bearer was a person's own console token: what the hub
    * needs to mint an acting token for the message (CLEAN-232). An embed
@@ -123,19 +131,35 @@ export function parseBearer(headers: ChatHeaders | undefined): string | null {
 // ── Client ids nobody outside may choose (CLEAN-232) ────────
 //
 // A client id travels to the agent runtime as the sender of the message,
-// and a few of them mean something there or here: `admin` is the
-// conversation every Owner and Admin shares, `cron` and `heartbeat` are the
-// names the runtime gives the turns it starts for itself, `agent:<id>` is an
-// agent's own service token, and `peer:<agent>:<context>` is a task another
-// agent handed over. The hub mints those itself or not at all. The runtime no
-// longer trusts a turn for its sender's name; this is the second lock, on
-// the side that hands the name out.
+// and a few of them mean something there or here: `admin` is the Owner's
+// conversation (every Owner and Admin shared it until CLEAN-236), `cron` and
+// `heartbeat` are the names the runtime gives the turns it starts for
+// itself, `agent:<id>` is an agent's own service token,
+// `peer:<connection>:<context>` is a task another agent handed over, and
+// `handover:<connection>` is the subject of the token that task carries. The
+// hub mints those itself or not at all. The runtime no longer trusts a turn
+// for its sender's name; this is the second lock, on the side that hands the
+// name out.
+
+/**
+ * The Owner's chat identity: the id of the conversation every administrator
+ * shared, kept by the one person who still has it (CLEAN-236).
+ */
+export const OWNER_CLIENT_ID = 'admin';
 
 /** Whole ids the hub keeps. */
-export const RESERVED_CLIENT_IDS = ['admin', 'cron', 'heartbeat'] as const;
+export const RESERVED_CLIENT_IDS = [
+  OWNER_CLIENT_ID,
+  'cron',
+  'heartbeat',
+] as const;
 
 /** Namespaces the hub keeps. */
-export const RESERVED_CLIENT_PREFIXES = ['agent:', 'peer:'] as const;
+export const RESERVED_CLIENT_PREFIXES = [
+  'agent:',
+  'peer:',
+  'handover:',
+] as const;
 
 /**
  * Whether `id` is one an anonymous, share or embed identity must never be
@@ -151,27 +175,44 @@ export function isReservedClientId(id: string): boolean {
 }
 
 /**
- * The chat identity carried by a verified JWT payload: `admin` for owners and
- * admins (they share one channel so their history lives in one place), the
- * `sub` for everyone else.
+ * The chat identity carried by a verified JWT payload.
  *
- * Returns null when the payload proves nothing usable — a signed token with no
- * `sub` and no admin role. Callers MUST treat that as an unusable token rather
- * than letting an `undefined` client id travel on; a request with no identity
- * is exactly the case an ownership check must not be skipped for.
+ * Every Owner and Admin used to be the client `admin`: one conversation per
+ * agent for all of them. An Admin read what the Owner wrote, and a message
+ * sent while the agent was busy joined the turn that was running, which kept
+ * the power of whoever started it (CLEAN-236). So a person is their own
+ * client now:
  *
- * An agent's service token (`sub = agent:<id>`) is never `admin`, whatever
- * roles it carries (CLEAN-232). The Ranch admin agent's token carries Owner,
- * and its runtime can print it: read as an administrator here, it could read
- * and write the conversation every Owner and Admin shares. It is an `Agent`
- * on routes and a guest at the tools; here it is its own client, with a
- * history of its own that nobody else's token opens.
+ *  - the Owner is `admin`. There is one Owner, so the conversation the
+ *    administrators shared is the Owner's from the moment nobody else can
+ *    be `admin`, with nothing moved: the session files in every agent's
+ *    storage, the chat index, the jobs addressed there;
+ *  - an Admin is their `sub`, as a User always was;
+ *  - an embed token is its `sub` whatever roles it carries. One minted with
+ *    the Owner role used to be `admin` too, and would now have opened the
+ *    Owner's conversation.
+ *
+ * `isAdmin` says the token carries an administrator's role, apart from the
+ * id: an Owner's or an Admin's console token, or an embed token minted with
+ * such a role.
+ *
+ * Returns null when the payload proves nothing usable. Callers MUST treat
+ * that as an unusable token rather than letting an `undefined` client id
+ * travel on; a request with no identity is exactly the case an ownership
+ * check must not be skipped for.
+ *
+ * An agent's service token (`sub = agent:<id>`) is never an administrator,
+ * whatever roles it carries (CLEAN-232). The Ranch admin agent's token
+ * carries Owner, and its runtime can print it: read as the Owner here, it
+ * could read and write the Owner's conversation. It is an `Agent` on routes
+ * and a guest at the tools; here it is its own client, with a history of its
+ * own that nobody else's token opens.
  *
  * A `sub` that is a reserved client id is unusable too (CLEAN-232): a token
- * that is not an admin's never becomes `admin`, `cron`, `heartbeat` or a
- * `peer:` task by naming itself so. `agent:<id>` is the one reserved
- * namespace a token may carry, and only an agent's own service token: an
- * embed token (`typ`) whose `sub` starts with `agent:` proves nothing.
+ * never becomes `admin`, `cron`, `heartbeat` or a `peer:` task by naming
+ * itself so. `agent:<id>` is the one reserved namespace a token may carry,
+ * and only an agent's own service token: an embed token (`typ`) whose `sub`
+ * starts with `agent:` proves nothing.
  */
 export function clientIdFromJwtPayload(
   payload: Record<string, unknown> | null | undefined,
@@ -179,16 +220,20 @@ export function clientIdFromJwtPayload(
   const sub = payload?.sub;
   const isAgent = typeof sub === 'string' && sub.startsWith('agent:');
   const roles = payload?.roles as string[] | undefined;
-  const isAdmin =
-    !isAgent &&
-    Array.isArray(roles) &&
-    (roles.includes('Owner') || roles.includes('Admin'));
-  if (isAdmin) return { clientId: 'admin', isAdmin: true };
+  const holds = (role: string) =>
+    !isAgent && Array.isArray(roles) && roles.includes(role);
+  const isAdmin = holds('Owner') || holds('Admin');
+
+  // A person's own token (no `typ`) that carries Owner. Not an embed token,
+  // which is whatever the holder of an API key asked it to be.
+  if (holds('Owner') && payload?.typ === undefined) {
+    return { clientId: OWNER_CLIENT_ID, isAdmin: true };
+  }
 
   if (typeof sub !== 'string' || !sub) return null;
   const ownServiceToken = isAgent && payload?.typ === undefined;
   if (!ownServiceToken && isReservedClientId(sub)) return null;
-  return { clientId: sub, isAdmin: false };
+  return { clientId: sub, isAdmin };
 }
 
 /**

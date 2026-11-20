@@ -1,13 +1,14 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
   HttpCode,
-  NotFoundException,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -16,6 +17,7 @@ import {
   ApiBadGatewayResponse,
   ApiBearerAuth,
   ApiConflictResponse,
+  ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -33,7 +35,6 @@ import { PeerService } from './domain/peer.service';
 import { PeerErrorCodes } from './domain/peer.types';
 import type { IAgentPeerView } from './domain/peer.types';
 import { AgentCardService } from './domain/agentCard.service';
-import { IDelegationGateway } from './domain/delegation.gateway';
 import {
   AgentCardDto,
   AgentDelegationDto,
@@ -42,8 +43,15 @@ import {
   ConnectPeerDto,
   ListDelegationsQueryDto,
   PeersStateDto,
+  PeerVisitorsDto,
   PreviewPeerUrlDto,
 } from './dtos';
+
+type ConsoleRequest = Request & { user?: IAuthTokenPayload };
+
+/** The console person behind a request, as `JwtAuthGuard` verified them. */
+const callerOf = (req?: ConsoleRequest) =>
+  AgentPermissionService.callerOfBearer(req?.user);
 
 /**
  * `IAgentPeerView` and `AgentPeerDto` have the same shape, but the copy is
@@ -65,6 +73,13 @@ function toPeerDto(view: IAgentPeerView): AgentPeerDto {
     cardUrl: view.cardUrl,
     cardReadAt: view.cardReadAt,
     createdAt: view.createdAt,
+    visibility: view.visibility,
+    createdBy: view.createdBy,
+    openToVisitors: view.openToVisitors,
+    owner: view.owner,
+    needsReview: view.needsReview,
+    canRemove: view.canRemove,
+    canSetVisitors: view.canSetVisitors,
   };
 }
 
@@ -82,11 +97,13 @@ function toPeerDto(view: IAgentPeerView): AgentPeerDto {
  * the agent is for, the peer list and the delegation history say whom it
  * asks and what about. For the Ranch admin agent that is the Owner's.
  *
- * A connection has two ends. The marker covers the agent in the path; the
- * agent named in the body of `POST peers` is checked in the handler, and
- * the candidates are only agents the caller may manage. Otherwise an Admin
- * could give an agent of theirs a line to the Ranch admin agent, which acts
- * with Owner power.
+ * A connection has two ends (CLEAN-236). The marker covers the agent in the
+ * path. The other end is asked about in `PeerService`, by one rule
+ * (`peerAccess.ts`): a connection to an agent of this Ranch exists for a
+ * person only when they reach that agent. So the peers and the delegation
+ * history listed here are the caller's own view of them, a peer they do not
+ * reach cannot be connected, re-read or removed and answers as one that does
+ * not exist, and the Ranch admin agent stays the Owner's on either end.
  */
 @ApiTags('peers')
 @ApiBearerAuth()
@@ -102,8 +119,6 @@ export class PeerController {
   constructor(
     private readonly peers: PeerService,
     private readonly cards: AgentCardService,
-    private readonly delegations: IDelegationGateway,
-    private readonly permission: AgentPermissionService,
   ) {}
 
   @Get('card')
@@ -123,35 +138,35 @@ export class PeerController {
   @ApiOperation({
     operationId: 'listAgentPeers',
     summary:
-      'Agents this one can delegate to, with the card snapshot taken when ' +
-      'each was connected or last refreshed. Directed: this never lists the ' +
-      'agents that can delegate TO this one.',
+      'Agents this one can delegate to, as the caller may see them, with ' +
+      'the card snapshot taken when each was connected or last refreshed. ' +
+      'A peer the caller has no access to is absent, unless the connection ' +
+      "is open to visitors: then it is listed with visibility 'masked', " +
+      'skills only. Directed: this never lists the agents that can ' +
+      'delegate TO this one.',
   })
   @ApiOkResponse({ type: [AgentPeerDto] })
-  async list(@Param('agentId') agentId: string): Promise<AgentPeerDto[]> {
-    return (await this.peers.list(agentId)).map(toPeerDto);
+  async list(
+    @Param('agentId') agentId: string,
+    @Req() req?: ConsoleRequest,
+  ): Promise<AgentPeerDto[]> {
+    return (await this.peers.list(agentId, callerOf(req))).map(toPeerDto);
   }
 
   @Get('peers/candidates')
   @ApiOperation({
     operationId: 'listAgentPeerCandidates',
     summary:
-      'Every other agent of this installation the caller may manage, each ' +
-      'marked with whether it is already a peer. Excludes the agent itself.',
+      'Every other agent of this installation the caller has access to, ' +
+      'each marked with whether it is already a peer. Excludes the agent ' +
+      'itself. These are exactly the agents POST peers accepts.',
   })
   @ApiOkResponse({ type: [AgentPeerCandidateDto] })
   async candidates(
     @Param('agentId') agentId: string,
-    @Req() req?: Request & { user?: IAuthTokenPayload },
+    @Req() req?: ConsoleRequest,
   ): Promise<AgentPeerCandidateDto[]> {
-    const caller = AgentPermissionService.callerOfBearer(req?.user);
-    const all = await this.peers.candidates(agentId, caller);
-    // Only agents the caller could connect: an agent they may not manage is
-    // not offered, exactly as it is refused by POST peers.
-    const allowed = await Promise.all(
-      all.map((c) => this.permission.manageable(caller, c.id)),
-    );
-    return all.filter((_, i) => allowed[i] !== null);
+    return this.peers.candidates(agentId, callerOf(req));
   }
 
   @Post('peers')
@@ -164,8 +179,8 @@ export class PeerController {
       'credential; re-importing the same address updates the entry in ' +
       'place). Nothing is kept if the card cannot be read. The agent picks ' +
       'the tool up on its next restart. With `peerAgentId` the caller must ' +
-      'be able to manage that agent too: one they may not manage answers ' +
-      '404, like one that does not exist.',
+      'have access to that agent: one they do not answers 404, like one ' +
+      'that does not exist.',
   })
   @ApiOkResponse({ type: AgentPeerDto })
   @ApiConflictResponse({ description: 'Already a peer of this agent.' })
@@ -175,7 +190,7 @@ export class PeerController {
   async connect(
     @Param('agentId') agentId: string,
     @Body() body: ConnectPeerDto,
-    @Req() req?: Request & { user?: IAuthTokenPayload },
+    @Req() req?: ConsoleRequest,
   ): Promise<AgentPeerDto> {
     const given = [body.peerAgentId, body.url, body.card].filter(Boolean);
     if (given.length !== 1) {
@@ -184,30 +199,15 @@ export class PeerController {
         message: 'Provide exactly one of `peerAgentId`, `url` or `card`',
       });
     }
-    // The other end of the connection. The guard checked the agent in the
-    // path; this one comes in the body, so it is asked here, with the answer
-    // PeerService gives for an agent that does not exist.
-    if (
-      body.peerAgentId &&
-      !(await this.permission.manageable(
-        AgentPermissionService.callerOfBearer(req?.user),
-        body.peerAgentId,
-      ))
-    ) {
-      throw new NotFoundException({
-        code: PeerErrorCodes.NotFound,
-        message: 'Agent not found',
-      });
-    }
+    // The guard checked the agent in the path. The other end comes in the
+    // body and is asked about in PeerService: an agent the caller does not
+    // reach gets the answer of one that does not exist.
+    const caller = callerOf(req);
     const view = body.card
-      ? await this.peers.connectByCard(agentId, body.card, body.token)
+      ? await this.peers.connectByCard(agentId, body.card, body.token, caller)
       : body.url
-        ? await this.peers.connectByUrl(agentId, body.url, body.token)
-        : await this.peers.connect(
-            agentId,
-            body.peerAgentId!,
-            AgentPermissionService.callerOfBearer(req?.user),
-          );
+        ? await this.peers.connectByUrl(agentId, body.url, body.token, caller)
+        : await this.peers.connect(agentId, body.peerAgentId!, caller);
     return toPeerDto(view);
   }
 
@@ -264,11 +264,50 @@ export class PeerController {
   @ApiBadGatewayResponse({
     description: "The peer's card could not be read; the old snapshot is kept.",
   })
+  @ApiForbiddenResponse({
+    description:
+      'The caller is shown this connection masked and may not re-read it.',
+  })
   async refresh(
     @Param('agentId') agentId: string,
     @Param('peerId') peerId: string,
+    @Req() req?: ConsoleRequest,
   ): Promise<AgentPeerDto> {
-    return toPeerDto(await this.peers.refresh(agentId, peerId));
+    return toPeerDto(await this.peers.refresh(agentId, peerId, callerOf(req)));
+  }
+
+  @Put('peers/:peerId/visitors')
+  @ApiOperation({
+    operationId: 'setAgentPeerVisitors',
+    summary:
+      'Open a connection to visitors, or close it. Open, the peer serves ' +
+      'everybody who talks to this agent, people with no access to the peer ' +
+      'and visitors included, and is shown to them without its name. ' +
+      'Internal peers only, and only for a caller who manages both agents: ' +
+      'otherwise 404, like a connection that does not exist. Opening needs ' +
+      '`confirm: true`.',
+  })
+  @ApiOkResponse({ type: AgentPeerDto })
+  @ApiConflictResponse({
+    description: 'Opening without `confirm: true`; nothing was changed.',
+  })
+  async setVisitors(
+    @Param('agentId') agentId: string,
+    @Param('peerId') peerId: string,
+    @Body() body: PeerVisitorsDto,
+    @Req() req?: ConsoleRequest,
+  ): Promise<AgentPeerDto> {
+    if (body.open && body.confirm !== true) {
+      throw new ConflictException({
+        code: PeerErrorCodes.VisitorsNeedsConfirm,
+        message:
+          'Opening a peer to visitors lets everybody who talks to this ' +
+          'agent be served by it. Send confirm: true to go ahead.',
+      });
+    }
+    return toPeerDto(
+      await this.peers.setVisitors(agentId, peerId, body.open, callerOf(req)),
+    );
   }
 
   @Delete('peers/:peerId')
@@ -280,11 +319,16 @@ export class PeerController {
       'there is no other copy of it — so the connection cannot be used again.',
   })
   @ApiNoContentResponse({ description: 'Disconnected.' })
+  @ApiForbiddenResponse({
+    description:
+      'The caller is shown this connection masked and did not make it.',
+  })
   async remove(
     @Param('agentId') agentId: string,
     @Param('peerId') peerId: string,
+    @Req() req?: ConsoleRequest,
   ): Promise<void> {
-    await this.peers.remove(agentId, peerId);
+    await this.peers.remove(agentId, peerId, callerOf(req));
   }
 
   @Get('delegations')
@@ -292,13 +336,20 @@ export class PeerController {
     operationId: 'listAgentDelegations',
     summary:
       'Recent tasks this agent handed to its peers, newest first: who was ' +
-      'asked, why, how long it took and how it ended.',
+      'asked, why, how long it took and how it ended. A task handed to a ' +
+      'peer the caller has no access to is absent; through a connection ' +
+      'open to visitors it is listed without the peer and without its reply.',
   })
   @ApiOkResponse({ type: [AgentDelegationDto] })
   async recentDelegations(
     @Param('agentId') agentId: string,
     @Query() query: ListDelegationsQueryDto,
+    @Req() req?: ConsoleRequest,
   ): Promise<AgentDelegationDto[]> {
-    return this.delegations.listRecent(agentId, query.limit ?? 20);
+    return this.peers.recentDelegations(
+      agentId,
+      callerOf(req),
+      query.limit ?? 20,
+    );
   }
 }

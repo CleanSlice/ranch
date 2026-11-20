@@ -16,6 +16,17 @@ import type { IPeerGateway } from './peer.gateway';
 import type { IDelegationGateway } from './delegation.gateway';
 import type { A2aClient } from './a2a.client';
 import type { IBridleGateway } from '#/bridle/domain/bridle.gateway';
+import type { ICallerParty } from '#/user/auth/domain/auth.types';
+import { JwtService } from '@nestjs/jwt';
+import { HandoverService } from './handover';
+import {
+  ADMIN,
+  GUEST,
+  OWNER,
+  TRUSTED,
+  peerAccessOver,
+  type IPeerWorld,
+} from './__fixtures__/peerAccess';
 
 /**
  * One delegation end to end. The invariants worth defending are about order
@@ -69,6 +80,12 @@ const connection = (
   ]),
   cardUrl: 'https://api.test/a2a/agents/b/.well-known/agent-card.json',
   cardReadAt: '2026-09-14T10:00:00.000Z',
+  createdById: null,
+  openToVisitors: false,
+  openedById: null,
+  openedAt: null,
+  ownerUserId: null,
+  needsReview: false,
   createdAt: '2026-09-14T10:00:00.000Z',
   updatedAt: '2026-09-14T10:00:00.000Z',
   ...overrides,
@@ -112,6 +129,9 @@ const rejectedTask = (rejection: 'loop' | 'depth', text: string): IA2aTask => ({
   metadata: { ranch: { chain: ['a', 'b'], rejection } },
 });
 
+// A real signer, so the cases below can read back what was put on the wire.
+const handover = new HandoverService(new JwtService({ secret: 'a2a-test' }));
+
 function makeHarness(
   options: {
     connections?: IAgentPeerData[];
@@ -120,6 +140,8 @@ function makeHarness(
     reply?: A2aSendMessageResult;
     sendThrows?: Error;
     activeTurn?: { clientId: string; turnId: string; ts: number } | null;
+    /** Who is denied which agents (CLEAN-236). Nobody, unless said. */
+    world?: IPeerWorld;
   } = {},
 ) {
   const order: string[] = [];
@@ -164,12 +186,13 @@ function makeHarness(
   const client = { sendMessage } as unknown as A2aClient;
 
   const sent: Array<{ clientId: string; agentId: string; data: any }> = [];
+  const findActiveTurn = jest.fn((..._args: unknown[]) =>
+    options.activeTurn === undefined
+      ? { clientId: 'admin', turnId: 'turn-1', ts: 1 }
+      : options.activeTurn,
+  );
   const hub = {
-    findActiveTurn: jest.fn(() =>
-      options.activeTurn === undefined
-        ? { clientId: 'admin', turnId: 'turn-1', ts: 1 }
-        : options.activeTurn,
-    ),
+    findActiveTurn,
     sendToClient: jest.fn(
       (clientId: string, agentId: string, data: unknown) => {
         order.push('push');
@@ -178,17 +201,29 @@ function makeHarness(
     ),
   } as unknown as IBridleGateway;
 
+  // Every id is an agent: the rule under test here is about reach.
+  const agents = {
+    findById: (id: string) =>
+      Promise.resolve({ id, name: id, isAdmin: false, createdById: null }),
+  };
+  const { access } = peerAccessOver(agents, options.world);
+
   const service = new DelegationService(
     peers,
     delegationMocks as unknown as IDelegationGateway,
     client,
     hub,
+    access,
+    handover,
   );
 
   const run = (overrides: Record<string, unknown> = {}) =>
     service.run(
       {
         callerAgentId: 'a',
+        // The Owner reaches every agent, so the party decides nothing in the
+        // cases that are not about access.
+        party: OWNER,
         peer: 'peer-1',
         task: 'What is the return window for shoes?',
         reason: 'Support Bot holds the returns policy base',
@@ -204,6 +239,7 @@ function makeHarness(
     delegations: delegationMocks,
     sendMessage,
     hub,
+    findActiveTurn,
     sent,
     order,
     rows,
@@ -910,6 +946,354 @@ describe('DelegationService.run — which interface gets called (CLEAN-97)', () 
     expect(outcome).toMatchObject({
       status: 'failed',
       errorCode: DelegationErrorCodes.Unsupported,
+    });
+  });
+});
+
+/**
+ * CLEAN-236. The peer is resolved among the connections that serve the
+ * caller of the turn, at the time of the call, and among no others.
+ */
+describe('DelegationService.run — whom the peer serves', () => {
+  const world: IPeerWorld = { denied: { 'user-admin': ['b'] } };
+  const open = () => connection({ openToVisitors: true });
+
+  const refused: Array<[string, ICallerParty]> = [
+    ['a person who does not reach it', ADMIN],
+    ['a visitor', GUEST],
+    ['the agent on its own schedule', TRUSTED],
+    [
+      'another agent’s question, started for nobody',
+      { kind: 'peer', chain: ['x'], connectionId: 'c-1' },
+    ],
+    [
+      'another agent’s question, started for a person who does not reach it',
+      {
+        kind: 'peer',
+        chain: ['x'],
+        connectionId: 'c-1',
+        forUserId: 'user-admin',
+      },
+    ],
+  ];
+
+  it.each(refused)(
+    'does not ask a peer for %s, and does not name it in the refusal',
+    async (_who, party) => {
+      const { run, sendMessage, delegations } = makeHarness({ world });
+
+      for (const peer of ['peer-1', 'b', 'Support Bot']) {
+        expect(await run({ party, peer })).toEqual({
+          kind: 'no_match',
+          peers: [],
+        });
+      }
+      expect(sendMessage).not.toHaveBeenCalled();
+      expect(delegations.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('asks it for another agent’s question started for a person who reaches it', async () => {
+    const { run, sendMessage } = makeHarness({ world });
+
+    const outcome = await run({
+      party: {
+        kind: 'peer',
+        chain: ['x'],
+        connectionId: 'c-1',
+        forUserId: 'user-user',
+      },
+    });
+
+    expect(outcome).toMatchObject({ kind: 'done', masked: false });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(refused)(
+    'open to visitors: asks it for %s, as a colleague without a name',
+    async (_who, party) => {
+      const { run, sendMessage, sent, rows } = makeHarness({
+        world,
+        connections: [open()],
+      });
+
+      // The reason is the model's own line, and the model of this turn was
+      // only ever told of "Colleague 1".
+      const outcome = await run({
+        party,
+        peer: 'Colleague 1',
+        reason: 'Colleague 1 covers the returns policy',
+      });
+
+      expect(outcome).toMatchObject({
+        kind: 'done',
+        status: 'answered',
+        peerName: 'a colleague',
+        masked: true,
+        text: 'Within 30 days.',
+      });
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+      // The audit row keeps the peer; what was pushed to the chat does not.
+      expect(Object.values(rows)[0]).toMatchObject({
+        peerName: 'Support Bot',
+        peerAgentId: 'b',
+      });
+      for (const push of sent) {
+        expect(push.data.step.label).toMatch(/a colleague/);
+        expect(push.data.step.delegation).toMatchObject({
+          peerAgentId: null,
+          peerName: 'A colleague',
+        });
+        expect(JSON.stringify(push.data)).not.toMatch(/Support Bot|"b"/);
+      }
+    },
+  );
+
+  it('a masked peer answers to its connection id and its label, never to the agent behind it', async () => {
+    const { run, sendMessage } = makeHarness({
+      world,
+      connections: [open()],
+    });
+
+    for (const peer of ['b', 'Support Bot']) {
+      expect(await run({ party: GUEST, peer })).toEqual({
+        kind: 'no_match',
+        peers: ['Colleague 1'],
+      });
+    }
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    expect(await run({ party: GUEST, peer: 'Colleague 1' })).toMatchObject({
+      kind: 'done',
+      masked: true,
+    });
+  });
+
+  it('a person who reaches an open peer is told its name, as for any other', async () => {
+    const { run, sent } = makeHarness({ world, connections: [open()] });
+
+    const outcome = await run({ party: OWNER, peer: 'Support Bot' });
+
+    expect(outcome).toMatchObject({ peerName: 'Support Bot', masked: false });
+    expect(sent[0].data.step.label).toBe('Asking «Support Bot»');
+  });
+
+  describe('a peer outside the Ranch', () => {
+    const outside = (ownerUserId: string | null) =>
+      connection({
+        id: 'peer-x',
+        peerAgentId: null,
+        origin: PeerOrigins.External,
+        token: null,
+        ownerUserId,
+        cardSnapshot: {
+          ...card('Outside Bot'),
+          supportedInterfaces: [
+            {
+              url: 'https://other.example/a2a/agents/x',
+              protocolBinding: 'JSONRPC',
+              protocolVersion: '1.0',
+            },
+          ],
+        },
+        cardUrl:
+          'https://other.example/a2a/agents/x/.well-known/agent-card.json',
+      });
+
+    it('shared: asked for anybody', async () => {
+      for (const party of [OWNER, ADMIN, GUEST]) {
+        const { run } = makeHarness({ world, connections: [outside(null)] });
+        expect(await run({ party, peer: 'peer-x' })).toMatchObject({
+          kind: 'done',
+          peerName: 'Outside Bot',
+          masked: false,
+        });
+      }
+    });
+
+    it('one person’s own: asked for them, and for nobody else, the one who manages the agent included', async () => {
+      const mine = () =>
+        makeHarness({ world, connections: [outside('user-user')] });
+
+      const owner = mine();
+      expect(
+        await owner.run({
+          party: { kind: 'person', userId: 'user-user', role: 'User' },
+          peer: 'peer-x',
+        }),
+      ).toMatchObject({ kind: 'done' });
+
+      for (const party of [OWNER, ADMIN, GUEST]) {
+        const other = mine();
+        expect(await other.run({ party, peer: 'peer-x' })).toEqual({
+          kind: 'no_match',
+          peers: [],
+        });
+        expect(other.sendMessage).not.toHaveBeenCalled();
+      }
+    });
+  });
+});
+
+/**
+ * CLEAN-236. A question handed to an agent of this Ranch carries a token:
+ * for which agent, through which connection, how far the chain has come and
+ * whom it was started for. Nothing of the asker's power is in it.
+ */
+describe('DelegationService.run — the hand-over token', () => {
+  const sentPass = async (sendMessage: jest.Mock) => {
+    const params = sendMessage.mock.calls[0][2] as {
+      message: { metadata: { ranch: { pass?: string; chain: string[] } } };
+    };
+    const { pass, chain } = params.message.metadata.ranch;
+    return { pass, chain, read: await handover.verify(pass, 'b') };
+  };
+
+  it('is minted for the peer, the connection and the context, and names the person the turn is for', async () => {
+    const { run, sendMessage } = makeHarness();
+
+    await run({ party: ADMIN, contextId: 'ctx-7' });
+
+    const { read, chain } = await sentPass(sendMessage);
+    expect(read).toEqual({
+      agentId: 'b',
+      connectionId: 'peer-1',
+      chain: ['a'],
+      forUserId: 'user-admin',
+      contextId: 'ctx-7',
+    });
+    expect(chain).toEqual(['a']);
+  });
+
+  it('names nobody for a turn nobody is signed in behind', async () => {
+    for (const party of [GUEST, TRUSTED]) {
+      const { run, sendMessage } = makeHarness({
+        connections: [connection({ openToVisitors: true })],
+      });
+
+      await run({ party, peer: 'Colleague 1' });
+
+      const { read } = await sentPass(sendMessage);
+      expect(read && 'forUserId' in read).toBe(false);
+    }
+  });
+
+  it('a second hop continues the chain and keeps the person it was started for', async () => {
+    const { run, sendMessage, rows } = makeHarness();
+
+    await run({
+      party: {
+        kind: 'peer',
+        chain: ['origin'],
+        connectionId: 'c-0',
+        forUserId: 'user-user',
+      },
+      // What a runtime without the token would have left behind is ignored.
+      inboundChain: ['stale', 'a'],
+    });
+
+    const { read } = await sentPass(sendMessage);
+    expect(read).toMatchObject({
+      chain: ['origin', 'a'],
+      forUserId: 'user-user',
+    });
+    expect(Object.values(rows)[0].forUserId).toBe('user-user');
+  });
+
+  it('does not count this agent twice when the fallback chain already ends with it', async () => {
+    // What `A2aServerService.currentChain` hands a runtime that carries no
+    // token: the chain it serves, itself included. Adding the agent again
+    // made A→B→C one hop too long for the limit that is meant to allow it.
+    const { run, sendMessage } = makeHarness({
+      connections: [connection({ openToVisitors: true })],
+    });
+
+    await run({
+      party: GUEST,
+      peer: 'Colleague 1',
+      inboundChain: ['origin', 'a'],
+    });
+
+    expect((await sentPass(sendMessage)).chain).toEqual(['origin', 'a']);
+  });
+
+  it('records the person on the audit row, and nobody for a visitor', async () => {
+    const mine = makeHarness();
+    await mine.run({ party: OWNER });
+    expect(Object.values(mine.rows)[0].forUserId).toBe('user-owner');
+
+    const theirs = makeHarness({
+      connections: [connection({ openToVisitors: true })],
+    });
+    await theirs.run({ party: GUEST, peer: 'Colleague 1' });
+    expect(Object.values(theirs.rows)[0].forUserId).toBeNull();
+  });
+
+  it('hands no token to an agent outside the Ranch', async () => {
+    const { run, sendMessage } = makeHarness({
+      connections: [
+        connection({
+          id: 'peer-x',
+          peerAgentId: null,
+          origin: PeerOrigins.External,
+          token: null,
+          cardSnapshot: {
+            ...card('Outside Bot'),
+            supportedInterfaces: [
+              {
+                url: 'https://other.example/a2a/agents/x',
+                protocolBinding: 'JSONRPC',
+                protocolVersion: '1.0',
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    await run({ party: OWNER, peer: 'peer-x' });
+
+    const { pass } = await sentPass(sendMessage);
+    expect(pass).toBeUndefined();
+    expect(JSON.stringify(sendMessage.mock.calls[0][2])).not.toContain(
+      'user-owner',
+    );
+  });
+});
+
+/**
+ * CLEAN-236. The step goes to the turn that asked. It used to go to the
+ * newest running turn of the agent: with two people talking, one saw the
+ * task and the answer of the other's delegation.
+ */
+describe('DelegationService.run — whose chat the step appears in', () => {
+  it('asks the hub for the turn of the conversation the call belongs to', async () => {
+    const { run, findActiveTurn } = makeHarness();
+
+    await run({ turnClient: 'user-admin' });
+
+    expect(findActiveTurn).toHaveBeenCalledWith('a', 'user-admin');
+  });
+
+  it('asks without a conversation when the runtime named none', async () => {
+    const { run, findActiveTurn } = makeHarness();
+
+    await run();
+
+    expect(findActiveTurn).toHaveBeenCalledWith('a', undefined);
+  });
+
+  it('shows no step, and still asks the peer, when the hub cannot tell whose turn it is', async () => {
+    const { run, sent, rows, sendMessage } = makeHarness({ activeTurn: null });
+
+    const outcome = await run({ turnClient: 'user-gone' });
+
+    expect(outcome).toMatchObject({ kind: 'done', status: 'answered' });
+    expect(sent).toEqual([]);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(Object.values(rows)[0]).toMatchObject({
+      clientId: null,
+      turnId: null,
     });
   });
 });

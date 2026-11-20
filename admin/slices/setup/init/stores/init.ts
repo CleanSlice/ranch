@@ -1,3 +1,4 @@
+import { RANCH_CONSOLE_HEADERS } from '#api/console';
 import { SetupService } from '#api/data';
 
 type ApiEnvelope<T> = { success: boolean; data: T };
@@ -30,6 +31,8 @@ export const useInitStore = defineStore('init', () => {
 
   async function createOwner(name: string, email: string, password: string) {
     const res = await SetupService.initControllerInit({
+      // The first Owner is signed in to this console (CLEAN-236).
+      headers: RANCH_CONSOLE_HEADERS,
       body: { name, email, password },
     });
     const env = res.data as ApiEnvelope<IOwnerResult>;

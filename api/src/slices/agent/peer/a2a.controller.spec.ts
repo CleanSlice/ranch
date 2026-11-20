@@ -149,9 +149,13 @@ describe('A2aController — dispatch', () => {
     const response = await rpc(call('SendMessage', { message: { parts: [] } }));
 
     expect(response.result).toEqual({ task: task() });
-    expect(server.sendMessage).toHaveBeenCalledWith('agent-b', 'agent-a', {
-      message: { parts: [] },
-    });
+    // The connection the credential resolved to, not a bare agent id: the
+    // service checks the hand-over token against it (CLEAN-236).
+    expect(server.sendMessage).toHaveBeenCalledWith(
+      'agent-b',
+      { peerId: 'p1', callerAgentId: 'agent-a' },
+      { message: { parts: [] } },
+    );
   });
 
   it('reports a failed task as a result, not as an error', async () => {

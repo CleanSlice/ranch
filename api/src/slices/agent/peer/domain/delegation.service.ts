@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { IBridleGateway } from '#/bridle/domain/bridle.gateway';
+import type { ICallerParty } from '#/user/auth/domain/auth.types';
 import { IPeerGateway } from './peer.gateway';
+import { PeerAccessService } from './peerAccess';
+import { matchRoster, rosterFor } from './peerRoster';
+import { HandoverService } from './handover';
 import { IDelegationGateway } from './delegation.gateway';
 import {
   A2aClient,
@@ -33,21 +37,41 @@ import {
 
 export interface IRunDelegationInput {
   callerAgentId: string;
+  /**
+   * Who the turn is for (CLEAN-236). The peer is resolved among the
+   * connections that serve this party, and among no others.
+   */
+  party: ICallerParty;
   /** Peer id, or the peer's name as the card spells it. */
   peer: string;
   task: string;
   reason: string;
   contextId?: string;
-  /** The chain this request is already part of, when the caller is itself a peer. */
+  /**
+   * The chain this request is already part of, for a caller that could not
+   * say so itself: an agent whose runtime carries no hand-over token on its
+   * tool calls. A peer party's own chain wins over it.
+   */
   inboundChain: string[];
+  /**
+   * The hub client of the turn that asked, when the runtime said
+   * (CLEAN-236): where the progress step is shown.
+   */
+  turnClient?: string | null;
 }
+
+/** Slack on top of the answer timeout, for the receiving turn's last tool call. */
+const HANDOVER_SLACK_SECONDS = 60;
 
 export type IDelegationOutcome =
   | { kind: 'no_match'; peers: string[] }
   | {
       kind: 'done';
       status: DelegationStatus;
+      /** How the peer is named to this caller: its name, or "a colleague". */
       peerName: string;
+      /** The caller is served by the peer without reaching it. */
+      masked: boolean;
       contextId: string;
       durationMs: number;
       text?: string;
@@ -77,32 +101,62 @@ export class DelegationService {
     private readonly delegations: IDelegationGateway,
     private readonly client: A2aClient,
     private readonly hub: IBridleGateway,
+    private readonly access: PeerAccessService,
+    private readonly handover: HandoverService,
   ) {}
 
   async run(
     input: IRunDelegationInput,
     timeoutMs: number,
   ): Promise<IDelegationOutcome> {
-    const connections = await this.peers.listByAgent(input.callerAgentId);
-    const peer = matchPeer(connections, input.peer);
-    if (!peer) {
-      return {
-        kind: 'no_match',
-        peers: connections.map(
-          (c) => c.cardSnapshot?.name ?? c.peerAgentId ?? c.cardUrl,
-        ),
-      };
+    // Asked now, not when the roster was described: access taken away a
+    // minute ago is gone for this call, whatever the model still remembers.
+    const [connections, viewer] = await Promise.all([
+      this.peers.listByAgent(input.callerAgentId),
+      this.access.viewerOf(input.party, input.callerAgentId),
+    ]);
+    const roster = rosterFor(connections, viewer);
+    const entry = matchRoster(roster, input.peer);
+    if (!entry) {
+      return { kind: 'no_match', peers: roster.map((e) => e.label) };
     }
+    const { row: peer, masked } = entry;
 
+    // The audit row keeps the peer's real name. What the caller is told is
+    // `shownName`.
     const peerName =
       peer.cardSnapshot?.name ?? peer.peerAgentId ?? peer.cardUrl;
+    const shownName = masked ? 'a colleague' : peerName;
     const contextId = input.contextId ?? `ctx-${crypto.randomUUID()}`;
     const matchedSkills = matchSkills(peer, `${input.reason} ${input.task}`);
 
-    // Whoever is watching this agent right now. Unknown is a normal outcome —
-    // a chat surface that renders no thinking timeline has no turn to join —
-    // and the delegation must run exactly the same either way.
-    const turn = this.hub.findActiveTurn(input.callerAgentId);
+    // The turn that asked, when the runtime said which conversation the
+    // call belongs to; otherwise the agent's one running turn, if it has
+    // exactly one. Unknown is a normal outcome (a chat surface that renders
+    // no thinking timeline has no turn to join, and with two people talking
+    // and no hint a guess would show one of them the other's task), and the
+    // delegation must run exactly the same either way.
+    const turn = this.hub.findActiveTurn(input.callerAgentId, input.turnClient);
+
+    // Every agent this question has passed, this one last. A hop that was
+    // itself handed the question continues that chain; the party says so
+    // when the runtime carried the token, and `inboundChain` when it could
+    // not. This agent is added once: a chain that already ends with it (the
+    // fallback publishes it that way) is not made a hop longer than it is.
+    const inbound =
+      input.party.kind === 'peer' ? input.party.chain : input.inboundChain;
+    const chain =
+      inbound[inbound.length - 1] === input.callerAgentId
+        ? inbound
+        : [...inbound, input.callerAgentId];
+    // The person the chain was started for. Their reach is what every
+    // further hop is asked about; their power stays where it was.
+    const forUserId =
+      input.party.kind === 'person'
+        ? input.party.userId
+        : input.party.kind === 'peer'
+          ? (input.party.forUserId ?? null)
+          : null;
 
     const row = await this.delegations.create({
       agentId: input.callerAgentId,
@@ -112,12 +166,13 @@ export class DelegationService {
       contextId,
       turnId: turn?.turnId ?? null,
       clientId: turn?.clientId ?? null,
+      forUserId,
       task: input.task,
       reason: input.reason,
       matchedSkills,
     });
 
-    this.publish(input.callerAgentId, turn, row);
+    this.publish(input.callerAgentId, turn, row, masked);
 
     const startedAt = Date.now();
     let status: DelegationStatus = DelegationStatuses.Failed;
@@ -137,6 +192,22 @@ export class DelegationService {
         );
       }
       const interfaceUrl = callable.iface.url;
+      // The hand-over token: for an agent of this Ranch, and for it alone.
+      // An outside agent is told nothing of who asked, and is never handed a
+      // token this API signed.
+      const pass =
+        peer.origin === PeerOrigins.Internal && peer.peerAgentId
+          ? await this.handover.mint(
+              {
+                agentId: peer.peerAgentId,
+                connectionId: peer.id,
+                chain,
+                ...(forUserId ? { forUserId } : {}),
+                contextId,
+              },
+              Math.ceil(timeoutMs / 1000) + HANDOVER_SLACK_SECONDS,
+            )
+          : null;
       if (peer.origin === PeerOrigins.External) {
         // The interface URL inside a foreign card is remote content — never
         // let it point the platform at a private address (SSRF, CLEAN-95).
@@ -164,8 +235,9 @@ export class DelegationService {
             contextId,
             metadata: {
               ranch: {
-                chain: [...input.inboundChain, input.callerAgentId],
+                chain,
                 reason: input.reason,
+                ...(pass ? { pass } : {}),
               },
             },
           },
@@ -210,12 +282,13 @@ export class DelegationService {
       durationMs,
     });
 
-    this.publish(input.callerAgentId, turn, finished);
+    this.publish(input.callerAgentId, turn, finished, masked);
 
     return {
       kind: 'done',
       status,
-      peerName,
+      peerName: shownName,
+      masked,
       contextId,
       durationMs,
       ...(text !== undefined ? { text } : {}),
@@ -233,6 +306,7 @@ export class DelegationService {
     agentId: string,
     turn: { clientId: string; turnId: string } | null,
     row: Parameters<typeof buildDelegationStep>[0],
+    masked: boolean,
   ): void {
     if (!turn) {
       this.logger.debug(
@@ -246,30 +320,9 @@ export class DelegationService {
       clientId: turn.clientId,
       turnId: turn.turnId,
       ts: Date.now(),
-      step: buildDelegationStep(row),
+      step: buildDelegationStep(row, { masked }),
     });
   }
-}
-
-/** By connection id first, then by the name the card advertises. */
-function matchPeer(
-  connections: IAgentPeerData[],
-  wanted: string,
-): IAgentPeerData | null {
-  const needle = wanted.trim().toLowerCase();
-  if (!needle) return null;
-
-  return (
-    connections.find(
-      (c) =>
-        c.id.toLowerCase() === needle ||
-        (c.peerAgentId ?? '').toLowerCase() === needle,
-    ) ??
-    connections.find(
-      (c) => (c.cardSnapshot?.name ?? '').trim().toLowerCase() === needle,
-    ) ??
-    null
-  );
 }
 
 /**

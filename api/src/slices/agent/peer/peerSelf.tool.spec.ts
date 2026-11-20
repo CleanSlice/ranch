@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { PeerSelfTool, SELF_SERVICE_SETTING } from './peerSelf.tool';
 import { PeerErrorCodes, PeerOrigins } from './domain/peer.types';
@@ -7,7 +11,7 @@ import type { IA2aAgentCard } from './domain';
 import type { PeerService } from './domain/peer.service';
 import type { ISettingGateway } from '#/setting/domain';
 import { UserRoleTypes } from '#/user/user/domain';
-import { asGuest, asPerson, asTrustedAgent } from '#/mcp/testing';
+import { asGuest, asPeer, asPerson, asTrustedAgent } from '#/mcp/testing';
 
 /**
  * The point of this tool set is that an agent can only ever change its OWN
@@ -52,10 +56,18 @@ const view = (overrides: Partial<IAgentPeerView> = {}): IAgentPeerView => ({
   cardUrl: 'https://www.elderlycarematch.com/.well-known/agent-card.json',
   cardReadAt: '2026-09-21T10:00:00.000Z',
   createdAt: '2026-09-21T10:00:00.000Z',
+  visibility: 'full',
+  createdBy: { id: 'user-1', name: 'Uma User' },
+  openToVisitors: false,
+  owner: null,
+  needsReview: false,
+  canRemove: true,
+  canSetVisitors: false,
   ...overrides,
 });
 
-const agentRequest = () =>
+/** The runtime of an ordinary agent, naming nobody: a guest's call. */
+const bareAgentRequest = () =>
   ({
     user: {
       sub: 'agent:agent-me',
@@ -63,6 +75,14 @@ const agentRequest = () =>
       roles: [UserRoleTypes.Agent],
     },
   }) as unknown as Request;
+
+/**
+ * The same runtime in a turn of a signed-in User: the caller these tools
+ * exist for since CLEAN-236. `ME` is that person as the service is handed
+ * them.
+ */
+const agentRequest = () => asPerson(bareAgentRequest(), UserRoleTypes.User);
+const ME = { kind: 'person', userId: 'user-1', role: UserRoleTypes.User };
 
 /** A console user, not an agent: `sub` carries no `agent:` prefix. */
 const personRequest = () =>
@@ -182,11 +202,9 @@ describe('PeerSelfTool — it can only touch its own peers', () => {
   it('connects using the id from the token, which no argument can override', async () => {
     const { tool, peers } = harness();
     await tool.connectMyPeer({ peerAgentId: 'agent-b' }, null, agentRequest());
-    // An ordinary agent's token is a guest to PeerService, whoever it
-    // speaks for: the Ranch admin agent is not found for it (CLEAN-232).
-    expect(peers.connect).toHaveBeenCalledWith('agent-me', 'agent-b', {
-      kind: 'guest',
-    });
+    // The agent is its own, from the token. The person is the one the turn
+    // is for, and PeerService asks what they reach (CLEAN-236).
+    expect(peers.connect).toHaveBeenCalledWith('agent-me', 'agent-b', ME);
   });
 
   it('imports an outside agent for itself, credential and all', async () => {
@@ -205,6 +223,7 @@ describe('PeerSelfTool — it can only touch its own peers', () => {
       'agent-me',
       'https://www.elderlycarematch.com/.well-known/agent-card.json',
       'secret',
+      ME,
     );
     expect(text).toContain('«Elderly Care Match» ');
     expect(text).toContain('is now your colleague');
@@ -229,9 +248,7 @@ describe('PeerSelfTool — it can only touch its own peers', () => {
   it('lists the Ranch agents it could take as colleagues', async () => {
     const { tool, peers } = harness();
     const text = textOf(await tool.listRanchAgents({}, null, agentRequest()));
-    expect(peers.candidates).toHaveBeenCalledWith('agent-me', {
-      kind: 'guest',
-    });
+    expect(peers.candidates).toHaveBeenCalledWith('agent-me', ME);
     expect(text).toContain('Skyhunter');
   });
 });
@@ -313,7 +330,7 @@ describe('PeerSelfTool — reading and dropping', () => {
         agentRequest(),
       ),
     );
-    expect(peers.remove).toHaveBeenCalledWith('agent-me', 'peer-1');
+    expect(peers.remove).toHaveBeenCalledWith('agent-me', 'peer-1', ME);
     expect(text).toContain('«Skyhunter»');
   });
 
@@ -406,6 +423,7 @@ describe('PeerSelfTool — connecting from a card it was handed (CLEAN-116)', ()
       'agent-me',
       CARD,
       'secret',
+      ME,
     );
   });
 
@@ -458,7 +476,8 @@ describe('PeerSelfTool — connecting from a card it was handed (CLEAN-116)', ()
  * The Ranch admin agent's own peers are the Owner's (CLEAN-232). Its token
  * carries Owner, and it answers anybody; without this a User, or a visitor
  * with no account at all, could give the agent that acts with Owner power a
- * colleague to hand conversations to.
+ * colleague to hand conversations to. Since CLEAN-236 the agent on its own
+ * schedule is refused as well: a person is needed, there as everywhere.
  */
 describe('PeerSelfTool — the Ranch admin agent serves itself only for the Owner', () => {
   const ranch = () =>
@@ -470,12 +489,13 @@ describe('PeerSelfTool — the Ranch admin agent serves itself only for the Owne
       },
     }) as unknown as Request;
   const turns: [string, () => Request, boolean][] = [
-    ['the agent on its own schedule', () => asTrustedAgent(ranch()), true],
     ['the Owner', () => asPerson(ranch(), UserRoleTypes.Owner), true],
+    ['the agent on its own schedule', () => asTrustedAgent(ranch()), false],
     ['an Admin', () => asPerson(ranch(), UserRoleTypes.Admin), false],
     ['a User', () => asPerson(ranch(), UserRoleTypes.User), false],
     ['a guest', () => asGuest(ranch()), false],
     ['a runtime that names no party', () => ranch(), false],
+    ['another agent’s question', () => asPeer(ranch()), false],
   ];
 
   it.each(turns)(
@@ -526,13 +546,184 @@ describe('PeerSelfTool — the Ranch admin agent serves itself only for the Owne
       role: 'Owner',
     });
   });
+});
 
-  it('leaves an ordinary agent as it was: whoever talks to it may connect it', async () => {
+/**
+ * CLEAN-236. "Whoever talks to it may connect it" is over. An ordinary
+ * agent's colleague tools are a signed-in person's: a User limited to one
+ * agent was told the names of all 23 on the live installation, and a visitor
+ * of a public agent could point it at an address of their own.
+ */
+describe('PeerSelfTool — for a signed-in person, and nobody else', () => {
+  const nobody: [string, () => Request][] = [
+    ['a visitor', () => asGuest(bareAgentRequest())],
+    ['a runtime that names no party', () => bareAgentRequest()],
+    ['the agent on its own schedule', () => asTrustedAgent(bareAgentRequest())],
+    ['another agent’s question', () => asPeer(bareAgentRequest())],
+    [
+      'another agent’s question, even one the Owner started',
+      () => asPeer(bareAgentRequest(), { forUserId: 'user-owner' }),
+    ],
+  ];
+  const everyTool = (tool: PeerSelfTool, req: Request) => [
+    () => tool.listMyPeers({}, null, req),
+    () => tool.listRanchAgents({}, null, req),
+    () =>
+      tool.previewAgentCardByAddress(
+        { url: 'https://other.example' },
+        null,
+        req,
+      ),
+    () => tool.connectMyPeer({ peerAgentId: 'agent-b' }, null, req),
+    () =>
+      tool.importMyPeerByAddress({ url: 'https://other.example' }, null, req),
+    () => tool.connectMyPeerFromCard({ card: '{"name":"x"}' }, null, req),
+    () => tool.removeMyPeer({ peerId: 'peer-1', confirm: true }, null, req),
+  ];
+
+  it.each(nobody)('lists none of them for %s', async (_who, req) => {
+    const { tool } = harness();
+    await expect(tool.isListedForRequest(req())).resolves.toBe(false);
+  });
+
+  it.each(nobody)(
+    'refuses all seven by name for %s, naming no agent and no console',
+    async (_who, req) => {
+      const { tool, peers } = harness();
+
+      for (const call of everyTool(tool, req())) {
+        await expect(call()).rejects.toEqual(
+          new ForbiddenException('This needs a signed-in person.'),
+        );
+      }
+      for (const method of Object.values(peers)) {
+        expect(method).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it.each([
+    ['a User', UserRoleTypes.User],
+    ['an Admin', UserRoleTypes.Admin],
+    ['the Owner', UserRoleTypes.Owner],
+  ])('lists and runs them for %s', async (_who, role) => {
     const { tool, peers } = harness();
-    for (const req of [agentRequest(), asGuest(agentRequest())]) {
-      await expect(tool.isListedForRequest(req)).resolves.toBe(true);
-      await tool.connectMyPeer({ peerAgentId: 'agent-b' }, null, req);
+    const req = () => asPerson(bareAgentRequest(), role);
+
+    await expect(tool.isListedForRequest(req())).resolves.toBe(true);
+    for (const call of everyTool(tool, req())) {
+      await expect(call()).resolves.toBeDefined();
     }
-    expect(peers.connect).toHaveBeenCalledTimes(2);
+    expect(peers.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands every call to the service for the person the turn is for', async () => {
+    const { tool, peers } = harness();
+    const req = agentRequest;
+
+    await tool.listMyPeers({}, null, req());
+    await tool.listRanchAgents({}, null, req());
+    await tool.connectMyPeer({ peerAgentId: 'agent-b' }, null, req());
+    await tool.importMyPeerByAddress(
+      { url: 'https://other.example', credential: 'tk' },
+      null,
+      req(),
+    );
+    await tool.connectMyPeerFromCard({ card: '{"name":"x"}' }, null, req());
+    await tool.removeMyPeer({ peerId: 'peer-1', confirm: true }, null, req());
+
+    expect(peers.list).toHaveBeenCalledWith('agent-me', ME);
+    expect(peers.candidates).toHaveBeenCalledWith('agent-me', ME);
+    expect(peers.connect).toHaveBeenCalledWith('agent-me', 'agent-b', ME);
+    expect(peers.connectByUrl).toHaveBeenCalledWith(
+      'agent-me',
+      'https://other.example',
+      'tk',
+      ME,
+    );
+    expect(peers.connectByCard).toHaveBeenCalledWith(
+      'agent-me',
+      '{"name":"x"}',
+      undefined,
+      ME,
+    );
+    expect(peers.remove).toHaveBeenCalledWith('agent-me', 'peer-1', ME);
+  });
+
+  it('names the agents the service names for that person, and adds no total', async () => {
+    const { tool } = harness();
+
+    const text = textOf(await tool.listRanchAgents({}, null, agentRequest()));
+
+    expect(JSON.parse(text)).toEqual([
+      { id: 'agent-b', name: 'Skyhunter', status: 'running', connected: false },
+    ]);
+  });
+
+  it('answers an agent the person does not reach as one that does not exist', async () => {
+    const { tool, peers } = harness();
+    peers.connect.mockRejectedValue(
+      new NotFoundException({
+        code: PeerErrorCodes.NotFound,
+        message: 'Agent not found',
+      }),
+    );
+
+    const result = await tool.connectMyPeer(
+      { peerAgentId: 'agent-hidden' },
+      null,
+      agentRequest(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe(
+      'Agent not found Check the ids with list_my_peers.',
+    );
+  });
+
+  it('says whose an outside colleague is: the person’s own, or everybody’s', async () => {
+    const { tool, peers } = harness();
+
+    peers.connectByUrl.mockResolvedValue(
+      view({ owner: { id: 'user-1', name: 'Uma User' } }),
+    );
+    const mine = textOf(
+      await tool.importMyPeerByAddress(
+        { url: 'https://other.example' },
+        null,
+        agentRequest(),
+      ),
+    );
+    expect(mine).toMatch(/this person’s own colleague/);
+    expect(mine).toMatch(/only in your conversations with them/);
+
+    peers.connectByUrl.mockResolvedValue(view({ owner: null }));
+    const shared = textOf(
+      await tool.importMyPeerByAddress(
+        { url: 'https://other.example' },
+        null,
+        agentRequest(),
+      ),
+    );
+    expect(shared).toMatch(/serves everybody who talks to you/);
+  });
+
+  it('tells the person a colleague is not theirs to drop', async () => {
+    const { tool, peers } = harness();
+    peers.remove.mockRejectedValue(
+      new ForbiddenException({
+        code: PeerErrorCodes.Forbidden,
+        message: 'This connection can be changed by the person who made it.',
+      }),
+    );
+
+    const result = await tool.removeMyPeer(
+      { peerId: 'peer-1', confirm: true },
+      null,
+      agentRequest(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/not theirs to remove/);
   });
 });

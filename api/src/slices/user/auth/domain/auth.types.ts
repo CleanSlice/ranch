@@ -28,10 +28,17 @@ export interface IAuthTokenPayload {
    * refuses it, and only the MCP tool layer reads it, from the call's
    * `_meta`, never from the `Authorization` header.
    */
-  typ?: 'embed' | 'acting';
   /**
-   * Acting tokens only: `agent:<id>` of the one agent the token was minted
-   * for. A token carried to another agent's runtime is refused.
+   * `'handover'` on the token that travels with a question one agent hands
+   * to another (CLEAN-236, `agent/peer/domain/handover.ts`). Like an acting
+   * token it is read from a tool call's `_meta` and from the A2A message it
+   * arrives in, and every verifier of a bearer refuses it.
+   */
+  typ?: 'embed' | 'acting' | 'handover';
+  /**
+   * Acting and hand-over tokens only: `agent:<id>` of the one agent the
+   * token was minted for. A token carried to another agent's runtime is
+   * refused.
    */
   aud?: string;
 }
@@ -43,6 +50,25 @@ export function isEmbedToken(payload: unknown): boolean {
     payload !== null &&
     (payload as { typ?: unknown }).typ === 'embed'
   );
+}
+
+/** True for a verified payload that `HandoverService.mint` produced. */
+export function isHandoverToken(payload: unknown): boolean {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    (payload as { typ?: unknown }).typ === 'handover'
+  );
+}
+
+/**
+ * True for a token that speaks from inside a tool call and nowhere else: an
+ * acting token or a hand-over token. Every verifier of an `Authorization`
+ * bearer asks this and refuses, so neither is ever worth anything as a
+ * credential of its own.
+ */
+export function isCallToken(payload: unknown): boolean {
+  return isActingToken(payload) || isHandoverToken(payload);
 }
 
 /** True for a verified payload that `ActingPartyService.mint` produced. */
@@ -63,11 +89,26 @@ export function isActingToken(payload: unknown): boolean {
  *   the person's own console token. The role is the one in the database.
  * - `trusted`: the agent speaking for itself (a scheduled job, an
  *   administrator its own configuration names). Bounded by the agent's token.
+ * - `peer`: another agent's question, handed over through a connection
+ *   (CLEAN-236), proven by a hand-over token the API signed. It has a
+ *   guest's power: it manages and configures nothing. What it adds is the
+ *   chain of agents the question came through and, when a person started
+ *   that chain, who: `forUserId` decides which further colleagues may be
+ *   asked, and grants nothing else.
  * - `guest`: everyone else, and every call that names nobody.
  */
 export type ICallerParty =
   | { kind: 'person'; userId: string; role: UserRoleTypes }
   | { kind: 'trusted' }
+  | {
+      kind: 'peer';
+      /** Every agent the question has passed, the asking one last. */
+      chain: string[];
+      /** The connection it arrived through. */
+      connectionId: string;
+      /** The person the chain was started for, when there is one. */
+      forUserId?: string;
+    }
   | { kind: 'guest' };
 
 /** The roles a person can hold. `Agent` is not one. */

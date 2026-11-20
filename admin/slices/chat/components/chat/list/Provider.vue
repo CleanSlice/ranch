@@ -11,6 +11,7 @@ import {
   IconRobot,
   IconSearch,
   IconShield,
+  IconUser,
 } from '@tabler/icons-vue';
 import type { Component } from 'vue';
 import type { ChatChannel, IChatSession } from '#chat/stores/chat';
@@ -128,6 +129,9 @@ function tile(c: string) {
 
 const userIcon: Partial<Record<string, Component>> = {
   admin: IconShield,
+  // A signed-in person by name, and another agent's question (CLEAN-236).
+  person: IconUser,
+  peer: IconRobot,
   share: IconLink,
   internal: IconRobot,
 };

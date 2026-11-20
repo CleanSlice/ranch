@@ -110,3 +110,64 @@ describe('labels', () => {
     expect(chatCountLabel(10)).toBe('10 chats');
   });
 });
+
+// CLEAN-236. `admin` was one conversation of every Owner and Admin. It is
+// the Owner's now, an Admin's is under their own id, and the API names both.
+describe('chatUser — signed-in people and other agents', () => {
+  test('the Owner’s conversation is the Owner’s, by name', () => {
+    expect(
+      chatUser(
+        session({
+          id: 'c',
+          externalUserId: 'admin',
+          person: { name: 'Olga Owner', role: 'Owner' },
+        }),
+      ),
+    ).toEqual({ kind: 'person', label: 'Olga Owner', id: 'Owner', fullId: 'admin' });
+  });
+
+  test('an Admin’s conversation is under their name, not a row of ids', () => {
+    const user = chatUser(
+      session({
+        id: 'c',
+        externalUserId: 'user-8c10214e-aaaa-bbbb-cccc-000000000000',
+        person: { name: 'Adam Admin', role: 'Admin' },
+      }),
+    );
+    expect([user.kind, user.label, user.id]).toEqual(['person', 'Adam Admin', 'Admin']);
+  });
+
+  test('a User’s too, with no role beside it', () => {
+    const user = chatUser(
+      session({ id: 'c', externalUserId: 'user-1', person: { name: 'Uma', role: 'User' } }),
+    );
+    expect([user.kind, user.label, user.id]).toEqual(['person', 'Uma', '']);
+  });
+
+  test('an account that is gone is said to be gone', () => {
+    expect(
+      chatUser(
+        session({ id: 'c', externalUserId: 'user-1', person: { name: null, role: null } }),
+      ).label,
+    ).toBe('Removed account');
+  });
+
+  test('another agent’s question is named when the API named it, and is a colleague otherwise', () => {
+    expect(
+      chatUser(
+        session({ id: 'c', externalUserId: 'peer:conn-1:ctx-1', peer: { name: 'Front Desk' } }),
+      ),
+    ).toEqual({ kind: 'peer', label: 'Front Desk', id: '', fullId: '' });
+    expect(
+      chatUser(session({ id: 'c', externalUserId: 'peer:conn-1:ctx-1', peer: { name: null } })),
+    ).toEqual({ kind: 'peer', label: 'Colleague', id: '', fullId: '' });
+  });
+
+  test('never shows the id of a conversation another agent handed over, the old kind included', () => {
+    // Before CLEAN-236 the id held the asking agent's own id.
+    const user = chatUser(session({ id: 'c', externalUserId: 'peer:agent-74c579f3:ctx-1' }));
+    expect(user).toEqual({ kind: 'peer', label: 'Colleague', id: '', fullId: '' });
+    expect(JSON.stringify(user)).not.toContain('agent-74c579f3');
+  });
+});
+

@@ -1,5 +1,6 @@
 // The generated SDK class is also named `AuthService`; alias it to `AuthApi`
 // so it doesn't collide with the domain service of the same name.
+import { RANCH_CONSOLE_HEADERS } from '#api/console';
 import { AuthService as AuthApi } from '#api';
 import { BaseGateway } from '#common/data/BaseGateway';
 import { unwrapEnvelope } from '#common/data/unwrapEnvelope';
@@ -30,6 +31,7 @@ export class AuthGateway extends BaseGateway implements IAuthGateway {
   login(email: string, password: string): Promise<IAuthSession> {
     return this.execute(async () => {
       const res = await AuthApi.authControllerLogin({
+        headers: RANCH_CONSOLE_HEADERS,
         body: { email, password },
         throwOnError: true,
       });
@@ -44,6 +46,7 @@ export class AuthGateway extends BaseGateway implements IAuthGateway {
   ): Promise<IAuthSession> {
     return this.execute(async () => {
       const res = await AuthApi.authControllerRegister({
+        headers: RANCH_CONSOLE_HEADERS,
         body: { name, email, password },
         throwOnError: true,
       });
@@ -56,14 +59,16 @@ export class AuthGateway extends BaseGateway implements IAuthGateway {
   // code, which the error mapper keeps on the thrown entity for the store.
   refresh(): Promise<IAuthSession> {
     return this.execute(async () => {
-      const res = await AuthApi.authControllerRefresh({ throwOnError: true });
+      const res = await AuthApi.authControllerRefresh({
+        headers: RANCH_CONSOLE_HEADERS, throwOnError: true });
       return this.mapper.toSession(unwrapEnvelope(res.data));
     });
   }
 
   logout(): Promise<void> {
     return this.execute(async () => {
-      await AuthApi.authControllerLogout({ throwOnError: true });
+      await AuthApi.authControllerLogout({
+        headers: RANCH_CONSOLE_HEADERS, throwOnError: true });
     });
   }
 }

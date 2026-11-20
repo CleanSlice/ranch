@@ -174,6 +174,12 @@ export interface IA2aTaskStatus {
  */
 export interface IRanchTaskMetadata {
   chain: string[];
+  /**
+   * The hand-over token of the question (CLEAN-236, `handover.ts`): what the
+   * receiving side reads the chain and the connection from. `chain` beside
+   * it is for display, and for a caller that predates the token.
+   */
+  pass?: string;
   reason?: string;
   rejection?: 'loop' | 'depth';
   failure?: 'not_running' | 'timeout';

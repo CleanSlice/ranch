@@ -1,6 +1,6 @@
 {
   "name": "ranch",
-  "version": "0.3.92",
+  "version": "0.3.93",
   "private": true,
   "packageManager": "bun@1.4.4",
   "workspaces": [
@@ -17,6 +17,7 @@
     "dev:api": "turbo dev --filter=api",
     "dev:app": "turbo dev --filter=app",
     "dev:admin": "turbo dev --filter=admin",
+    "env:pull": "bun scripts/env-pull.ts",
     "i18n:sync": "bun scripts/i18n-sync.ts",
     "i18n:check": "bun scripts/i18n-sync.ts --check",
     "locale:check": "bun scripts/locale-check.ts",

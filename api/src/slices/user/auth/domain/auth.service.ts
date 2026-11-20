@@ -12,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { ISettingGateway } from '#/setting/domain';
 import { SessionService } from '#/user/session/domain/session.service';
+import type { SessionSurface } from '#/user/session/domain/session.types';
 import { isReservedClientId } from '#/bridle/domain/chatIdentity';
 import { UserMapper } from '../../user/data/user.mapper';
 import { IUserData, UserRoleTypes } from '../../user/domain';
@@ -68,6 +69,7 @@ export class AuthService {
   async login(
     email: string,
     password: string,
+    surface: SessionSurface | null,
     userAgent?: string | null,
   ): Promise<IAuthSessionResult> {
     const record = await this.prisma.user.findUnique({
@@ -96,13 +98,14 @@ export class AuthService {
     // Bounded housekeeping instead of a scheduler (research R7).
     await this.sessions.pruneForUser(current.id).catch(() => 0);
 
-    return this.issueSession(this.mapper.toEntity(current), userAgent);
+    return this.issueSession(this.mapper.toEntity(current), surface, userAgent);
   }
 
   async register(
     name: string,
     email: string,
     password: string,
+    surface: SessionSurface | null,
     userAgent?: string | null,
   ): Promise<IAuthSessionResult> {
     const enabled = await this.isRegistrationEnabled();
@@ -131,7 +134,7 @@ export class AuthService {
       },
     });
 
-    return this.issueSession(this.mapper.toEntity(created), userAgent);
+    return this.issueSession(this.mapper.toEntity(created), surface, userAgent);
   }
 
   async me(userId: string): Promise<IUserData> {
@@ -147,10 +150,16 @@ export class AuthService {
    * Renew the access token from the session cookie alone — works whether or
    * not the previous access token has expired. Slides the session's
    * inactivity window; keeps the same secret (no rotation, research §3.2).
+   * `surface` is the console renewing: only its own sign-in is renewed.
    */
-  async refresh(secret: string): Promise<IAuthSessionResult> {
-    const { session, cookieMaxAgeSeconds } =
-      await this.sessions.refresh(secret);
+  async refresh(
+    secret: string,
+    surface: SessionSurface,
+  ): Promise<IAuthSessionResult> {
+    const { session, cookieMaxAgeSeconds } = await this.sessions.refresh(
+      secret,
+      surface,
+    );
 
     const record = await this.prisma.user.findUnique({
       where: { id: session.userId },
@@ -169,20 +178,24 @@ export class AuthService {
   }
 
   /** Revoke the session behind the cookie. False when nothing live matched. */
-  async logout(secret: string): Promise<boolean> {
-    return this.sessions.revoke(secret);
+  async logout(secret: string, surface: SessionSurface): Promise<boolean> {
+    return this.sessions.revoke(secret, surface);
   }
 
   /**
    * The single console-token minter: creates the server-side session and
    * signs an access token bound to it. Used by login, register and the
-   * first-run owner bootstrap.
+   * first-run owner bootstrap. `surface` is the console the sign-in is
+   * made in, and the only one that can renew it (CLEAN-236). Null when no
+   * console is signing in: the caller then gets the access token and no
+   * cookie, which is what a script that logs in for a token always wanted.
    */
   async issueSession(
     user: IUserData,
+    surface: SessionSurface | null,
     userAgent?: string | null,
   ): Promise<IAuthSessionResult> {
-    const issue = await this.sessions.create(user.id, userAgent);
+    const issue = await this.sessions.create(user.id, surface, userAgent);
     return {
       accessToken: await this.sign(user, issue.sessionId),
       expiresIn: this.jwtExpiresInSeconds(),

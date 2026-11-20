@@ -11,6 +11,7 @@ import {
   SESSION_COOKIE_PATH,
   SESSION_SECRET_BYTES,
   SESSION_SECRET_PREFIX,
+  type SessionSurface,
 } from './session.types';
 
 const DAY_MS = 86_400_000;
@@ -52,8 +53,14 @@ export class SessionService {
     };
   }
 
+  /**
+   * `surface`: the console the person is signing in to (CLEAN-236), or null
+   * when no console is: the session then backs one access token and can be
+   * renewed by nobody.
+   */
   async create(
     userId: string,
+    surface: SessionSurface | null,
     userAgent?: string | null,
   ): Promise<ISessionIssue> {
     const { idleDays, absoluteDays } = this.config();
@@ -65,6 +72,7 @@ export class SessionService {
       expiresAt: new Date(now + idleDays * DAY_MS),
       absoluteExpiresAt: new Date(now + absoluteDays * DAY_MS),
       userAgent: userAgent ? userAgent.slice(0, 256) : null,
+      surface,
     });
     return {
       sessionId: session.id,
@@ -77,14 +85,24 @@ export class SessionService {
    * Validate the cookie secret and slide the inactivity window. Throws a 401
    * with a `SESSION_*` code; the reasons are separated for logs, but a caller
    * cannot tell "unknown" from "revoked" beyond expired-vs-invalid.
+   *
+   * `surface` is the console that is renewing. A session made in the other
+   * console is not this one's to renew, and neither is one from before a
+   * session recorded its console: both are an invalid session, checked
+   * before anything about the session is said (CLEAN-236).
    */
-  async refresh(secret: string): Promise<ISessionRefreshResult> {
+  async refresh(
+    secret: string,
+    surface: SessionSurface,
+  ): Promise<ISessionRefreshResult> {
     if (!secret) throw unauthorized(AuthErrorCodes.SessionMissing);
     if (!secret.startsWith(SESSION_SECRET_PREFIX)) {
       throw unauthorized(AuthErrorCodes.SessionInvalid);
     }
     const found = await this.gateway.findByHash(this.hash(secret));
-    if (!found) throw unauthorized(AuthErrorCodes.SessionInvalid);
+    if (!found || found.surface !== surface) {
+      throw unauthorized(AuthErrorCodes.SessionInvalid);
+    }
     if (!this.isLive(found)) throw unauthorized(AuthErrorCodes.SessionExpired);
 
     const { idleDays } = this.config();
@@ -95,11 +113,15 @@ export class SessionService {
     return { session, cookieMaxAgeSeconds: this.idleSeconds(idleDays) };
   }
 
-  /** Revoke the session behind a cookie secret. False when nothing live matched. */
-  async revoke(secret: string): Promise<boolean> {
+  /**
+   * Revoke the session behind a cookie secret. False when nothing live
+   * matched, and a session of the other console is not a match: signing out
+   * of one console ends that console's sign-in only (CLEAN-236).
+   */
+  async revoke(secret: string, surface: SessionSurface): Promise<boolean> {
     if (!secret || !secret.startsWith(SESSION_SECRET_PREFIX)) return false;
     const found = await this.gateway.findByHash(this.hash(secret));
-    if (!found || found.revokedAt) return false;
+    if (!found || found.revokedAt || found.surface !== surface) return false;
     await this.gateway.revoke(found.id);
     return true;
   }

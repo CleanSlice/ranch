@@ -189,6 +189,38 @@ export class AgentReach {
 
   static readonly ALL = new AgentReach(null);
 
+  /**
+   * This reach with some agents taken out of it, whatever the lists say. For
+   * a question that is narrower than "may they use the agent": the
+   * conversations of an agent only the Owner manages are not an Admin's to
+   * read because they may talk to it (CLEAN-236).
+   */
+  without(agentIds: readonly string[]): AgentReach {
+    if (agentIds.length === 0) return this;
+    const entry =
+      (list: IAgentAccessEntry['list']) =>
+      (agentId: string): IAgentAccessEntry => ({ agentId, list });
+    // The assistant is asked before the lists (CLEAN-240), so taking it out
+    // has to be said to its switch: a denied entry alone would not hide it.
+    const assistant = this.assistant
+      ? {
+          id: this.assistant.id,
+          enabled:
+            this.assistant.enabled && !agentIds.includes(this.assistant.id),
+        }
+      : null;
+    return new AgentReach(
+      {
+        limited: this.allowed !== null,
+        entries: [
+          ...[...this.denied, ...agentIds].map(entry('denied')),
+          ...[...(this.allowed ?? [])].map(entry('allowed')),
+        ],
+      },
+      assistant,
+    );
+  }
+
   /** True when no agent is hidden from this caller. */
   get unrestricted(): boolean {
     return (

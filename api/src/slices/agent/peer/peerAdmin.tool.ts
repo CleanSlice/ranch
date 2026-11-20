@@ -1,19 +1,24 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
   callerManagesAgents,
+  callerPerson,
   CONFIRM_SENTENCE,
   confirmed,
   manageCaller,
+  PERSON_REFUSAL,
 } from '#/mcp/tooling';
 import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { PeerService } from './domain/peer.service';
-import { AgentCardService } from './domain/agentCard.service';
-import { IDelegationGateway } from './domain/delegation.gateway';
 import { PeerErrorCodes } from './domain/peer.types';
 import {
   advertises,
@@ -58,9 +63,18 @@ const MAX_DELEGATION_LIMIT = 100;
  * below). A plain agent's token manages nothing, so the invariant above
  * holds as before. The Ranch admin agent's own peers are the Owner's.
  *
- * A connection has two ends, and both are checked: `connect_agent_peer` and
- * `preview_agent_card` with a `peerAgentId` need the caller to manage that
- * agent as well, and `list_peer_candidates` offers only such agents.
+ * A connection has two ends (CLEAN-236). The agent that asks is the one the
+ * caller must manage. The other end is asked about in `PeerService`, by the
+ * one rule every entry point shares (`peerAccess.ts`): a connection to an
+ * agent of this Ranch exists for a person only when they reach that agent.
+ * So these tools list, connect, re-read and remove only what the person the
+ * call is made for may see, and a peer they do not reach answers as one that
+ * does not exist.
+ *
+ * A person is required. The Ranch admin agent on its own schedule holds
+ * operator power and used to run these for itself; a turn nobody asked for
+ * has no person whose reach could be asked, so it changes and inspects
+ * nobody's peers.
  */
 @ToolAudience('manage-agent')
 @Injectable()
@@ -69,13 +83,13 @@ export class PeerAdminTool implements IConditionallyListedTool {
 
   constructor(
     private readonly peers: PeerService,
-    private readonly cards: AgentCardService,
-    private readonly delegations: IDelegationGateway,
     private readonly permission: AgentPermissionService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return Promise.resolve(callerManagesAgents(httpRequest));
+    return Promise.resolve(
+      callerManagesAgents(httpRequest) && callerPerson(httpRequest) !== null,
+    );
   }
 
   // ─── Reading ─────────────────────────────────────────────────────────
@@ -88,9 +102,11 @@ export class PeerAdminTool implements IConditionallyListedTool {
     template: 'Which peers does the agent «name» have?',
     description:
       'Who an agent can delegate to: every peer connected to it, what each ' +
-      "peer's card advertises, and whether the running pod has actually " +
-      'loaded that set. Directed — it never lists agents that can delegate TO ' +
-      'this one. Read this before connecting or removing anything.',
+      "peer's card advertises, who connected it, whom it serves, and " +
+      'whether the running pod has actually loaded that set. Directed — it ' +
+      'never lists agents that can delegate TO this one. A peer the person ' +
+      'has no access to is not listed. Read this before connecting or ' +
+      'removing anything.',
     parameters: z.object({
       agentId: z
         .string()
@@ -104,7 +120,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     return this.guard(httpRequest, agentId, async () => {
       const [peers, state] = await Promise.all([
-        this.peers.list(agentId),
+        this.peers.list(agentId, manageCaller(httpRequest)),
         this.peers.peersState(agentId),
       ]);
       return ok({
@@ -128,9 +144,10 @@ export class PeerAdminTool implements IConditionallyListedTool {
     title: 'Agents that can become peers',
     template: 'Which agents could «name» delegate to?',
     description:
-      'Agents of this Ranch that could become peers of the given agent, each ' +
-      'marked with whether it already is one. Use it to turn a name the ' +
-      'person said into the id connect_agent_peer needs.',
+      'Agents of this Ranch that could become peers of the given agent: the ' +
+      'ones the person has access to, each marked with whether it already ' +
+      'is one. Use it to turn a name the person said into the id ' +
+      'connect_agent_peer needs.',
     parameters: z.object({
       agentId: z.string().describe('The agent that would do the delegating'),
     }),
@@ -140,15 +157,10 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    return this.guard(httpRequest, agentId, async () => {
-      // Only agents the caller could connect (see `guardPeer`).
-      const caller = manageCaller(httpRequest);
-      const all = await this.peers.candidates(agentId, caller);
-      const allowed = await Promise.all(
-        all.map((c) => this.permission.manageable(caller, c.id)),
-      );
-      return ok(all.filter((_, i) => allowed[i] !== null));
-    });
+    return this.guard(httpRequest, agentId, async () =>
+      // Only agents the person could connect: the ones they reach.
+      ok(await this.peers.candidates(agentId, manageCaller(httpRequest))),
+    );
   }
 
   @Tool({
@@ -201,14 +213,17 @@ export class PeerAdminTool implements IConditionallyListedTool {
     if (Boolean(peerAgentId) === Boolean(url)) {
       return err('Pass exactly one of peerAgentId (this Ranch) or url.');
     }
-    return this.guard(httpRequest, agentId, async () => {
-      if (peerAgentId) await this.guardPeer(httpRequest, peerAgentId);
-      return ok(
+    return this.guard(httpRequest, agentId, async () =>
+      ok(
         peerAgentId
-          ? await this.cards.build(peerAgentId)
+          ? await this.peers.previewAgent(
+              agentId,
+              peerAgentId,
+              manageCaller(httpRequest),
+            )
           : await this.peers.previewByUrl(agentId, url!, credential),
-      );
-    });
+      ),
+    );
   }
 
   @Tool({
@@ -221,7 +236,8 @@ export class PeerAdminTool implements IConditionallyListedTool {
       'What this agent recently handed to its peers: the task, the peer it ' +
       'picked, the reason it gave, how it ended and an excerpt of the reply. ' +
       'This is the evidence for "did it actually ask anyone" — read it before ' +
-      'concluding that delegation is broken.',
+      'concluding that delegation is broken. Tasks handed to a peer the ' +
+      'person has no access to are not listed.',
     parameters: z.object({
       agentId: z.string(),
       limit: z
@@ -240,8 +256,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     return this.guard(httpRequest, agentId, async () =>
       ok(
-        await this.delegations.listRecent(
+        await this.peers.recentDelegations(
           agentId,
+          manageCaller(httpRequest),
           limit ?? DEFAULT_DELEGATION_LIMIT,
         ),
       ),
@@ -261,7 +278,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
       'mints a credential for exactly this pair and saves the connection. ' +
       'Directed — the peer gains nothing in return; connect the other way too ' +
       'if both should be able to ask. Nothing is saved if the card cannot be ' +
-      'read. The agent picks the peer up only on its next restart.',
+      'read. The peer then serves the people who have access to it; ' +
+      'set_agent_peer_visitors opens it to everybody who talks to the ' +
+      'agent. The agent picks the peer up only on its next restart.',
     parameters: z.object({
       agentId: z.string().describe('The agent that will be doing the asking'),
       peerAgentId: z.string().describe('The agent it will be able to ask'),
@@ -273,8 +292,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
     httpRequest: Request,
   ): Promise<ToolResult> {
     return this.guard(httpRequest, agentId, async () => {
-      await this.guardPeer(httpRequest, peerAgentId);
-      const hadPeers = (await this.peers.list(agentId)).length > 0;
+      const hadPeers = await this.hadPeers(httpRequest, agentId);
       const peer = await this.peers.connect(
         agentId,
         peerAgentId,
@@ -328,8 +346,13 @@ export class PeerAdminTool implements IConditionallyListedTool {
     httpRequest: Request,
   ): Promise<ToolResult> {
     return this.guard(httpRequest, agentId, async () => {
-      const hadPeers = (await this.peers.list(agentId)).length > 0;
-      const peer = await this.peers.connectByUrl(agentId, url, credential);
+      const hadPeers = await this.hadPeers(httpRequest, agentId);
+      const peer = await this.peers.connectByUrl(
+        agentId,
+        url,
+        credential,
+        manageCaller(httpRequest),
+      );
       this.logger.log(
         `External peer imported through MCP: agent=${agentId} url=${peer.cardUrl}`,
       );
@@ -380,8 +403,13 @@ export class PeerAdminTool implements IConditionallyListedTool {
     httpRequest: Request,
   ): Promise<ToolResult> {
     return this.guard(httpRequest, agentId, async () => {
-      const hadPeers = (await this.peers.list(agentId)).length > 0;
-      const peer = await this.peers.connectByCard(agentId, card, credential);
+      const hadPeers = await this.hadPeers(httpRequest, agentId);
+      const peer = await this.peers.connectByCard(
+        agentId,
+        card,
+        credential,
+        manageCaller(httpRequest),
+      );
       this.logger.log(
         `Peer imported from a pasted card through MCP: agent=${agentId} url=${peer.cardUrl}`,
       );
@@ -417,7 +445,11 @@ export class PeerAdminTool implements IConditionallyListedTool {
     httpRequest: Request,
   ): Promise<ToolResult> {
     return this.guard(httpRequest, agentId, async () => {
-      const peer = await this.peers.refresh(agentId, peerId);
+      const peer = await this.peers.refresh(
+        agentId,
+        peerId,
+        manageCaller(httpRequest),
+      );
       return ok(
         `Card re-read for «${peer.peerName}» (${peer.cardReadAt}). ${advertises(peer)} ` +
           `${agentId} reads peer descriptions when it starts, so the new text ` +
@@ -460,7 +492,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
     );
     if (refusal) return refusal;
     return this.guard(httpRequest, agentId, async () => {
-      await this.peers.remove(agentId, peerId);
+      await this.peers.remove(agentId, peerId, manageCaller(httpRequest));
       this.logger.log(
         `Peer removed through MCP: agent=${agentId} connection=${peerId}`,
       );
@@ -472,11 +504,90 @@ export class PeerAdminTool implements IConditionallyListedTool {
     });
   }
 
+  @Tool({
+    name: 'set_agent_peer_visitors',
+    topic: ToolTopics.Peers,
+    effect: 'write',
+    title: 'Open a peer to visitors',
+    template: 'Open the peer «peer» of «name» to visitors',
+    destructive: true,
+    description:
+      'Decide whom a peer of this Ranch serves through the given agent. ' +
+      'Closed (the default): the people who have access to the peer ' +
+      'themselves. Open: everybody who talks to the agent, people with no ' +
+      'access to the peer and anonymous visitors included; to them it is ' +
+      'shown as "a colleague", without its name. Opening publishes the peer, ' +
+      'so the person must manage both agents. Not for a peer outside the ' +
+      'Ranch. ' +
+      CONFIRM_SENTENCE,
+    parameters: z.object({
+      agentId: z.string().describe('The agent that does the asking'),
+      peerId: z
+        .string()
+        .describe('Connection id from list_agent_peers (not the agent id)'),
+      open: z
+        .boolean()
+        .describe('true to open it to visitors, false to close it again'),
+      confirm: z
+        .boolean()
+        .describe('Set true only after the person confirmed in the chat.'),
+    }),
+  })
+  async setAgentPeerVisitors(
+    args: { agentId: string; peerId: string; open: boolean; confirm?: boolean },
+    _context: unknown,
+    httpRequest: Request,
+  ): Promise<ToolResult> {
+    const { agentId, peerId, open } = args;
+    const refusal = confirmed(
+      args,
+      open
+        ? `let everybody who talks to agent ${agentId}, visitors included, be served by its peer ${peerId}`
+        : `close peer ${peerId} of agent ${agentId} to visitors, so that it serves only the people who have access to it`,
+    );
+    if (refusal) return refusal;
+    return this.guard(httpRequest, agentId, async () => {
+      const peer = await this.peers.setVisitors(
+        agentId,
+        peerId,
+        open,
+        manageCaller(httpRequest),
+      );
+      this.logger.log(
+        `Peer ${open ? 'opened to' : 'closed to'} visitors through MCP: agent=${agentId} connection=${peerId}`,
+      );
+      return ok(
+        open
+          ? `«${peer.peerName}» now serves everybody who talks to ${agentId}, ` +
+              'and is shown without its name to those who have no access to it.'
+          : `«${peer.peerName}» now serves only the people who have access ` +
+              `to it through ${agentId}.`,
+      );
+    });
+  }
+
+  /**
+   * Whether the agent has a peer already, as far as this person can see:
+   * what decides the restart advice of a connect. Asked through the same
+   * rule as everything else, so a peer hidden from them is not given away by
+   * the wording of the reply.
+   */
+  private async hadPeers(
+    httpRequest: Request,
+    agentId: string,
+  ): Promise<boolean> {
+    return (
+      (await this.peers.list(agentId, manageCaller(httpRequest))).length > 0
+    );
+  }
+
   /**
    * Every tool here acts for one agent, the one doing the asking. The call
-   * goes ahead only when the caller may manage that agent (CLEAN-232); for
-   * one they may not, it fails exactly as it does for an agent that does not
-   * exist, through the same refusal advice, so the two cannot be told apart.
+   * goes ahead only for a person (see the class comment) who may manage that
+   * agent (CLEAN-232); for one they may not, it fails exactly as it does for
+   * an agent that does not exist, through the same refusal advice, so the
+   * two cannot be told apart. The peer at the other end is `PeerService`'s
+   * to ask about.
    */
   private guard(
     httpRequest: Request,
@@ -484,6 +595,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
     run: () => Promise<ToolResult>,
   ): Promise<ToolResult> {
     return withRefusalAdvice(async () => {
+      if (callerPerson(httpRequest) === null) {
+        throw new ForbiddenException(PERSON_REFUSAL);
+      }
       const agent = await this.permission.manageable(
         manageCaller(httpRequest),
         agentId,
@@ -496,29 +610,6 @@ export class PeerAdminTool implements IConditionallyListedTool {
       }
       return run();
     }, hintsFor(httpRequest));
-  }
-
-  /**
-   * The other end of a connection: the agent that would be asked. The caller
-   * must be able to manage it too, or an Admin could give an agent of theirs
-   * a line to the Ranch admin agent, which acts with Owner power. Called
-   * inside `guard`, so it fails through the same refusal advice and reads
-   * exactly like an agent that does not exist.
-   */
-  private async guardPeer(
-    httpRequest: Request,
-    peerAgentId: string,
-  ): Promise<void> {
-    const peer = await this.permission.manageable(
-      manageCaller(httpRequest),
-      peerAgentId,
-    );
-    if (!peer) {
-      throw new NotFoundException({
-        code: PeerErrorCodes.NotFound,
-        message: 'Agent not found',
-      });
-    }
   }
 }
 
@@ -535,6 +626,9 @@ function hintsFor(httpRequest: Request): RefusalHints {
       'Call list_peer_candidates and connect it with connect_agent_peer instead.',
     [PeerErrorCodes.Exists]:
       'It is already connected — list_agent_peers shows it.',
+    [PeerErrorCodes.Forbidden]:
+      'It is listed for this person, and it is not theirs to change. Tell ' +
+      'them who can: whoever connected it, or the Ranch owner.',
     [PeerErrorCodes.NotFound]: callerIsOperator(httpRequest)
       ? 'Check the ids with list_agents and list_agent_peers.'
       : 'There is no such agent or connection among the ones this person ' +

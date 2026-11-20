@@ -12,7 +12,10 @@ import {
 import { ApiExcludeController } from '@nestjs/swagger';
 import { RawResponse } from '#/setup/error/rawResponse.decorator';
 import { AgentCardService } from './domain/agentCard.service';
-import { A2aServerService } from './domain/a2a.server.service';
+import {
+  A2aServerService,
+  type IInboundPeer,
+} from './domain/a2a.server.service';
 import {
   A2A_VERSION,
   A2aErrorCodes,
@@ -98,11 +101,13 @@ export class A2aController {
         );
       }
 
+      // `A2aPeerGuard` set it, or the request never got here.
+      const peer = request.peer ?? { peerId: '', callerAgentId: '' };
       const result = await this.dispatch(
         envelope.method,
         envelope.params,
         agentId,
-        request.peer?.callerAgentId ?? '',
+        peer,
       );
       return { jsonrpc: '2.0', id, result };
     } catch (err) {
@@ -114,25 +119,25 @@ export class A2aController {
     method: string,
     params: unknown,
     agentId: string,
-    callerAgentId: string,
+    peer: IInboundPeer,
   ): Promise<unknown> {
     switch (method) {
       case A2aMethods.SendMessage: {
         const task = await this.server.sendMessage(
           agentId,
-          callerAgentId,
+          peer,
           params as never,
         );
         return { task };
       }
       case A2aMethods.GetTask: {
-        return { task: this.server.getTask(params as never) };
+        return { task: this.server.getTask(params as never, peer) };
       }
       case A2aMethods.CancelTask: {
         const id = (params as { id?: string } | undefined)?.id ?? '';
         // Telling a caller "cannot be cancelled" about a task that does not
         // exist would send it looking for a task it never had.
-        throw this.server.knowsTask(id)
+        throw this.server.knowsTask(id, peer)
           ? new A2aRpcError(
               A2aErrorCodes.TaskNotCancelable,
               'This agent answers synchronously; a task is over by the time you hold it',

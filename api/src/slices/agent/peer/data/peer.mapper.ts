@@ -23,6 +23,12 @@ export class PeerMapper {
       cardSnapshot: record.cardSnapshot as unknown as IA2aAgentCard,
       cardUrl: record.cardUrl,
       cardReadAt: record.cardReadAt.toISOString(),
+      createdById: record.createdById,
+      openToVisitors: record.openToVisitors,
+      openedById: record.openedById,
+      openedAt: record.openedAt ? record.openedAt.toISOString() : null,
+      ownerUserId: record.ownerUserId,
+      needsReview: record.needsReview,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };

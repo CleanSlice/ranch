@@ -1,3 +1,4 @@
+import { clientIdFromJwtPayload } from '#/bridle/domain/chatIdentity';
 import {
   Body,
   Controller,
@@ -158,14 +159,14 @@ export class MyChatController {
 
     // End users never get the model-facing text, only what they typed.
     const page = TranscriptReaderService.page(all, q.cursor, q.limit ?? 50);
-    // `admin` here comes from the token's roles (ownExternalId), not from
-    // anything the caller typed; it is the same test requireOwned applies.
+    // Both come from the token (ownExternalId, isAdmin), not from anything
+    // the caller typed; the first is the same test requireOwned applies.
     const viewer = this.ownExternalId(req);
     return {
       ...page,
       messages: await this.sources.attach(
         TranscriptReaderService.withoutAgentText(page.messages),
-        { clientId: viewer, isAdmin: viewer === 'admin' },
+        { clientId: viewer, isAdmin: this.isAdmin(req) },
       ),
     };
   }
@@ -213,7 +214,7 @@ export class MyChatController {
       comment: dto.comment,
       source: APP_FEEDBACK_SOURCE,
       // authorId is the caller's real user id (`sub`), NOT the resolved channel
-      // id — two admins on the shared 'admin' channel are still distinct authors.
+      // id: the Owner's channel is `admin`, and the author is still a person.
       authorId: this.requireSub(req),
     });
   }
@@ -292,18 +293,25 @@ export class MyChatController {
 
   /**
    * The caller's OWN bridle identity — the exact value their chats are keyed
-   * under (ChatSession.externalUserId / `bridle:<id>`). Mirrors the bridle
-   * client handler + HTTP resolveClientId: owners/admins collapse to the shared
-   * `admin` channel; everyone else is their JWT `sub`. Keep these in lockstep —
-   * if they diverge, "my history" silently shows nothing.
+   * under (ChatSession.externalUserId / `bridle:<id>`). It is whatever the
+   * bridle hub gives the same token, by the same function
+   * (`clientIdFromJwtPayload`): `admin` for the Owner, the JWT `sub` for
+   * everyone else, an Admin included since CLEAN-236. One function, so the
+   * two cannot diverge; when they did, "my history" silently showed nothing.
    */
   private ownExternalId(req: AuthedRequest): string {
-    const sub = this.requireSub(req);
+    const identity = clientIdFromJwtPayload(
+      req.user as unknown as Record<string, unknown>,
+    );
+    return identity?.clientId ?? this.requireSub(req);
+  }
+
+  /** Whether the caller's token carries an administrator's role. */
+  private isAdmin(req: AuthedRequest): boolean {
     const roles = req.user?.roles ?? [];
-    const isAdmin =
-      roles.includes(UserRoleTypes.Owner) ||
-      roles.includes(UserRoleTypes.Admin);
-    return isAdmin ? 'admin' : sub;
+    return (
+      roles.includes(UserRoleTypes.Owner) || roles.includes(UserRoleTypes.Admin)
+    );
   }
 
   private requireSub(req: AuthedRequest): string {

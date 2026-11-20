@@ -27,6 +27,8 @@ This file is the project-specific map. Claude Code is told to read it from the t
 
 API keys live in **`.env.project`** (gitignored). Typical keys: `JIRA_API_TOKEN`, `JIRA_DOMAIN`, `JIRA_EMAIL`, `GITHUB_TOKEN`, plus others this repo needs. Read the file when calling Jira/GitHub. Never print values, never commit the file, never paste keys into rules or chat.
 
+The values live in Infisical; `.env.project` is a copy of them. `bun run env:pull` rewrites it (run it at the start of a task), logging in with the read-only machine identity in **`.env.infisical`** — gitignored, one per repo, copied into worktrees next to `.env.project`. It holds `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID`, `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`, `INFISICAL_PROJECT_ID`, `INFISICAL_ENV` (the environment's slug, `dev`) and `INFISICAL_DOMAIN` (`https://eu.infisical.com`), and needs the `infisical` CLI. Do not edit `.env.project` by hand: add or rotate the key in Infisical and pull. A key Infisical does not have is kept and named by the pull, never dropped.
+
 ## If there is no ticket
 
 If the user describes work and does **not** give a `CLEAN-<n>` id, that description *is* the ticket. Do not start code, SpecKit, Brainstorm, or a git branch first.

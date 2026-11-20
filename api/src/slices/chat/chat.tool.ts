@@ -1,3 +1,4 @@
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import {
   BadGatewayException,
   BadRequestException,
@@ -111,19 +112,33 @@ export class ChatTool implements IConditionallyListedTool {
     private readonly sync: ChatSyncService,
     private readonly insight: ChatInsightService,
     private readonly access: AgentAccessService,
+    private readonly permission: AgentPermissionService,
   ) {}
 
   /**
-   * The session, when it exists and the caller reaches its agent
-   * (CLEAN-231): a chat of a hidden agent is a chat that does not exist.
+   * The agents whose conversations the person this call is made for may
+   * read: the ones they reach (CLEAN-231), less any that only the Owner
+   * manages (CLEAN-236). The same rule as `ChatController.supervised`: the
+   * Owner's conversation with the Ranch admin agent is not an Admin's to
+   * read through the chat any more than through the console.
+   */
+  private async supervised(httpRequest: Request) {
+    const caller = callerParty(httpRequest);
+    const [reach, ownerOnly] = await Promise.all([
+      this.access.reachableIds(caller),
+      this.permission.ownerOnlyIds(caller),
+    ]);
+    return reach.without(ownerOnly);
+  }
+
+  /**
+   * The session, when it exists and the caller may read the conversations
+   * of its agent: a chat of a hidden agent is a chat that does not exist.
    */
   private async reachedChat(httpRequest: Request, id: string) {
     const session = await this.chats.findById(id);
     if (!session) return null;
-    return (await this.access.reaches(
-      callerParty(httpRequest),
-      session.agentId,
-    ))
+    return (await this.supervised(httpRequest)).has(session.agentId)
       ? session
       : null;
   }
@@ -192,7 +207,7 @@ export class ChatTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const page = args.page ?? DEFAULT_PAGE;
     const perPage = args.perPage ?? DEFAULT_PER_PAGE;
-    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    const reach = await this.supervised(httpRequest);
     if (args.agentId && !reach.has(args.agentId)) {
       return agentNotFound(httpRequest, args.agentId);
     }
@@ -358,18 +373,11 @@ export class ChatTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    if (
-      agentId &&
-      !(await this.access.reaches(callerParty(httpRequest), agentId))
-    ) {
+    const reach = await this.supervised(httpRequest);
+    if (agentId && !reach.has(agentId)) {
       return agentNotFound(httpRequest, agentId);
     }
-    return ok(
-      await this.sync.syncAll(
-        agentId,
-        await this.access.reachableIds(callerParty(httpRequest)),
-      ),
-    );
+    return ok(await this.sync.syncAll(agentId, reach));
   }
 
   @Tool({

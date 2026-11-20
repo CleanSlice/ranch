@@ -45,10 +45,14 @@ function makePrismaStub() {
       },
     ),
     create: jest.fn(async ({ data }: { data: Record<string, any> }) => {
+      // Null never collides, as in Postgres: external rows carry neither a
+      // token nor a peer agent, and are told apart by address and owner.
       const clash = Object.values(rows).find(
         (r) =>
-          r.token === data.token ||
-          (r.agentId === data.agentId && r.peerAgentId === data.peerAgentId),
+          (data.token !== null && r.token === data.token) ||
+          (data.peerAgentId !== null &&
+            r.agentId === data.agentId &&
+            r.peerAgentId === data.peerAgentId),
       );
       if (clash) {
         throw Object.assign(new Error('Unique constraint failed'), {
@@ -57,8 +61,25 @@ function makePrismaStub() {
       }
       const at = tick();
       const id = `peer-${Object.keys(rows).length + 1}`;
-      rows[id] = { id, createdAt: at, updatedAt: at, ...data };
+      rows[id] = {
+        id,
+        createdAt: at,
+        updatedAt: at,
+        // Column defaults of the CLEAN-236 migration.
+        openToVisitors: false,
+        openedById: null,
+        openedAt: null,
+        needsReview: false,
+        ...data,
+      };
       return rows[id];
+    }),
+    findFirst: jest.fn(async ({ where }: { where: Record<string, any> }) => {
+      return (
+        Object.values(rows).find((r) =>
+          Object.entries(where).every(([key, value]) => r[key] === value),
+        ) ?? null
+      );
     }),
     update: jest.fn(
       async ({
@@ -235,5 +256,77 @@ describe('PeerGateway', () => {
       token: 'ap_1',
     });
     await expect(gateway.findByPair('b', 'a')).resolves.toBeNull();
+  });
+
+  // ── CLEAN-236: who made it, who it serves ─────────────────────
+
+  const external = (
+    gateway: PeerGateway,
+    ownerUserId: string | null,
+    createdById = 'user-maker',
+  ) =>
+    gateway.create({
+      agentId: 'agent-a',
+      peerAgentId: null,
+      origin: PeerOrigins.External,
+      token: null,
+      cardSnapshot: card('outside'),
+      cardUrl: 'https://outside.test/.well-known/agent-card.json',
+      cardReadAt: new Date(0),
+      createdById,
+      ownerUserId,
+    });
+
+  it('records who made a connection, and nobody when none is given', async () => {
+    const { gateway, connect } = makeGateway();
+    const unknown = await connect('agent-a', 'agent-b', 'ap_one');
+    expect(unknown.createdById).toBeNull();
+    expect(unknown.openToVisitors).toBe(false);
+    expect(unknown.ownerUserId).toBeNull();
+
+    const made = await external(gateway, null, 'user-1');
+    expect(made.createdById).toBe('user-1');
+  });
+
+  it('keeps a shared outside connection and each person’s own apart', async () => {
+    const { gateway } = makeGateway();
+    const shared = await external(gateway, null);
+    const ofOne = await external(gateway, 'user-1');
+    const ofTwo = await external(gateway, 'user-2');
+    const url = shared.cardUrl;
+
+    expect((await gateway.findByCardUrl('agent-a', url, null))?.id).toBe(
+      shared.id,
+    );
+    expect((await gateway.findByCardUrl('agent-a', url, 'user-1'))?.id).toBe(
+      ofOne.id,
+    );
+    expect((await gateway.findByCardUrl('agent-a', url, 'user-2'))?.id).toBe(
+      ofTwo.id,
+    );
+    expect(await gateway.findByCardUrl('agent-a', url, 'user-3')).toBeNull();
+  });
+
+  it('opens a connection to visitors, says who did, and ends the review mark', async () => {
+    const { gateway, connect, prisma } = makeGateway();
+    const row = await connect('agent-a', 'agent-b', 'ap_one');
+    prisma.rows[row.id].needsReview = true;
+
+    const opened = await gateway.setVisitors(row.id, {
+      open: true,
+      byUserId: 'user-1',
+    });
+    expect(opened.openToVisitors).toBe(true);
+    expect(opened.openedById).toBe('user-1');
+    expect(opened.openedAt).not.toBeNull();
+    expect(opened.needsReview).toBe(false);
+
+    const closed = await gateway.setVisitors(row.id, {
+      open: false,
+      byUserId: 'user-2',
+    });
+    expect(closed.openToVisitors).toBe(false);
+    expect(closed.openedById).toBeNull();
+    expect(closed.openedAt).toBeNull();
   });
 });

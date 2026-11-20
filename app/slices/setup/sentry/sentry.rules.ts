@@ -95,8 +95,11 @@ const RATE_WINDOW_MS = 60_000;
 
 const FILTERED = '[Filtered]';
 
+// `ranch_session` is the cookie both consoles shared; each has its own since
+// CLEAN-236 (`ranch_session_admin`, `ranch_session_app`), and all three are
+// a session secret wherever a cookie jar is reported key by key.
 const SENSITIVE_KEY =
-  /^(password|passwd|token|secret|authorization|cookie|set-cookie|email|phone|auth_token|access_token|refresh_token|api_key|apikey|x-api-key|session|ranch_session|jwt|dsn)$/i;
+  /^(password|passwd|token|secret|authorization|cookie|set-cookie|email|phone|auth_token|access_token|refresh_token|api_key|apikey|x-api-key|session|ranch_session(_admin|_app)?|jwt|dsn)$/i;
 
 /** A tab still running the previous release asks for a chunk that is gone. */
 const STALE_CHUNK =

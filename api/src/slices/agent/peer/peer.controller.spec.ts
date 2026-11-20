@@ -8,17 +8,18 @@ import { GUARDS_METADATA, HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { PeerController } from './peer.controller';
-import { ConnectPeerDto, ListDelegationsQueryDto } from './dtos';
+import {
+  ConnectPeerDto,
+  ListDelegationsQueryDto,
+  PeerVisitorsDto,
+} from './dtos';
 import { JwtAuthGuard, RolesGuard } from '#/user/auth/guards';
 import { ROLES_METADATA_KEY } from '#/user/auth/guards/roles.decorator';
 import { UserRoleTypes } from '#/user/user/domain';
 import type { PeerService } from './domain/peer.service';
 import type { AgentCardService } from './domain/agentCard.service';
-import type { IDelegationGateway } from './domain/delegation.gateway';
 import type { Request } from 'express';
-import { NotFoundException } from '@nestjs/common';
 import { MANAGES_AGENT_METADATA_KEY } from '#/agent/agent/guards';
-import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
 
 /** A console person's request, as JwtAuthGuard leaves it. */
 const as = (sub: string, role: UserRoleTypes) =>
@@ -26,15 +27,10 @@ const as = (sub: string, role: UserRoleTypes) =>
 const asOwner = as('user-o', UserRoleTypes.Owner);
 const asAdmin = as('user-a', UserRoleTypes.Admin);
 
-/** Every id is an agent; `ranch` is the Ranch admin agent, `nope` is nobody. */
-const agentRows = {
-  findById: (id: string) =>
-    Promise.resolve(
-      id === 'nope'
-        ? null
-        : { id, name: id, isAdmin: id === 'ranch', createdById: null },
-    ),
-};
+/** The party the controller reads off each of those requests. */
+const OWNER = { kind: 'person', userId: 'user-o', role: 'Owner' };
+const ADMIN = { kind: 'person', userId: 'user-a', role: 'Admin' };
+const GUEST = { kind: 'guest' };
 
 /**
  * The operator-facing routes. Two things are worth a test here and the rest is
@@ -56,6 +52,13 @@ function makeController(options: { peers?: Partial<PeerService> } = {}) {
     cardUrl: 'https://api.test/a2a/agents/b/.well-known/agent-card.json',
     cardReadAt: '2026-09-14T10:00:00.000Z',
     createdAt: '2026-09-14T10:00:00.000Z',
+    visibility: 'full',
+    createdBy: { id: 'user-o', name: 'Olga Owner' },
+    openToVisitors: false,
+    owner: null,
+    needsReview: false,
+    canRemove: true,
+    canSetVisitors: true,
     // Not part of the DTO. Present here on purpose: if a route ever spreads
     // the row instead of the view, this is what leaks.
     token: 'ap_' + 'x'.repeat(43),
@@ -79,6 +82,8 @@ function makeController(options: { peers?: Partial<PeerService> } = {}) {
     peersState: jest.fn(async () => ({ armed: false, servedAt: null })),
     refresh: jest.fn(async () => poisoned),
     remove: jest.fn(async () => undefined),
+    setVisitors: jest.fn(async () => ({ ...poisoned, openToVisitors: true })),
+    recentDelegations: jest.fn(async () => []),
     ...options.peers,
   };
 
@@ -86,20 +91,13 @@ function makeController(options: { peers?: Partial<PeerService> } = {}) {
     build: jest.fn(async () => ({ name: 'Support Bot', skills: [] })),
   };
 
-  const delegationMocks = {
-    listRecent: jest.fn(async () => []),
-  };
-
   return {
     controller: new PeerController(
       peerMocks as unknown as PeerService,
       cardMocks as unknown as AgentCardService,
-      delegationMocks as unknown as IDelegationGateway,
-      permissionOver(agentRows),
     ),
     peers: peerMocks,
     cards: cardMocks,
-    delegations: delegationMocks,
   };
 }
 
@@ -174,6 +172,7 @@ describe('PeerController — routes', () => {
       'a',
       'https://other.example/a2a/agents/x',
       'tk',
+      GUEST,
     );
     expect(peers.connect).not.toHaveBeenCalled();
     expect(JSON.stringify(imported)).not.toContain('EXT_SECRET');
@@ -215,6 +214,7 @@ describe('PeerController — routes', () => {
       'a',
       '{"name":"Pasted Bot"}',
       'tk',
+      GUEST,
     );
     expect(peers.connectByUrl).not.toHaveBeenCalled();
   });
@@ -265,11 +265,11 @@ describe('PeerController — routes', () => {
   it('refreshes and removes the connection the path names', async () => {
     const { controller, peers } = makeController();
 
-    await controller.refresh('a', 'peer-1');
-    await controller.remove('a', 'peer-1');
+    await controller.refresh('a', 'peer-1', asAdmin);
+    await controller.remove('a', 'peer-1', asAdmin);
 
-    expect(peers.refresh).toHaveBeenCalledWith('a', 'peer-1');
-    expect(peers.remove).toHaveBeenCalledWith('a', 'peer-1');
+    expect(peers.refresh).toHaveBeenCalledWith('a', 'peer-1', ADMIN);
+    expect(peers.remove).toHaveBeenCalledWith('a', 'peer-1', ADMIN);
   });
 
   it('builds the card fresh on every read', async () => {
@@ -293,19 +293,19 @@ describe('PeerController — routes', () => {
   });
 
   it('reads recent delegations with the default limit when none is given', async () => {
-    const { controller, delegations } = makeController();
+    const { controller, peers } = makeController();
 
-    await controller.recentDelegations('a', {});
+    await controller.recentDelegations('a', {}, asAdmin);
 
-    expect(delegations.listRecent).toHaveBeenCalledWith('a', 20);
+    expect(peers.recentDelegations).toHaveBeenCalledWith('a', ADMIN, 20);
   });
 
   it('honours a requested limit', async () => {
-    const { controller, delegations } = makeController();
+    const { controller, peers } = makeController();
 
-    await controller.recentDelegations('a', { limit: 5 });
+    await controller.recentDelegations('a', { limit: 5 }, asAdmin);
 
-    expect(delegations.listRecent).toHaveBeenCalledWith('a', 5);
+    expect(peers.recentDelegations).toHaveBeenCalledWith('a', ADMIN, 5);
   });
 });
 
@@ -352,83 +352,131 @@ describe('PeerController — request validation', () => {
 });
 
 /**
- * A connection has two ends (CLEAN-232). The guard answers for the agent in
- * the path; the agent named in the body is the handler's to check. Left
- * open, an Admin could give an agent of theirs a line to the Ranch admin
- * agent, which acts with Owner power.
+ * CLEAN-236. The marker on the class covers the agent in the path. The other
+ * end of a connection, and what of the peer set the caller may see or
+ * change, is `PeerService`'s to decide by one rule (`peerAccess.ts`,
+ * `peer.service.spec.ts`). What is worth a test here is that every route
+ * hands the service the person behind the request, and none decides for it.
  */
-describe('PeerController — the other end of a connection', () => {
-  const answerOf = async (run: Promise<unknown>) => {
-    try {
-      await run;
-      return 'connected';
-    } catch (e) {
-      if (!(e instanceof NotFoundException)) throw e;
-      return e.getResponse();
-    }
-  };
-  const NOT_FOUND = { code: 'PEER_NOT_FOUND', message: 'Agent not found' };
-
-  it('refuses an Admin who names the Ranch admin agent as the peer, as not found', async () => {
+describe('PeerController — the caller goes to the service on every route', () => {
+  it('lists the peers and the delegations as the caller may see them', async () => {
     const { controller, peers } = makeController();
 
-    const refused = await answerOf(
-      controller.connect('a', { peerAgentId: 'ranch' }, asAdmin),
-    );
-    const unknown = await answerOf(
-      controller.connect('a', { peerAgentId: 'nope' }, asAdmin),
-    );
+    await controller.list('a', asAdmin);
+    await controller.recentDelegations('a', {}, asOwner);
 
-    expect(refused).toEqual(NOT_FOUND);
-    // Not told apart from an agent that does not exist.
-    expect(refused).toEqual(unknown);
-    expect(peers.connect).not.toHaveBeenCalled();
+    expect(peers.list).toHaveBeenCalledWith('a', ADMIN);
+    expect(peers.recentDelegations).toHaveBeenCalledWith('a', OWNER, 20);
   });
 
-  it('lets the Owner connect the Ranch admin agent as a peer', async () => {
-    const { controller, peers } = makeController();
-
-    await controller.connect('a', { peerAgentId: 'ranch' }, asOwner);
-
-    expect(peers.connect).toHaveBeenCalledWith('a', 'ranch', {
-      kind: 'person',
-      userId: 'user-o',
-      role: 'Owner',
-    });
-  });
-
-  it('refuses a peer when nobody is signed in behind the request', async () => {
-    const { controller, peers } = makeController();
-
-    expect(
-      await answerOf(controller.connect('a', { peerAgentId: 'b' }, undefined)),
-    ).toEqual(NOT_FOUND);
-    expect(peers.connect).not.toHaveBeenCalled();
-  });
-
-  it('does not ask about a peer for an address or a card: there is no second agent', async () => {
-    const { controller, peers } = makeController();
-
-    await controller.connect(
-      'a',
-      { url: 'https://other.example/a2a/agents/x' },
-      asAdmin,
-    );
-
-    expect(peers.connectByUrl).toHaveBeenCalled();
-  });
-
-  it('offers an Admin only the candidates they may manage', async () => {
+  it('offers the candidates the service names for that person, and filters none itself', async () => {
     const candidates = jest.fn(async () => [
       { id: 'b', name: 'Support Bot', status: 'running', connected: false },
       { id: 'ranch', name: 'Ranch', status: 'running', connected: false },
     ]);
     const { controller } = makeController({ peers: { candidates } as never });
 
-    const forAdmin = await controller.candidates('a', asAdmin);
-    const forOwner = await controller.candidates('a', asOwner);
+    const offered = await controller.candidates('a', asAdmin);
 
-    expect(forAdmin.map((c) => c.id)).toEqual(['b']);
-    expect(forOwner.map((c) => c.id)).toEqual(['b', 'ranch']);
+    expect(candidates).toHaveBeenCalledWith('a', ADMIN);
+    expect(offered.map((c) => c.id)).toEqual(['b', 'ranch']);
+  });
+
+  it('connects in all three ways for the caller', async () => {
+    const { controller, peers } = makeController();
+
+    await controller.connect('a', { peerAgentId: 'ranch' }, asOwner);
+    await controller.connect(
+      'a',
+      { url: 'https://other.example/a2a/agents/x', token: 'tk' },
+      asAdmin,
+    );
+    await controller.connect('a', { card: '{"name":"x"}' }, asAdmin);
+
+    expect(peers.connect).toHaveBeenCalledWith('a', 'ranch', OWNER);
+    expect(peers.connectByUrl).toHaveBeenCalledWith(
+      'a',
+      'https://other.example/a2a/agents/x',
+      'tk',
+      ADMIN,
+    );
+    expect(peers.connectByCard).toHaveBeenCalledWith(
+      'a',
+      '{"name":"x"}',
+      undefined,
+      ADMIN,
+    );
+  });
+
+  it('a request nobody is signed in behind reaches the service as a guest, which connects nothing', async () => {
+    const { controller, peers } = makeController();
+
+    await controller.connect('a', { peerAgentId: 'b' }, undefined);
+
+    expect(peers.connect).toHaveBeenCalledWith('a', 'b', GUEST);
+  });
+
+  it('carries the new facts of a connection to the console', async () => {
+    const { controller } = makeController();
+
+    const [row] = await controller.list('a', asOwner);
+
+    expect(row).toMatchObject({
+      visibility: 'full',
+      createdBy: { id: 'user-o', name: 'Olga Owner' },
+      openToVisitors: false,
+      owner: null,
+      needsReview: false,
+      canRemove: true,
+      canSetVisitors: true,
+    });
+  });
+});
+
+describe('PeerController — opening a connection to visitors', () => {
+  it('refuses to open without confirm, and changes nothing', async () => {
+    const { controller, peers } = makeController();
+
+    await expect(
+      controller.setVisitors('a', 'peer-1', { open: true }, asOwner),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'PEER_VISITORS_NEEDS_CONFIRM' },
+    });
+    expect(peers.setVisitors).not.toHaveBeenCalled();
+  });
+
+  it('opens with confirm, for the caller', async () => {
+    const { controller, peers } = makeController();
+
+    const row = await controller.setVisitors(
+      'a',
+      'peer-1',
+      { open: true, confirm: true },
+      asOwner,
+    );
+
+    expect(peers.setVisitors).toHaveBeenCalledWith('a', 'peer-1', true, OWNER);
+    expect(row.openToVisitors).toBe(true);
+    expect(JSON.stringify(row)).not.toContain('ap_');
+  });
+
+  it('closes without asking twice: closing publishes nothing', async () => {
+    const { controller, peers } = makeController();
+
+    await controller.setVisitors('a', 'peer-1', { open: false }, asAdmin);
+
+    expect(peers.setVisitors).toHaveBeenCalledWith('a', 'peer-1', false, ADMIN);
+  });
+
+  it('validates the body: open is a boolean and nothing else', async () => {
+    const check = async (body: unknown) =>
+      (await validate(plainToInstance(PeerVisitorsDto, body))).length;
+
+    expect(await check({ open: true, confirm: true })).toBe(0);
+    expect(await check({ open: false })).toBe(0);
+    expect(await check({})).toBeGreaterThan(0);
+    expect(await check({ open: 'yes' })).toBeGreaterThan(0);
+    expect(await check({ open: true, confirm: 'yes' })).toBeGreaterThan(0);
   });
 });

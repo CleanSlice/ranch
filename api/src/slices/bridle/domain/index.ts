@@ -34,6 +34,7 @@ export {
   consoleSessionOf,
   hasShareToken,
   headerValue,
+  OWNER_CLIENT_ID,
   parseBearer,
   resolveShareIdentity,
   type ChatHeaders,

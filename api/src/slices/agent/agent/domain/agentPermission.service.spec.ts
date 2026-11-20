@@ -61,6 +61,9 @@ function make(
     findById: jest.fn((id: string) =>
       Promise.resolve(rows.find((a) => a.id === id) ?? null),
     ),
+    findAdmin: jest.fn(() =>
+      Promise.resolve(rows.find((a) => a.isAdmin) ?? null),
+    ),
     hasCreatedBy: jest.fn((userId: string) =>
       Promise.resolve(
         (opts.created ?? []).includes(userId) ||
@@ -324,5 +327,43 @@ describe('callerOfBearer: the caller behind a console request', () => {
 describe('the default reach', () => {
   it('answers yes for everybody, until access lists replace it', async () => {
     expect(await new OpenAgentReach().reaches()).toBe(true);
+  });
+});
+
+/**
+ * CLEAN-236. A list scoped by reach answers "may they use the agent". Some
+ * questions are about managing it, such as reading what other people said
+ * to it, and the Ranch admin agent is one an Admin may reach without
+ * managing.
+ */
+describe('ownerOnlyIds: the agents a caller reaches and still does not manage', () => {
+  const ranch = agent({ id: 'agent-ranch', isAdmin: true });
+  const agents = [agent(), ranch];
+
+  it('is the Ranch admin agent, for an Admin, a User, a guest and another agent’s question', async () => {
+    const { service } = make({ agents });
+
+    for (const caller of [
+      admin,
+      user,
+      guest,
+      { kind: 'peer', chain: ['a'], connectionId: 'c' } as ICallerParty,
+    ]) {
+      expect(await service.ownerOnlyIds(caller)).toEqual(['agent-ranch']);
+    }
+  });
+
+  it('is nothing for the Owner, and for that agent acting for itself', async () => {
+    const { service, gateway } = make({ agents });
+
+    expect(await service.ownerOnlyIds(owner)).toEqual([]);
+    expect(await service.ownerOnlyIds(trusted)).toEqual([]);
+    expect(gateway.findAdmin).not.toHaveBeenCalled();
+  });
+
+  it('is nothing on an installation with no Ranch admin agent', async () => {
+    const { service } = make({ agents: [agent()] });
+
+    expect(await service.ownerOnlyIds(admin)).toEqual([]);
   });
 });

@@ -6,6 +6,9 @@ import type { IA2aSendMessageParams } from './a2a.types';
 import type { IBridleGateway } from '#/bridle/domain/bridle.gateway';
 import type { BridleSyncService } from '#/bridle/domain/bridleSync.service';
 import type { IAgentGateway } from '#/agent/agent/domain';
+import { JwtService } from '@nestjs/jwt';
+import { HandoverService } from './handover';
+import type { IInboundPeer } from './a2a.server.service';
 
 /**
  * The receiving half of a delegation. Every case here exists because the
@@ -51,6 +54,7 @@ function makeHarness(
     agents,
     store,
     config,
+    handover,
   );
 
   return { service, sendAndAwait, hub, store };
@@ -72,11 +76,62 @@ const params = (
 const withChain = (chain: string[]) =>
   params({ metadata: { ranch: { chain } } });
 
+/**
+ * The connection every request of this spec arrives through, as the peer
+ * guard resolves it: `agent-a` asks `agent-b`.
+ */
+const PEER: IInboundPeer = { peerId: 'peer-1', callerAgentId: 'agent-a' };
+
+// A real signer: the claim under test is that the chain and the connection
+// are read from a token this API signed, never from the field beside it.
+const handover = new HandoverService(new JwtService({ secret: 'a2a-test' }));
+
+/**
+ * The same request as `DelegationService` sends it (CLEAN-236): carrying the
+ * hand-over token for this connection and this agent. The chain in the token
+ * is the one the request names, or just the asker.
+ */
+async function signed(
+  request: IA2aSendMessageParams,
+  over: { agentId?: string; connectionId?: string; forUserId?: string } = {},
+): Promise<IA2aSendMessageParams> {
+  const ranch = (request.message.metadata?.ranch ?? {}) as {
+    chain?: unknown;
+  };
+  const chain = Array.isArray(ranch.chain)
+    ? (ranch.chain as string[])
+    : ['agent-a'];
+  const pass = await handover.mint(
+    {
+      agentId: over.agentId ?? 'agent-b',
+      connectionId: over.connectionId ?? PEER.peerId,
+      chain,
+      ...(over.forUserId ? { forUserId: over.forUserId } : {}),
+      contextId: request.message.contextId ?? 'ctx-test',
+    },
+    180,
+  );
+  return {
+    ...request,
+    message: {
+      ...request.message,
+      metadata: {
+        ...request.message.metadata,
+        ranch: { ...ranch, chain, pass },
+      },
+    },
+  };
+}
+
 describe('A2aServerService.sendMessage — the happy path', () => {
   it('answers a completed task carrying the reply as one artifact', async () => {
     const { service } = makeHarness({ reply: { text: 'Within 30 days.' } });
 
-    const task = await service.sendMessage('agent-b', 'agent-a', params());
+    const task = await service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(params()),
+    );
 
     expect(task.status.state).toBe(A2aTaskStates.Completed);
     expect(task.artifacts).toHaveLength(1);
@@ -86,19 +141,19 @@ describe('A2aServerService.sendMessage — the happy path', () => {
     });
   });
 
-  it('talks to the runtime as one conversation per caller and context', async () => {
+  it('talks to the runtime as one conversation per connection and context', async () => {
     const { service, sendAndAwait } = makeHarness();
 
     await service.sendMessage(
       'agent-b',
-      'agent-a',
-      params({ contextId: 'ctx-42' }),
+      PEER,
+      await signed(params({ contextId: 'ctx-42' })),
     );
 
     expect(sendAndAwait).toHaveBeenCalledWith(
       expect.objectContaining({
         agentId: 'agent-b',
-        clientId: 'peer:agent-a:ctx-42',
+        clientId: 'peer:peer-1:ctx-42',
         text: 'What is the return window for shoes?',
       }),
     );
@@ -107,7 +162,7 @@ describe('A2aServerService.sendMessage — the happy path', () => {
   it('declares no capabilities, so the peer streams no timeline into a void', async () => {
     const { service, sendAndAwait } = makeHarness();
 
-    await service.sendMessage('agent-b', 'agent-a', params());
+    await service.sendMessage('agent-b', PEER, await signed(params()));
 
     expect(sendAndAwait).toHaveBeenCalledWith(
       expect.objectContaining({ capabilities: [] }),
@@ -117,11 +172,15 @@ describe('A2aServerService.sendMessage — the happy path', () => {
   it('mints a context when the caller supplies none, and keeps a given one', async () => {
     const { service } = makeHarness();
 
-    const minted = await service.sendMessage('agent-b', 'agent-a', params());
+    const minted = await service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(params()),
+    );
     const given = await service.sendMessage(
       'agent-b',
-      'agent-a',
-      params({ contextId: 'ctx-42' }),
+      PEER,
+      await signed(params({ contextId: 'ctx-42' })),
     );
 
     expect(minted.contextId).toMatch(/^ctx-/);
@@ -133,8 +192,8 @@ describe('A2aServerService.sendMessage — the happy path', () => {
 
     const task = await service.sendMessage(
       'agent-b',
-      'agent-a',
-      withChain(['agent-a']),
+      PEER,
+      await signed(withChain(['agent-a'])),
     );
 
     expect(task.metadata?.ranch?.chain).toEqual(['agent-a', 'agent-b']);
@@ -143,7 +202,11 @@ describe('A2aServerService.sendMessage — the happy path', () => {
   it('hands back no history: a peer transcript is its own business', async () => {
     const { service } = makeHarness();
 
-    const task = await service.sendMessage('agent-b', 'agent-a', params());
+    const task = await service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(params()),
+    );
 
     expect(task.history).toEqual([]);
   });
@@ -156,7 +219,11 @@ describe('A2aServerService.sendMessage — the happy path', () => {
       return { text: 'ok', messageId: 'm', ts: 1, timedOut: false };
     });
 
-    await service.sendMessage('agent-b', 'agent-a', withChain(['agent-a']));
+    await service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(withChain(['agent-a'])),
+    );
 
     expect(seen).toEqual([['agent-a', 'agent-b']]);
     // …and stops publishing it the moment the turn is over.
@@ -168,7 +235,11 @@ describe('A2aServerService.sendMessage — honest failures', () => {
   it('fails fast when the peer is not running, without waiting or sending', async () => {
     const { service, sendAndAwait } = makeHarness({ connected: false });
 
-    const task = await service.sendMessage('agent-b', 'agent-a', params());
+    const task = await service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(params()),
+    );
 
     expect(task.status.state).toBe(A2aTaskStates.Failed);
     expect(task.metadata?.ranch?.failure).toBe('not_running');
@@ -183,7 +254,11 @@ describe('A2aServerService.sendMessage — honest failures', () => {
       env: { A2A_SYNC_TIMEOUT_MS: '5000' },
     });
 
-    const task = await service.sendMessage('agent-b', 'agent-a', params());
+    const task = await service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(params()),
+    );
 
     expect(task.status.state).toBe(A2aTaskStates.Failed);
     expect(task.metadata?.ranch?.failure).toBe('timeout');
@@ -197,8 +272,8 @@ describe('A2aServerService.sendMessage — honest failures', () => {
 
     const task = await service.sendMessage(
       'agent-b',
-      'agent-a',
-      withChain(['agent-b', 'agent-a']),
+      PEER,
+      await signed(withChain(['agent-b', 'agent-a'])),
     );
 
     expect(task.status.state).toBe(A2aTaskStates.Rejected);
@@ -214,8 +289,8 @@ describe('A2aServerService.sendMessage — honest failures', () => {
 
     const task = await service.sendMessage(
       'agent-b',
-      'agent-a',
-      withChain(['a1', 'a2', 'a3']),
+      PEER,
+      await signed(withChain(['a1', 'a2', 'a3'])),
     );
 
     expect(task.status.state).toBe(A2aTaskStates.Rejected);
@@ -231,8 +306,8 @@ describe('A2aServerService.sendMessage — honest failures', () => {
 
     const task = await service.sendMessage(
       'agent-b',
-      'agent-a',
-      withChain(['a1', 'a2']),
+      PEER,
+      await signed(withChain(['a1', 'a2'])),
     );
 
     expect(task.status.state).toBe(A2aTaskStates.Completed);
@@ -243,27 +318,30 @@ describe('A2aServerService.sendMessage — honest failures', () => {
 
     const task = await service.sendMessage(
       'agent-b',
-      'agent-a',
-      withChain(['agent-a']),
+      PEER,
+      await signed(withChain(['agent-a'])),
     );
 
     expect(task.metadata?.ranch?.rejection).toBe('depth');
   });
 
-  it('ignores a chain a caller filled with nonsense', async () => {
+  it('reads the chain from the token, not from the field a caller can write beside it', async () => {
     const { service } = makeHarness();
+    const request = await signed(withChain(['agent-a']));
+    // The token says [agent-a]. The field says the chain is empty, which
+    // would hide a loop, and then something that is no chain at all.
+    for (const claimed of [[], 'not-an-array', ['agent-z']]) {
+      const ranch = request.message.metadata?.ranch as Record<string, unknown>;
+      const task = await service.sendMessage('agent-b', PEER, {
+        ...request,
+        message: {
+          ...request.message,
+          metadata: { ranch: { ...ranch, chain: claimed } },
+        },
+      });
 
-    const task = await service.sendMessage('agent-b', 'agent-a', {
-      message: {
-        messageId: 'm',
-        role: 'ROLE_USER',
-        parts: [{ text: 'hi' }],
-        metadata: { ranch: { chain: 'not-an-array' } },
-      },
-    } as unknown as IA2aSendMessageParams);
-
-    expect(task.status.state).toBe(A2aTaskStates.Completed);
-    expect(task.metadata?.ranch?.chain).toEqual(['agent-b']);
+      expect(task.metadata?.ranch?.chain).toEqual(['agent-a', 'agent-b']);
+    }
   });
 });
 
@@ -274,12 +352,14 @@ describe('A2aServerService.sendMessage — what it will not accept', () => {
     await expect(
       service.sendMessage(
         'agent-b',
-        'agent-a',
-        params(
-          {},
-          {
-            returnImmediately: true,
-          },
+        PEER,
+        await signed(
+          params(
+            {},
+            {
+              returnImmediately: true,
+            },
+          ),
         ),
       ),
     ).rejects.toMatchObject({ code: A2aErrorCodes.UnsupportedOperation });
@@ -291,8 +371,8 @@ describe('A2aServerService.sendMessage — what it will not accept', () => {
     await expect(
       service.sendMessage(
         'agent-b',
-        'agent-a',
-        params({ parts: [{ raw: 'ZmlsZQ==' }] }),
+        PEER,
+        await signed(params({ parts: [{ raw: 'ZmlsZQ==' }] })),
       ),
     ).rejects.toMatchObject({
       code: A2aErrorCodes.ContentTypeNotSupported,
@@ -303,7 +383,7 @@ describe('A2aServerService.sendMessage — what it will not accept', () => {
     const { service } = makeHarness();
 
     await expect(
-      service.sendMessage('agent-b', 'agent-a', {} as IA2aSendMessageParams),
+      service.sendMessage('agent-b', PEER, {} as IA2aSendMessageParams),
     ).rejects.toMatchObject({ code: A2aErrorCodes.InvalidParams });
   });
 });
@@ -311,30 +391,170 @@ describe('A2aServerService.sendMessage — what it will not accept', () => {
 describe('A2aServerService.getTask', () => {
   it('hands back a task it answered', async () => {
     const { service } = makeHarness();
-    const task = await service.sendMessage('agent-b', 'agent-a', params());
+    const task = await service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(params()),
+    );
 
-    expect(service.getTask({ id: task.id })).toMatchObject({ id: task.id });
-    expect(service.knowsTask(task.id)).toBe(true);
+    expect(service.getTask({ id: task.id }, PEER)).toMatchObject({
+      id: task.id,
+    });
+    expect(service.knowsTask(task.id, PEER)).toBe(true);
   });
 
   it('says a task it never answered is not found', () => {
     const { service } = makeHarness();
 
-    expect(() => service.getTask({ id: 'nope' })).toThrow(A2aRpcError);
+    expect(() => service.getTask({ id: 'nope' }, PEER)).toThrow(A2aRpcError);
     try {
-      service.getTask({ id: 'nope' });
+      service.getTask({ id: 'nope' }, PEER);
     } catch (err) {
       expect((err as A2aRpcError).code).toBe(A2aErrorCodes.TaskNotFound);
     }
-    expect(service.knowsTask('nope')).toBe(false);
+    expect(service.knowsTask('nope', PEER)).toBe(false);
   });
 
   it('remembers failed tasks too, not only the ones that worked', async () => {
     const { service } = makeHarness({ connected: false });
-    const task = await service.sendMessage('agent-b', 'agent-a', params());
+    const task = await service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(params()),
+    );
 
-    expect(service.getTask({ id: task.id }).status.state).toBe(
+    expect(service.getTask({ id: task.id }, PEER).status.state).toBe(
       A2aTaskStates.Failed,
     );
+  });
+});
+
+/**
+ * CLEAN-236. A question reaches an agent only with the hand-over token this
+ * API minted for exactly this connection and this agent. The runtime is
+ * handed the same token, which is what tells it a colleague is asking.
+ */
+describe('A2aServerService.sendMessage — the hand-over token', () => {
+  const refused = { code: A2aErrorCodes.InvalidParams };
+
+  it('refuses a question that carries none', async () => {
+    const { service, sendAndAwait } = makeHarness();
+
+    await expect(
+      service.sendMessage('agent-b', PEER, params()),
+    ).rejects.toMatchObject(refused);
+    expect(sendAndAwait).not.toHaveBeenCalled();
+  });
+
+  it('refuses one minted for another agent, or for another connection', async () => {
+    const { service, sendAndAwait } = makeHarness();
+
+    for (const over of [{ agentId: 'agent-c' }, { connectionId: 'peer-9' }]) {
+      await expect(
+        service.sendMessage('agent-b', PEER, await signed(params(), over)),
+      ).rejects.toMatchObject(refused);
+    }
+    expect(sendAndAwait).not.toHaveBeenCalled();
+  });
+
+  it('refuses one signed by somebody else', async () => {
+    const { service } = makeHarness();
+    const forged = await new HandoverService(
+      new JwtService({ secret: 'not-ours' }),
+    ).mint(
+      {
+        agentId: 'agent-b',
+        connectionId: PEER.peerId,
+        chain: ['agent-a'],
+        contextId: 'ctx',
+      },
+      180,
+    );
+
+    await expect(
+      service.sendMessage(
+        'agent-b',
+        PEER,
+        params({ metadata: { ranch: { chain: ['agent-a'], pass: forged } } }),
+      ),
+    ).rejects.toMatchObject(refused);
+  });
+
+  it('hands the runtime the very token, and names the conversation by the connection', async () => {
+    const { service, sendAndAwait } = makeHarness();
+    const request = await signed(params({ contextId: 'ctx-42' }));
+
+    await service.sendMessage('agent-b', PEER, request);
+
+    const ranch = request.message.metadata?.ranch as { pass: string };
+    expect(sendAndAwait).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: 'peer:peer-1:ctx-42',
+        handover: { token: ranch.pass },
+        source: 'peer',
+      }),
+    );
+    // Nothing of the asking agent is in the name the receiving side stores.
+    const [[input]] = sendAndAwait.mock.calls as unknown as [
+      [{ clientId: string }],
+    ];
+    expect(input.clientId).not.toContain('agent-a');
+  });
+
+  it('two questions served at once keep their own chains, and each is refused on its own', async () => {
+    const { service, sendAndAwait } = makeHarness({
+      env: { A2A_MAX_CHAIN: '3' },
+    });
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    sendAndAwait.mockImplementation(async () => {
+      await held;
+      return { text: 'ok', messageId: 'm', ts: 1, timedOut: false };
+    });
+
+    // One still has a hop left and is being served …
+    const first = service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(withChain(['agent-a'])),
+    );
+    // … while a second arrives that would loop, and a third that is too deep.
+    const loop = await service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(withChain(['agent-b', 'agent-a'])),
+    );
+    const deep = await service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(withChain(['agent-x', 'agent-y', 'agent-a'])),
+    );
+    release();
+
+    expect(loop.metadata?.ranch?.rejection).toBe('loop');
+    expect(deep.metadata?.ranch?.rejection).toBe('depth');
+    expect((await first).metadata?.ranch?.chain).toEqual([
+      'agent-a',
+      'agent-b',
+    ]);
+  });
+});
+
+/** CLEAN-236. A task is answerable to the connection it was made through. */
+describe('A2aServerService.getTask — bound to the connection', () => {
+  it('is not found for any other connection, as a task that never was', async () => {
+    const { service } = makeHarness();
+    const task = await service.sendMessage(
+      'agent-b',
+      PEER,
+      await signed(params()),
+    );
+    const other: IInboundPeer = { peerId: 'peer-2', callerAgentId: 'agent-c' };
+
+    expect(service.knowsTask(task.id, other)).toBe(false);
+    expect(() => service.getTask({ id: task.id }, other)).toThrow(
+      expect.objectContaining({ code: A2aErrorCodes.TaskNotFound }),
+    );
+    expect(service.getTask({ id: task.id }, PEER).id).toBe(task.id);
   });
 });

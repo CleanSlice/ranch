@@ -1,5 +1,6 @@
 import { createServiceGetter } from '#common/composables/createServiceGetter';
 import { useAgentStore } from '#agent/stores/agent';
+import { applyPatch, revertPatch } from '#peer/utils/patchPeer';
 import type { PeerService } from '#peer/domain';
 import type {
   IAgentCard,
@@ -195,6 +196,47 @@ export const usePeerStore = defineStore('peer', () => {
     useAgentStore().markPendingRestart(agentId);
   }
 
+  /**
+   * Changes fields of one loaded peer and hands back the way to undo it. The
+   * rollback restores a field only while it still holds the optimistic
+   * value, so a fresher answer of the server that landed in between survives
+   * (docs/state.md).
+   */
+  function patch(
+    agentId: string,
+    peerId: string,
+    fields: Partial<IAgentPeer>,
+  ): () => void {
+    const before = peers(agentId).find((p) => p.id === peerId);
+    if (!before) return () => {};
+    const write = (list: IAgentPeer[]) => {
+      peersByAgent.value = { ...peersByAgent.value, [agentId]: list };
+    };
+    write(applyPatch(peers(agentId), peerId, fields));
+    return () => write(revertPatch(peers(agentId), before, fields));
+  }
+
+  /**
+   * Open a connection to visitors, or close it (CLEAN-236). The switch moves
+   * at once and moves back if the API says no; the row then takes whatever
+   * the API answered, the cleared review mark included. Nothing to restart:
+   * whom a peer serves is asked on every call.
+   */
+  async function setVisitors(
+    agentId: string,
+    peerId: string,
+    open: boolean,
+  ): Promise<void> {
+    const rollback = patch(agentId, peerId, { openToVisitors: open });
+    try {
+      const updated = await getService().setVisitors(agentId, peerId, open);
+      patch(agentId, peerId, updated);
+    } catch (err) {
+      rollback();
+      throw err;
+    }
+  }
+
   async function remove(agentId: string, peerId: string): Promise<void> {
     const removed = peers(agentId).find((p) => p.id === peerId);
     await getService().remove(agentId, peerId);
@@ -264,6 +306,8 @@ export const usePeerStore = defineStore('peer', () => {
     importByUrl,
     importByCard,
     refresh,
+    patch,
+    setVisitors,
     remove,
     loadDelegations,
     clearError,

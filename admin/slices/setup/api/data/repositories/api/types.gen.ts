@@ -1072,6 +1072,47 @@ export type ShareResolveRequestDto = {
   token: string;
 };
 
+export type ShareSkillDto = {
+  title: string;
+  description: string | null;
+};
+
+export type ShareLimitsDto = {
+  /**
+   * Requests accepted in any 60 seconds; null = not limited.
+   */
+  perMinute: number | null;
+  /**
+   * Requests accepted in any 60 minutes; null = not limited.
+   */
+  perHour: number | null;
+  /**
+   * Requests accepted in any 24 hours; null = not limited.
+   */
+  perDay: number | null;
+};
+
+export type ShareAttachmentsDto = {
+  /**
+   * Attachments per message.
+   */
+  maxPerMessage: number;
+  /**
+   * Largest single file, bytes.
+   */
+  maxFileBytes: number;
+  /**
+   * Largest combined attachments on one message, bytes.
+   */
+  maxMessageBytes: number;
+  /**
+   * Accepted file families.
+   */
+  kinds: Array<
+    "image" | "pdf" | "document" | "spreadsheet" | "presentation" | "text"
+  >;
+};
+
 export type ShareResolvedDto = {
   /**
    * Id of the shared agent — used for the chat requests.
@@ -1085,6 +1126,19 @@ export type ShareResolvedDto = {
    * The agent's persisted status (running | unreachable | deploying | stopped | failed | …). 'running' means the chat is live.
    */
   agentStatus: string;
+  /**
+   * What the agent is for: its own description, else its template's, else null. At most 500 characters.
+   */
+  description: string | null;
+  /**
+   * The skills of the agent's template. Empty when it has none.
+   */
+  skills: Array<ShareSkillDto>;
+  /**
+   * Null when the agent has no request limits.
+   */
+  limits: ShareLimitsDto | null;
+  attachments: ShareAttachmentsDto;
 };
 
 export type AgentLimitSummaryDto = {

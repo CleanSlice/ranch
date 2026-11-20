@@ -3,6 +3,9 @@ import { ShareLinkService } from './shareLink.service';
 import { ICreateShareLinkInput, IShareLinkGateway } from './shareLink.gateway';
 import { IShareLinkData, ShareLinkErrorCodes } from './shareLink.types';
 import { IAgentData, IAgentGateway } from '#/agent/agent/domain';
+import { ITemplateData, ITemplateGateway } from '#/agent/template/domain';
+import { ISkillData, ISkillGateway } from '#/skill/domain';
+import { AgentLimitService, IAgentLimits } from '#/agent/limit/domain';
 
 const TOKEN_RE = /^sl_[A-Za-z0-9_-]{43}$/;
 
@@ -86,6 +89,8 @@ function makeAgentStub(agents: Partial<IAgentData>[] = [{ id: 'agent-1' }]) {
       id: a.id!,
       name: a.name ?? 'Support bot',
       status: a.status ?? 'running',
+      templateId: a.templateId ?? 'tpl-1',
+      config: a.config ?? {},
     } as IAgentData);
   }
   const gateway = {
@@ -94,10 +99,54 @@ function makeAgentStub(agents: Partial<IAgentData>[] = [{ id: 'agent-1' }]) {
   return { agents: gateway as unknown as IAgentGateway, spies: gateway };
 }
 
-function newService(agentStub = makeAgentStub()) {
+// What the visitor summary is read from. The defaults are an agent with
+// nothing to say: no template, no skills, no limits.
+interface IInfoStub {
+  template?: Partial<ITemplateData> | null | Error;
+  skills?: Partial<ISkillData>[] | Error;
+  limits?: IAgentLimits | null;
+}
+
+function makeInfoStub({
+  template = null,
+  skills = [],
+  limits = null,
+}: IInfoStub = {}) {
+  const spies = {
+    findTemplate: jest.fn(async () => {
+      if (template instanceof Error) throw template;
+      return template;
+    }),
+    findSkills: jest.fn(async () => {
+      if (skills instanceof Error) throw skills;
+      return skills;
+    }),
+    getLimits: jest.fn(() => limits),
+  };
+  return {
+    templates: { findById: spies.findTemplate } as unknown as ITemplateGateway,
+    skills: { findByIds: spies.findSkills } as unknown as ISkillGateway,
+    limits: { getLimits: spies.getLimits } as unknown as AgentLimitService,
+    spies,
+  };
+}
+
+function newService(agentStub = makeAgentStub(), info: IInfoStub = {}) {
   const link = makeGatewayStub();
-  const service = new ShareLinkService(link.gateway, agentStub.agents);
-  return { service, ...link, agentSpies: agentStub.spies };
+  const infoStub = makeInfoStub(info);
+  const service = new ShareLinkService(
+    link.gateway,
+    agentStub.agents,
+    infoStub.templates,
+    infoStub.skills,
+    infoStub.limits,
+  );
+  return {
+    service,
+    ...link,
+    agentSpies: agentStub.spies,
+    infoSpies: infoStub.spies,
+  };
 }
 
 describe('ShareLinkService.mint (token format)', () => {
@@ -281,20 +330,100 @@ describe('ShareLinkService.revoke', () => {
 });
 
 describe('ShareLinkService.resolveForVisitor', () => {
-  it('returns only the agent id, name and status', async () => {
-    const { service } = newService(
-      makeAgentStub([
-        { id: 'agent-1', name: 'Support bot', status: 'running' },
-      ]),
-    );
+  const describedAgent = () =>
+    makeAgentStub([
+      {
+        id: 'agent-1',
+        name: 'Support bot',
+        status: 'running',
+        templateId: 'tpl-1',
+        config: { description: 'Own text', botToken: 'SECRET' },
+      },
+    ]);
+
+  it('returns exactly the allowlisted keys', async () => {
+    const { service, infoSpies } = newService(describedAgent(), {
+      template: { id: 'tpl-1', description: 'Tpl', skillIds: ['s1'] },
+      skills: [
+        {
+          id: 's1',
+          title: 'Orders',
+          description: 'Tracks orders',
+          body: 'SECRET',
+        },
+      ],
+      limits: { perMinute: null, perHour: 20, perDay: 100 },
+    });
     const { token } = await service.share('agent-1', 'user-1');
     const resolved = await service.resolveForVisitor(token!);
 
-    expect(resolved).toEqual({
-      agentId: 'agent-1',
-      agentName: 'Support bot',
-      agentStatus: 'running',
+    expect(Object.keys(resolved).sort()).toEqual([
+      'agentId',
+      'agentName',
+      'agentStatus',
+      'attachments',
+      'description',
+      'limits',
+      'skills',
+    ]);
+    expect(resolved.agentId).toBe('agent-1');
+    expect(resolved.agentName).toBe('Support bot');
+    expect(resolved.agentStatus).toBe('running');
+    expect(resolved.description).toBe('Own text');
+    expect(resolved.skills).toEqual([
+      { title: 'Orders', description: 'Tracks orders' },
+    ]);
+    expect(resolved.limits).toEqual({
+      perMinute: null,
+      perHour: 20,
+      perDay: 100,
     });
+    expect(resolved.attachments.maxPerMessage).toBe(5);
+    expect(JSON.stringify(resolved)).not.toContain('SECRET');
+    expect(infoSpies.findTemplate).toHaveBeenCalledWith('tpl-1');
+    expect(infoSpies.findSkills).toHaveBeenCalledWith(['s1']);
+    expect(infoSpies.getLimits).toHaveBeenCalledWith('agent-1');
+  });
+
+  it('falls back to the template description', async () => {
+    const { service } = newService(makeAgentStub(), {
+      template: { id: 'tpl-1', description: 'Tpl', skillIds: [] },
+    });
+    const { token } = await service.share('agent-1', 'user-1');
+    expect((await service.resolveForVisitor(token!)).description).toBe('Tpl');
+  });
+
+  it('still answers when the template cannot be read', async () => {
+    const { service } = newService(describedAgent(), {
+      template: new Error('db down'),
+    });
+    const { token } = await service.share('agent-1', 'user-1');
+    const resolved = await service.resolveForVisitor(token!);
+
+    expect(resolved.description).toBe('Own text');
+    expect(resolved.skills).toEqual([]);
+  });
+
+  it('still answers when the skills cannot be read', async () => {
+    const { service } = newService(describedAgent(), {
+      template: { id: 'tpl-1', description: 'Tpl', skillIds: ['s1'] },
+      skills: new Error('db down'),
+    });
+    const { token } = await service.share('agent-1', 'user-1');
+    const resolved = await service.resolveForVisitor(token!);
+
+    expect(resolved.description).toBe('Own text');
+    expect(resolved.skills).toEqual([]);
+  });
+
+  it('answers with nothing extra for an agent that has nothing to say', async () => {
+    const { service } = newService();
+    const { token } = await service.share('agent-1', 'user-1');
+    const resolved = await service.resolveForVisitor(token!);
+
+    expect(resolved.description).toBeNull();
+    expect(resolved.skills).toEqual([]);
+    expect(resolved.limits).toBeNull();
   });
 
   it('404s with SHARE_LINK_NOT_FOUND for an unknown token, and a revoked token answers identically', async () => {

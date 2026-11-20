@@ -55,6 +55,7 @@ import {
   hashPeerIds,
   maskCard,
   type IAgentDelegationData,
+  type IAgentDelegationView,
   type IAgentPeerCandidate,
   type IAgentPeerData,
   type IAgentPeerView,
@@ -128,7 +129,7 @@ export class PeerService {
     agentId: string,
     party: ICallerParty,
     limit: number,
-  ): Promise<IAgentDelegationData[]> {
+  ): Promise<IAgentDelegationView[]> {
     const [rows, connections, viewer] = await Promise.all([
       this.delegations.listRecent(agentId, limit),
       this.peers.listByAgent(agentId),
@@ -136,7 +137,7 @@ export class PeerService {
     ]);
     const byId = new Map(connections.map((row) => [row.id, row]));
 
-    const shown: IAgentDelegationData[] = [];
+    const shown: IAgentDelegationView[] = [];
     for (const row of rows) {
       const connection = row.peerId ? byId.get(row.peerId) : undefined;
       const visibility = connection
@@ -150,8 +151,9 @@ export class PeerService {
               peerName: MASKED_PEER_NAME,
               peerAgentId: null,
               excerpt: null,
+              visibility,
             }
-          : row,
+          : { ...row, visibility },
       );
     }
     return shown;

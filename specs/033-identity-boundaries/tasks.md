@@ -35,7 +35,7 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 
 - [X] T001 Confirm branch `fix/CLEAN-236-identity-boundaries` is on up-to-date `origin/main`; commit the spec folder `specs/033-identity-boundaries/` and `.specify/feature.json` as the first commit (`docs(spec): identity boundaries (CLEAN-236)`)
 - [ ] T002 [P] Ask where the working clone of `CleanSlice/runtime` lives (it is no longer at `../runtime`); create branch `fix/CLEAN-236-identity-boundaries` there from up-to-date `origin/main`; record the baseline of `bun test` and `bun run build`
-- [ ] T003 [P] In `api/` run `bun run generate`, `bun run build`, `bun run generate:swagger`; in `admin/` and `app/` run `bun run build:api`; confirm a clean tree afterwards
+- [X] T003 [P] In `api/` run `bun run generate`, `bun run build`, `bun run generate:swagger`; in `admin/` and `app/` run `bun run build:api`; confirm a clean tree afterwards
 - [ ] T004 [P] Record the baseline of `NODE_OPTIONS=--experimental-vm-modules npx jest src/slices/agent/peer src/slices/bridle src/slices/user/session src/slices/user/auth src/slices/mcp` in `api/`, and of `bun test slices` in `admin/` and `app/` (known local noise: date-format tests)
 
 ---
@@ -83,7 +83,7 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 - [X] T025 [US2] `api/src/slices/agent/peer/peerAdmin.tool.ts`: the same for the four tools of T020; `toToolPeer` in `toolSupport.ts` renders a masked row without name, id or address
 - [X] T026 [US2] `api/src/slices/agent/peer/askAgent.tool.ts`: `isListedForRequest` and `describeForRequest` keep only connections that serve `callerParty(httpRequest)`; `DelegationService.run` in `domain/delegation.service.ts` takes the party, re-checks `serves` at call time and returns `no_match` with the served names only
 - [X] T027 [US2] `api/src/slices/agent/peer/guards/a2a.guards.ts`: a console token passes `A2aCardGuard` only when `AgentPermissionService.manageable` admits its person; otherwise throw the not-found `AgentCardService.build` throws
-- [ ] T028 [P] [US2] `admin/slices/agent/peer/`: regenerate the SDK types; `stores/peer.ts` and `components/peer/Row.vue` render by `visibility` and hide Remove and Re-read when `canRemove` is false; `components/peer/Delegations.vue` renders a masked row without a name
+- [X] T028 [P] [US2] `admin/slices/agent/peer/`: regenerate the SDK types; `stores/peer.ts` and `components/peer/Row.vue` render by `visibility` and hide Remove and Re-read when `canRemove` is false; `components/peer/Delegations.vue` renders a masked row without a name
 - [ ] T029 [US2] Write `specs/033-identity-boundaries/e2e/lib.mjs`, `seed.mjs` (quickstart.md §2) and `hidden.mjs`; run it green
 
 **Checkpoint**: findings 1, 2, 3, 4, 5 and 7 of a2a-access-analysis.md are closed for an ordinary connection.
@@ -101,7 +101,7 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 - [X] T032 [US3] `api/src/slices/agent/peer/peerSelf.tool.ts`: `@ToolAudience('person')`; `requireSelf` also requires `callerPerson`; drop `isOwnersAgentForSomebodyElse` in favour of the party rules; rewrite the class comment to say the model is the caller's reach, no longer "whoever talks to it"
 - [X] T033 [US3] `PeerService.candidates` and `connect` in `api/src/slices/agent/peer/domain/peer.service.ts` take the party: candidates are the agents the person reaches, `connect` refuses an unreached colleague as not found and records `createdById`
 - [X] T034 [US3] `api/src/slices/agent/peer/peer.controller.ts` and `peerAdmin.tool.ts`: replace `permission.manageable` on the colleague's end by the reach check of T033 (candidates, `POST peers`, `connect_agent_peer`, `preview_agent_card`); `peerAdmin` tools require a person
-- [ ] T035 [P] [US3] `admin/slices/agent/peer/components/peer/Picker.vue`: nothing to change in the markup; confirm it renders the narrower candidate list and the unchanged "not found" refusal
+- [X] T035 [P] [US3] `admin/slices/agent/peer/components/peer/Picker.vue`: nothing to change in the markup; confirm it renders the narrower candidate list and the unchanged "not found" refusal
 - [ ] T036 [US3] Write `specs/033-identity-boundaries/e2e/connect.mjs` (chat through `fakeRuntime.mjs`, the assistant's tools, the console route); run it green
 
 **Checkpoint**: finding 6 closed; the reproduction of 2026-11-19 (a User named 23 agents) names only what the User reaches.
@@ -133,7 +133,7 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 - [X] T042 [US4] `PeerService.connectByUrl`, `connectByCard`, `previewByUrl` in `api/src/slices/agent/peer/domain/peer.service.ts` take the party; set `createdById` and `ownerUserId`; make the `SelfUrl` message the same whatever the path names; `refresh` of an outside row re-runs the own-address check (already does: pin it)
 - [X] T043 [US4] `api/src/slices/agent/peer/peerSelf.tool.ts` (`import_my_peer_by_address`, `connect_my_peer_from_card`, `preview_agent_card_by_address`) and `peer.controller.ts` / `peerAdmin.tool.ts` pass the party; the reply to a personal connection says it serves only the person who added it
 - [X] T044 [US4] The rule already hides a personal row from other callers (T016): confirm in `askAgent.tool.spec.ts` that nothing of its card is in another caller's roster, and in `peer.controller.spec.ts` that a manager of A sees it with `createdBy` and can remove it
-- [ ] T045 [P] [US4] `admin/slices/agent/peer/components/peer/Row.vue`: a personal outside row shows "Only for <name>" and who added it
+- [X] T045 [P] [US4] `admin/slices/agent/peer/components/peer/Row.vue`: a personal outside row shows "Only for <name>" and who added it
 - [ ] T046 [US4] Write `specs/033-identity-boundaries/e2e/outside.mjs` with a local stub that serves a card and one that redirects; run it green
 
 **Checkpoint**: finding 13 closed.
@@ -151,7 +151,7 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 - [X] T049 [US6] `PeerService.setVisitors` in `api/src/slices/agent/peer/domain/peer.service.ts` (manage on both ends through `AgentPermissionService`, Ranch rows only); route `PUT peers/:peerId/visitors` with `dtos/peerVisitors.dto.ts` in `peer.controller.ts`; pin it in `api/src/slices/agent/agent/guards/agentManage.guard.spec.ts` (48 routes)
 - [X] T050 [US6] Tool `set_agent_peer_visitors` in `api/src/slices/agent/peer/peerAdmin.tool.ts` with topic, title, template, `destructive` and `confirm` (contracts/colleagues.md §4); add it to `toolAudience.spec.ts` and `tool-metadata.spec.ts`
 - [X] T051 [US6] Masked rendering: `describePeer` in `askAgent.tool.ts`, the reply text in `ask`, `buildDelegationStep` in `domain/delegationStep.ts`, and `matchPeer` resolving a masked row by connection id only
-- [ ] T052 [P] [US6] `admin/slices/agent/peer/`: a "Open to visitors" switch on a Ranch row, enabled by `canSetVisitors`, with an alert dialog that states what it opens; the masked row ("A colleague outside your access, open to visitors"); the "needs review" badge; `stores/peer.ts` `setVisitors` through `patch()` with a rollback; `data/peer.gateway.ts` and `domain/peer.service.ts`
+- [X] T052 [P] [US6] `admin/slices/agent/peer/`: a "Open to visitors" switch on a Ranch row, enabled by `canSetVisitors`, with an alert dialog that states what it opens; the masked row ("A colleague outside your access, open to visitors"); the "needs review" badge; `stores/peer.ts` `setVisitors` through `patch()` with a rollback; `data/peer.gateway.ts` and `domain/peer.service.ts`
 - [ ] T053 [US6] Write `specs/033-identity-boundaries/e2e/visitors.mjs` (API and the admin page at 390 px and 1440 px); add scenario 5 of Story 1 to `anonymous.mjs`; run both green
 
 **Checkpoint**: FR-014 to FR-017 hold; the chain case of Story 6 scenario 6 is completed by Phase 8.
@@ -187,7 +187,7 @@ runtime first (it is released first), then Part A (Stories 2, 3, 1, 4, 6, 7,
 
 - [X] T064 [P] [US9] In `api/src/slices/agent/peer/domain/peer.service.spec.ts` add: `createdBy` is `{ id, name }`, null with "predates the record" for a row without it, and "account removed" when the account is gone; a person who made a connection removes it without managing A; a User is refused the Owner's
 - [X] T065 [US9] `toView` in `api/src/slices/agent/peer/domain/peer.service.ts` resolves `createdBy` and `openedBy` names through the user slice's public gateway; `remove` admits the maker (rule of contracts/colleagues.md §2); `remove_my_peer` in `peerSelf.tool.ts` uses it and keeps `confirm`
-- [ ] T066 [P] [US9] `admin/slices/agent/peer/components/peer/Row.vue`: "Connected by <name> on <date>" through `#common/utils/format`, "Predates the record" otherwise; the same in the result of `list_agent_peers` and `list_my_peers` (`toToolPeer` in `toolSupport.ts`)
+- [X] T066 [P] [US9] `admin/slices/agent/peer/components/peer/Row.vue`: "Connected by <name> on <date>" through `#common/utils/format`, "Predates the record" otherwise; the same in the result of `list_agent_peers` and `list_my_peers` (`toToolPeer` in `toolSupport.ts`)
 - [ ] T067 [US9] Write `specs/033-identity-boundaries/e2e/record.mjs`; run it green
 
 ---

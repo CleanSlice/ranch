@@ -4736,6 +4736,23 @@ export const AgentCardDtoSchema = {
   ],
 } as const;
 
+export const PeerPersonDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      example: "user-6f1c…",
+    },
+    name: {
+      type: "string",
+      description: "Null once the account no longer exists.",
+      nullable: true,
+      example: "Ada Lovelace",
+    },
+  },
+  required: ["id", "name"],
+} as const;
+
 export const AgentPeerDtoSchema = {
   type: "object",
   properties: {
@@ -4804,6 +4821,56 @@ export const AgentPeerDtoSchema = {
       format: "date-time",
       example: "2026-09-14T10:00:00.000Z",
     },
+    visibility: {
+      type: "string",
+      description:
+        "How the caller is shown this connection (CLEAN-236). 'full': as it is. 'masked': the peer serves the caller through a connection open to visitors, and the caller has no access to the peer itself, so `peerName` is a constant, `peerAgentId` is null, `cardUrl` is empty and `card` holds the skills only. A connection the caller may not see at all is not in the list.",
+      enum: ["full", "masked"],
+      example: "full",
+    },
+    createdBy: {
+      description:
+        "Who made the connection. Null when it was made before that was recorded, and on a masked row.",
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/PeerPersonDto",
+        },
+      ],
+    },
+    openToVisitors: {
+      type: "boolean",
+      description:
+        "Internal peers only. False: the peer serves the people who have access to it. True: it serves everybody who talks to the agent, visitors included.",
+      example: false,
+    },
+    owner: {
+      description:
+        "External peers only: the one person this connection serves, when somebody who does not manage the agent added it. Null: it serves everybody who talks to the agent.",
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/PeerPersonDto",
+        },
+      ],
+    },
+    needsReview: {
+      type: "boolean",
+      description:
+        "The connection existed before access to peers was checked and its visitors setting has not been saved since. Saving it, either way, clears the mark.",
+      example: false,
+    },
+    canRemove: {
+      type: "boolean",
+      description: "The caller may remove this connection.",
+      example: true,
+    },
+    canSetVisitors: {
+      type: "boolean",
+      description:
+        "The caller manages both agents and may open or close the connection to visitors.",
+      example: false,
+    },
   },
   required: [
     "id",
@@ -4817,6 +4884,13 @@ export const AgentPeerDtoSchema = {
     "cardUrl",
     "cardReadAt",
     "createdAt",
+    "visibility",
+    "createdBy",
+    "openToVisitors",
+    "owner",
+    "needsReview",
+    "canRemove",
+    "canSetVisitors",
   ],
 } as const;
 
@@ -4916,6 +4990,24 @@ export const PeersStateDtoSchema = {
   required: ["armed", "servedAt"],
 } as const;
 
+export const PeerVisitorsDtoSchema = {
+  type: "object",
+  properties: {
+    open: {
+      type: "boolean",
+      description:
+        "True: the peer serves everybody who talks to the agent, people with no access to the peer and visitors included. False: only the people who have access to the peer.",
+      example: true,
+    },
+    confirm: {
+      type: "boolean",
+      description: "Required, and true, when `open` is true.",
+      example: true,
+    },
+  },
+  required: ["open"],
+} as const;
+
 export const AgentDelegationDtoSchema = {
   type: "object",
   properties: {
@@ -4984,6 +5076,13 @@ export const AgentDelegationDtoSchema = {
       nullable: true,
       example: 3120,
     },
+    visibility: {
+      type: "string",
+      description:
+        "How the caller is shown this row (CLEAN-236). 'masked': the task went to a peer that serves the caller through a connection open to visitors, without their having access to it. `peerName` is then a constant, and `peerAgentId` and `excerpt` are null. A task handed to a peer the caller may not see at all is not in the list.",
+      enum: ["full", "masked"],
+      example: "full",
+    },
   },
   required: [
     "id",
@@ -4998,6 +5097,7 @@ export const AgentDelegationDtoSchema = {
     "startedAt",
     "finishedAt",
     "durationMs",
+    "visibility",
   ],
 } as const;
 

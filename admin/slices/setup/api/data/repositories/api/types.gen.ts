@@ -2148,6 +2148,14 @@ export type AgentCardDto = {
   skills: Array<AgentSkillDto>;
 };
 
+export type PeerPersonDto = {
+  id: string;
+  /**
+   * Null once the account no longer exists.
+   */
+  name: string | null;
+};
+
 export type AgentPeerDto = {
   /**
    * Id of the connection, not of either agent.
@@ -2190,6 +2198,34 @@ export type AgentPeerDto = {
    */
   cardReadAt: string;
   createdAt: string;
+  /**
+   * How the caller is shown this connection (CLEAN-236). 'full': as it is. 'masked': the peer serves the caller through a connection open to visitors, and the caller has no access to the peer itself, so `peerName` is a constant, `peerAgentId` is null, `cardUrl` is empty and `card` holds the skills only. A connection the caller may not see at all is not in the list.
+   */
+  visibility: "full" | "masked";
+  /**
+   * Who made the connection. Null when it was made before that was recorded, and on a masked row.
+   */
+  createdBy: PeerPersonDto | null;
+  /**
+   * Internal peers only. False: the peer serves the people who have access to it. True: it serves everybody who talks to the agent, visitors included.
+   */
+  openToVisitors: boolean;
+  /**
+   * External peers only: the one person this connection serves, when somebody who does not manage the agent added it. Null: it serves everybody who talks to the agent.
+   */
+  owner: PeerPersonDto | null;
+  /**
+   * The connection existed before access to peers was checked and its visitors setting has not been saved since. Saving it, either way, clears the mark.
+   */
+  needsReview: boolean;
+  /**
+   * The caller may remove this connection.
+   */
+  canRemove: boolean;
+  /**
+   * The caller manages both agents and may open or close the connection to visitors.
+   */
+  canSetVisitors: boolean;
 };
 
 export type AgentPeerCandidateDto = {
@@ -2250,6 +2286,17 @@ export type PeersStateDto = {
   servedAt: string | null;
 };
 
+export type PeerVisitorsDto = {
+  /**
+   * True: the peer serves everybody who talks to the agent, people with no access to the peer and visitors included. False: only the people who have access to the peer.
+   */
+  open: boolean;
+  /**
+   * Required, and true, when `open` is true.
+   */
+  confirm?: boolean;
+};
+
 export type AgentDelegationDto = {
   id: string;
   /**
@@ -2284,6 +2331,10 @@ export type AgentDelegationDto = {
   startedAt: string;
   finishedAt: string | null;
   durationMs: number | null;
+  /**
+   * How the caller is shown this row (CLEAN-236). 'masked': the task went to a peer that serves the caller through a connection open to visitors, without their having access to it. `peerName` is then a constant, and `peerAgentId` and `excerpt` are null. A task handed to a peer the caller may not see at all is not in the list.
+   */
+  visibility: "full" | "masked";
 };
 
 export type AgentLinkDto = {
@@ -6410,6 +6461,10 @@ export type RefreshAgentPeerErrors = {
    */
   401: unknown;
   /**
+   * The caller is shown this connection masked and may not re-read it.
+   */
+  403: unknown;
+  /**
    * No agent or connection with this id.
    */
   404: unknown;
@@ -6426,6 +6481,38 @@ export type RefreshAgentPeerResponses = {
 export type RefreshAgentPeerResponse =
   RefreshAgentPeerResponses[keyof RefreshAgentPeerResponses];
 
+export type SetAgentPeerVisitorsData = {
+  body: PeerVisitorsDto;
+  path: {
+    agentId: string;
+    peerId: string;
+  };
+  query?: never;
+  url: "/agents/{agentId}/peers/{peerId}/visitors";
+};
+
+export type SetAgentPeerVisitorsErrors = {
+  /**
+   * Missing, malformed or expired console bearer token.
+   */
+  401: unknown;
+  /**
+   * No agent or connection with this id.
+   */
+  404: unknown;
+  /**
+   * Opening without `confirm: true`; nothing was changed.
+   */
+  409: unknown;
+};
+
+export type SetAgentPeerVisitorsResponses = {
+  200: AgentPeerDto;
+};
+
+export type SetAgentPeerVisitorsResponse =
+  SetAgentPeerVisitorsResponses[keyof SetAgentPeerVisitorsResponses];
+
 export type RemoveAgentPeerData = {
   body?: never;
   path: {
@@ -6441,6 +6528,10 @@ export type RemoveAgentPeerErrors = {
    * Missing, malformed or expired console bearer token.
    */
   401: unknown;
+  /**
+   * The caller is shown this connection masked and did not make it.
+   */
+  403: unknown;
   /**
    * No agent or connection with this id.
    */

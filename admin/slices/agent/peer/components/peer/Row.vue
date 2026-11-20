@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { IconX } from '@tabler/icons-vue';
+import { IconEyeOff, IconX } from '@tabler/icons-vue';
+import { formatDay } from '#common/utils/format';
 import type { IAgentPeer } from '#peer/stores/peer';
 
 /**
@@ -18,7 +19,30 @@ const props = defineProps<{
   selected?: boolean;
 }>();
 
-defineEmits<{ refresh: []; remove: []; select: [] }>();
+defineEmits<{
+  refresh: [];
+  remove: [];
+  select: [];
+  /** The operator moved the visitors switch; Tab.vue confirms an opening. */
+  visitors: [open: boolean];
+}>();
+
+/**
+ * A peer that serves this viewer through a connection open to visitors,
+ * without their having access to it (CLEAN-236). The API sends its skills
+ * and nothing that says which agent has them, so the row has no link, no
+ * status, no address and nothing to change.
+ */
+const masked = computed(() => props.peer.visibility === 'masked');
+
+/** "Connected by Ada on 20 Nov 2026", or that the record does not go back that far. */
+const connectedBy = computed(() => {
+  if (masked.value) return null;
+  const who = props.peer.createdBy;
+  if (!who) return 'Connected before this was recorded';
+  const name = who.name ?? 'an account that no longer exists';
+  return `Connected by ${name} on ${formatDay(props.peer.createdAt)}`;
+});
 
 const SKILLS_SHOWN = 4;
 
@@ -55,6 +79,16 @@ const STALE_META: StatusMeta = {
 };
 
 const meta = computed<StatusMeta>(() => {
+  // No status of the agent behind a masked peer reaches this console.
+  if (masked.value) {
+    return {
+      label: 'outside your access',
+      dot: 'bg-muted-foreground/50',
+      pulse: false,
+      badge: 'border-transparent bg-muted text-muted-foreground',
+      border: 'border-dashed',
+    };
+  }
   // An imported foreign agent has no live pod status here; the origin is the
   // status, and only card staleness can degrade it (CLEAN-95).
   if (props.peer.origin === 'external') {
@@ -95,6 +129,7 @@ const meta = computed<StatusMeta>(() => {
 });
 
 const failReason = computed<string | null>(() => {
+  if (masked.value) return null;
   if (props.peer.origin === 'external') return null;
   if (!props.peer.peerExists)
     return (
@@ -126,8 +161,15 @@ const failReason = computed<string | null>(() => {
           class="size-2 flex-none rounded-full"
           :class="[meta.dot, meta.pulse && 'animate-pulse']"
         />
+        <span
+          v-if="masked"
+          class="inline-flex items-center gap-1.5 text-sm font-bold text-muted-foreground"
+        >
+          <IconEyeOff class="size-3.5" />
+          {{ peer.peerName }}
+        </span>
         <NuxtLink
-          v-if="peer.peerAgentId"
+          v-else-if="peer.peerAgentId"
           :to="`/agents/${peer.peerAgentId}`"
           class="text-sm font-bold hover:underline"
         >
@@ -137,12 +179,21 @@ const failReason = computed<string | null>(() => {
           {{ peer.peerName }}
         </span>
         <Badge variant="outline" :class="meta.badge">{{ meta.label }}</Badge>
+        <Badge
+          v-if="peer.needsReview"
+          variant="outline"
+          class="border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-500"
+          title="This connection existed before access to peers was checked. Decide whether it serves visitors; saving the switch either way clears this mark."
+        >
+          needs review
+        </Badge>
         <span class="text-xs text-muted-foreground">
           {{ taskCount }} {{ taskCount === 1 ? 'task' : 'tasks' }}
         </span>
 
         <div class="ml-auto flex gap-1">
           <Button
+            v-if="!masked && peer.canRemove"
             variant="outline"
             size="sm"
             class="h-7 px-2.5 text-xs"
@@ -162,6 +213,7 @@ const failReason = computed<string | null>(() => {
             Feed
           </Button>
           <Button
+            v-if="peer.canRemove"
             variant="outline"
             size="icon"
             class="size-7 text-muted-foreground hover:border-destructive/40 hover:text-destructive"
@@ -174,9 +226,51 @@ const failReason = computed<string | null>(() => {
         </div>
       </div>
 
-      <p class="mt-1.5 text-sm text-muted-foreground">
+      <p v-if="masked" class="mt-1.5 text-sm text-muted-foreground">
+        A colleague outside your access, open to visitors. It answers through
+        this agent for everybody who talks to it. Whoever manages both agents
+        can close it.
+      </p>
+      <p v-else class="mt-1.5 text-sm text-muted-foreground">
         {{ peer.card?.description }}
       </p>
+
+      <!-- Whom it serves (CLEAN-236). An internal peer serves the people who
+           have access to it, unless somebody who manages both agents opened
+           it. An external one serves everybody, or the one person who added
+           it without managing this agent. -->
+      <div
+        v-if="!masked"
+        class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground"
+      >
+        <label
+          v-if="peer.origin === 'internal'"
+          class="inline-flex items-center gap-2"
+          :title="
+            peer.canSetVisitors
+              ? 'Open: it answers through this agent for everybody who talks to it, visitors included, and is shown to them without its name.'
+              : 'Only somebody who manages both agents can change this.'
+          "
+        >
+          <Switch
+            :model-value="peer.openToVisitors"
+            :disabled="busy || !peer.canSetVisitors"
+            @update:model-value="(open: boolean) => $emit('visitors', open)"
+          />
+          <span :class="peer.openToVisitors && 'font-medium text-foreground'">
+            {{
+              peer.openToVisitors
+                ? 'Open to visitors'
+                : 'Serves people who have access to it'
+            }}
+          </span>
+        </label>
+        <span v-else-if="peer.owner">
+          Only for {{ peer.owner.name ?? 'the account that added it' }}
+        </span>
+        <span v-else>Serves everybody who talks to this agent</span>
+        <span>{{ connectedBy }}</span>
+      </div>
 
       <div
         v-if="failReason"
@@ -210,13 +304,15 @@ const failReason = computed<string | null>(() => {
           v-else
           class="text-xs text-amber-700 dark:text-amber-500"
         >
-          <template v-if="peer.card?.description">
+          <template v-if="masked">No skills advertised.</template>
+          <template v-else-if="peer.card?.description">
             No skills advertised — matching leans on its description alone.
           </template>
           <template v-else>
             Advertises nothing — reachable by name only, never by topic.
           </template>
-          <template v-if="peer.peerAgentId">
+          <template v-if="masked" />
+          <template v-else-if="peer.peerAgentId">
             Give it a description or
             <NuxtLink
               :to="`/agents/${peer.peerAgentId}?tab=knowledge`"
@@ -228,7 +324,10 @@ const failReason = computed<string | null>(() => {
             Ask its owner to publish a description and skills, then Re-read.
           </template>
         </span>
-        <span class="ml-auto whitespace-nowrap text-xs text-muted-foreground">
+        <span
+          v-if="!masked"
+          class="ml-auto whitespace-nowrap text-xs text-muted-foreground"
+        >
           card read <DateTimeAgoInline :date="peer.cardReadAt" />
         </span>
       </div>

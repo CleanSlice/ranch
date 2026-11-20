@@ -288,6 +288,15 @@ export interface IAgentDelegationData {
   durationMs: number | null;
 }
 
+/**
+ * A hand-over as one viewer is shown it (CLEAN-236). `masked`: it went to a
+ * peer that serves the viewer through a connection open to visitors, without
+ * their reaching it, so the row carries neither the peer nor its answer.
+ */
+export interface IAgentDelegationView extends IAgentDelegationData {
+  visibility: 'full' | 'masked';
+}
+
 export interface ICreateDelegationData {
   agentId: string;
   peerId: string;

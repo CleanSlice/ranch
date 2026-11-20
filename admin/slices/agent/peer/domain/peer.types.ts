@@ -27,6 +27,12 @@ export interface IAgentCard {
   skills: IAgentSkill[];
 }
 
+/** A person named on a connection. `name` is null once the account is gone. */
+export interface IPeerPerson {
+  id: string;
+  name: string | null;
+}
+
 /** One directed connection: this agent may delegate to the peer. */
 export interface IAgentPeer {
   id: string;
@@ -44,6 +50,23 @@ export interface IAgentPeer {
   cardUrl: string;
   cardReadAt: string;
   createdAt: string;
+  /**
+   * 'masked': the peer serves the viewer through a connection open to
+   * visitors, and the viewer has no access to the peer itself. The API then
+   * sends skills only: no name, no id, no address, no status (CLEAN-236). A
+   * connection the viewer may not see at all is not in the list.
+   */
+  visibility: 'full' | 'masked';
+  /** Who made the connection; null when it predates the record. */
+  createdBy: IPeerPerson | null;
+  /** Internal peers: serves everybody who talks to the agent, visitors too. */
+  openToVisitors: boolean;
+  /** External peers: the one person the connection serves; null ⇒ everybody. */
+  owner: IPeerPerson | null;
+  /** Existed before access to peers was checked; its visitors setting was never saved. */
+  needsReview: boolean;
+  canRemove: boolean;
+  canSetVisitors: boolean;
 }
 
 /** Whether the running pod has loaded the current peer set (CLEAN-95). */
@@ -74,4 +97,6 @@ export interface IAgentDelegation {
   startedAt: string;
   finishedAt: string | null;
   durationMs: number | null;
+  /** 'masked': neither the peer nor its answer is the viewer's to see. */
+  visibility: 'full' | 'masked';
 }

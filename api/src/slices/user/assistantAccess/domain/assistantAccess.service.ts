@@ -672,7 +672,8 @@ export class AssistantAccessService {
   ): Promise<string | null> {
     const assistant = await this.assistant();
     if (!assistant || assistant.id !== agentId) return null;
-    if (person.role === UserRoleTypes.Owner) return 'owner';
+    // `role` arrives as the hub's plain string; compare it as one.
+    if (person.role === (UserRoleTypes.Owner as string)) return 'owner';
     if (!isAssistantRole(person.role)) return null;
     const effective = await this.effectiveFor(person.userId, person.role);
     return effective.enabled ? effective.level : null;

@@ -85,7 +85,7 @@ function harness(tools = TOOLS) {
   let tick = 0;
   const stamp = () => new Date(Date.UTC(2026, 10, 20, 12, 0, tick++));
 
-  const gateway = {
+  const spies = {
     findRole: jest.fn(async (role: AssistantRole) => roles.get(role) ?? null),
     saveRole: jest.fn(
       async (role: AssistantRole, data: IAssistantSettingWrite) => {
@@ -104,7 +104,8 @@ function harness(tools = TOOLS) {
       },
     ),
     deleteAccount: jest.fn(async (id: string) => accounts.delete(id)),
-  } as unknown as IAssistantAccessGateway;
+  };
+  const gateway = spies as unknown as IAssistantAccessGateway;
 
   const people = [OWNER, ADMIN, ADMIN_2, USER, USER_2];
   const users = {
@@ -133,7 +134,7 @@ function harness(tools = TOOLS) {
   } as unknown as McpRegistryService;
 
   const service = new AssistantAccessService(gateway, users, agents, registry);
-  return { service, roles, accounts, gateway };
+  return { service, roles, accounts, gateway, spies };
 }
 
 const person = (p: { id: string; role: UserRoleTypes }) => ({
@@ -183,7 +184,7 @@ describe('what a person gets with nothing configured', () => {
   });
 
   it('no setting applies to the Owner, a trusted party or a guest', async () => {
-    const { service, gateway } = harness();
+    const { service, spies } = harness();
     for (const party of [
       person(OWNER),
       { kind: 'trusted' as const },
@@ -194,8 +195,8 @@ describe('what a person gets with nothing configured', () => {
       expect(grant.names).toBeNull();
     }
     expect((await service.grantFor(person(OWNER))).level).toBe('owner');
-    expect(gateway.findAccount).not.toHaveBeenCalled();
-    expect(gateway.findRole).not.toHaveBeenCalled();
+    expect(spies.findAccount).not.toHaveBeenCalled();
+    expect(spies.findRole).not.toHaveBeenCalled();
   });
 
   it('never grants a name the role cannot have, whatever the level', async () => {

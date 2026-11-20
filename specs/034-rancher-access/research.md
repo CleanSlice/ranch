@@ -140,8 +140,20 @@ too, memoised on the request object the way `TemplateToolPolicyService` does.
 No process-wide cache — the API runs more than one replica (CLEAN-224 notes
 this for limits), and two rows by primary key cost nothing.
 
-The runtime keeps the tool list of a turn; a tool removed between two steps is
-refused at `tools/call` by the same policy.
+**The runtime needs no change.** It asks `tools/list` for the person of each
+turn and keeps the answer for a minute under the acting token
+(`catalogueFor` / `actorKey` in the runtime's `setup/mcp/data/mcp.gateway.ts`);
+the hub signs a new acting token with every console message, so each message
+gets a fresh list. Within one turn the list is fixed; a tool removed between
+two steps is refused at `tools/call` by the same policy.
+
+The runtime's `# Audience` block already tells the model that the tools in
+the conversation are the ones this person may use, and tells a User to say
+"their account cannot do that". It does not know about levels. Teaching it
+(the hub would carry the level in `acting`, the block would name it) is a
+possible follow-up in the runtime repository, not part of this feature: it
+needs a runtime release and a restart of the assistant's pod, and
+`get_my_assistant_access` gives the same answer without either.
 
 ## R8. Telling the person (FR-028, FR-029)
 
@@ -149,9 +161,15 @@ A tool that is not listed cannot explain itself. **Decision**: one always-
 listed tool of audience `person`, `get_my_assistant_access`, answering the
 person's level, the areas it covers and the titles of abilities their role
 has but their setting leaves out — never anything about other accounts. Its
-description tells the model to call it before saying it cannot do something.
-The assistant's instructions (`api/src/slices/rancher`, the Rancher template)
-get one paragraph to the same effect.
+description tells the model to call it before saying it cannot do something,
+and what to say then.
+
+The guidance lives in that description and nowhere else. Not in the Rancher
+template's `SOUL.md`: identity files are copy-if-missing since CLEAN-56
+(`AGENT_OWNED_ROOT_FILES`), so an edited template never reaches an assistant
+that already exists, and that file is at its prompt limit (CLEAN-230). A tool
+description travels with every `tools/list`, so it reaches a running pod on
+the person's next message.
 
 In the consoles the same answer comes from `GET /me/assistant-access`.
 

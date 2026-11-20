@@ -19,29 +19,41 @@ shapes are in [contracts/](./contracts/); this file only says how to run them.
 
 ## 2. Bring it up
 
+The scenarios seed and delete agents and connections, so they get a scratch
+database of their own next to the development one, and an API on a spare
+port. `lib.mjs` refuses anything but a local API and a database whose name
+contains `clean236` or `e2e`.
+
 ```bash
+docker exec ranch-postgres psql -U postgres -c 'CREATE DATABASE ranch_clean236'
 cd api
-docker compose up -d postgres-local
-bun run generate
-npx prisma migrate deploy
-bun run build && bun run generate:swagger
-cd ../admin && bun run build:api
-cd ../app && bun run build:api
+bun run build
+DATABASE_URL=<the one in api/.env, with the database name ranch_clean236> npx prisma migrate deploy
+DATABASE_URL=<the same> PORT=3399 node dist/main
 ```
 
-Seed, then start the API and both consoles on one host, which is the case
-FR-038 is about:
+`npx prisma migrate deploy` on the empty database is itself a check: the
+whole chain of migrations, this feature's included, applies from nothing.
+
+The scenarios read `JWT_SECRET` and `BRIDLE_API_KEY` from `api/.env` (to sign
+in as an agent's runtime) and never print them. `E2E_API` and
+`E2E_DATABASE_URL` override the address and the database. `api/.env.dev`
+sets `A2A_ALLOW_PRIVATE_PEERS=true`, which is what lets a local API call its
+own agents and the stub of `outside.mjs` on 127.0.0.1.
+
+The seed (`seed.mjs`, run by every scenario) makes: the Owner; an Admin who
+is denied B; Users U1 (reaches A, B, C) and U2 (reaches A only); agents A
+(public), B, C and a Ranch admin agent, as bare rows with no deployment.
+Each scenario brings the agents' runtimes itself (`fakeRuntime.mjs`) and
+starts from no connections.
+
+For the pages, the two consoles on one host, which is the case FR-038 is
+about:
 
 ```bash
-node specs/033-identity-boundaries/e2e/seed.mjs
-cd api && PORT=3333 node dist/main
-cd admin && API_URL=http://localhost:3333 NUXT_PUBLIC_API_URL=http://localhost:3333 npx nuxt dev --port 3001
-cd app   && API_URL=http://localhost:3333 NUXT_PUBLIC_API_URL=http://localhost:3333 npx nuxt dev --port 3000
+cd admin && API_URL=http://localhost:3399 NUXT_PUBLIC_API_URL=http://localhost:3399 npx nuxt dev --port 3001
+cd app   && API_URL=http://localhost:3399 NUXT_PUBLIC_API_URL=http://localhost:3399 npx nuxt dev --port 3000
 ```
-
-The seed makes: agents A (public), B, C and an outside stub; the Owner; an
-Admin who reaches A and C and is denied B; Users U1 (reaches A, B, C) and U2
-(reaches A only); connections A→B (ordinary) and B→C (ordinary).
 
 ## 3. Automated checks
 
@@ -68,21 +80,36 @@ Never `bun run test` in `api/` while a dev API is running.
 
 ## 4. Scenarios
 
-One entry point: `node specs/033-identity-boundaries/e2e/all.mjs`. HTTP
-scripts print PASS/FAIL per line; browser scripts run at 390 px and 1440 px
-and write screenshots to the scratchpad.
+One entry point: `node specs/033-identity-boundaries/e2e/all.mjs` (or
+`all.mjs handover visitors` for some). Every line prints PASS or FAIL; the
+exit code is the number of failures turned into 0 or 1.
+
+`fakeRuntime.mjs` is an agent runtime with the model taken out: it signs in
+to the hub as the agent, records what the hub sends it, and calls Ranch's
+tools with the actor a real runtime states for that turn, in the 0.36 and
+the 0.35 way (contracts/handover.md §5). So a scenario drives the real hub,
+the real MCP server and the real A2A route; only the model is scripted.
 
 | Script | Story | Proves |
 |---|---|---|
-| `anonymous.mjs` | 1 | a share visitor of A: no list of agents, no preview, no connect, no remove; A's colleagues identical before and after; only an open connection is asked, shown as "a colleague" |
-| `hidden.mjs` | 2 | the Admin denied B: A's colleagues, history, roster, a question only B answers, remove and re-read by id, the fleet map, B's public card. Then B is denied to U1 and gone on the next message |
-| `connect.mjs` | 3 | U2 is named nobody but what they reach; connects nothing hidden; the same refusal for a hidden and a missing id, in the chat, through the assistant and on the console route |
-| `outside.mjs` | 4 | every spelling of this installation's address refused the same way; U1's outside colleague serves U1 only and is visible to whoever manages A |
-| `visitors.mjs` | 6 | who may open A→B; the masked row and the masked step; the chain A→B→C for a caller who reaches A and C and not B, closed and open |
-| `handover.mjs` | 7 | B behind an approval gate still answers A; a question telling B to rewire itself changes nothing; two questions at once keep their chains; the fake runtime in both versions (contracts/handover.md §5) |
-| `conversations.mjs` | 5 | Owner and Admin on one agent at once: separate windows, a message during the other's turn, the hand-over step in the asker's chat only; the Owner finds the old conversation, the Admin an empty one |
-| `consoles.mjs` | 8 | two accounts in two consoles of one browser profile, through a forced renewal, a reload and a sign-out of one; a sign-in from before the upgrade ends with the "session ended" state |
-| `record.mjs` | 9 | who connected each colleague; U1 removes their own and is refused the Owner's |
+| `hidden.mjs` | 2 | the Admin denied B: A's colleagues, the agents offered, remove and re-read by id, connect, B's public card; every refusal identical to the one for something that does not exist |
+| `connect.mjs` | 1, 3, 9 | from the chat: U1 connects what they reach and removes what they made; U2 is named nothing they do not reach and gets the missing-agent answer for it; an anonymous visitor is offered no connection tool and refused each, whatever the agent says of itself |
+| `outside.mjs` | 4 | every spelling of this installation's address refused, as is a redirect to it and a card that points at it; U1's outside colleague is asked in U1's turns only, answers, and is sent no hand-over token; the Owner's is the agent's |
+| `visitors.mjs` | 6 | who may open A→B and that it asks to be confirmed; the masked row, and that it can be neither removed nor closed by somebody who does not reach B |
+| `handover.mjs` | 2, 6, 7 | A→B→C through three runtimes: the question arrives under the connection with a token and nobody's identity; a question telling B to rewire itself changes nothing; a loop is refused; a closed connection serves nobody who does not reach the colleague, at every hop; an open one serves them masked; the record of hand-overs per reader; B on runtime 0.35 |
+| `record.mjs` | 9 | a connection from before the upgrade: nobody's, marked, still answering, and settled by the first decision about it |
+| `conversations.mjs` | 5 | what the runtime is sent for the Owner, an Admin, a User and a visitor; an Admin's message during the Owner's turn is its own turn; who reads whose transcript; the Ranch admin agent's conversations are the Owner's |
+| `consoles.mjs` | 8 | two accounts, two consoles, one cookie jar, through renewals in both orders and a sign-out of one; a secret carried to the other console; the old shared cookie; a script's sign-in |
+
+By hand, in a browser (no script drives the pages):
+
+- an agent's Peers tab as the Owner and as the Admin, at 390 px and 1440 px:
+  the masked row, the "Open to visitors" switch and its confirmation, "Connected
+  by", the mark on a connection from before the upgrade;
+- the chat of one agent as the Owner and as an Admin, side by side: two
+  conversations, and the Owner's old one where it was;
+- app as a User and admin as the Owner in one browser profile, through a
+  reload of each.
 
 ## 5. On the live installation, after release
 

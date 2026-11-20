@@ -86,6 +86,7 @@ export class UserTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_users',
     topic: ToolTopics.UsersKeys,
+    effect: 'read',
     title: 'List users',
     template: 'List the users of this Ranch',
     description:
@@ -106,6 +107,7 @@ export class UserTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_user',
     topic: ToolTopics.UsersKeys,
+    effect: 'read',
     title: 'Show a user',
     template: 'Show the user «email»',
     description:
@@ -130,6 +132,7 @@ export class UserTool implements IConditionallyListedTool {
   @Tool({
     name: 'create_user',
     topic: ToolTopics.UsersKeys,
+    effect: 'write',
     title: 'Create a user',
     template: 'Create a user «name» with email «email» and password «password»',
     description:
@@ -169,6 +172,7 @@ export class UserTool implements IConditionallyListedTool {
   @Tool({
     name: 'update_user',
     topic: ToolTopics.UsersKeys,
+    effect: 'write',
     title: 'Update a user',
     template: 'Change the user «email»: «what to change»',
     description:
@@ -257,6 +261,7 @@ export class UserTool implements IConditionallyListedTool {
   @Tool({
     name: 'set_user_role',
     topic: ToolTopics.UsersKeys,
+    effect: 'write',
     title: "Set a user's role",
     template: 'Make «email» an «admin|user»',
     destructive: true,
@@ -318,6 +323,7 @@ export class UserTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_user',
     topic: ToolTopics.UsersKeys,
+    effect: 'write',
     title: 'Remove a user',
     template: 'Remove the user «email»',
     destructive: true,

@@ -57,6 +57,7 @@ export class McpOauthTool implements IConditionallyListedTool {
   @Tool({
     name: 'start_mcp_oauth',
     topic: ToolTopics.McpServers,
+    effect: 'write',
     title: 'Start OAuth for a server',
     template: 'Connect the MCP server «name» with OAuth',
     description:

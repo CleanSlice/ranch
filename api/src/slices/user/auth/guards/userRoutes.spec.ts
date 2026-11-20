@@ -41,6 +41,12 @@ const EXPECTED_USER_ROUTES = [
   'GET /agents',
   'GET /agents/status',
   'GET /agents/:id',
+  // The assistant, for a User it is switched on for (CLEAN-240): reach
+  // decides, and the view is a reader's.
+  'GET /agents/admin/current',
+  // What the assistant offers the person asking: their own level and
+  // counts per area, nothing about anybody else (CLEAN-240).
+  'GET /me/assistant-access',
   // The chat's limit notice: one boolean, no numbers.
   'GET /agents/:agentId/limits/enabled',
   // Their own pins, on agents they reach (CLEAN-231). Called by the agent

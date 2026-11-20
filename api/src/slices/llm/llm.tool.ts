@@ -95,6 +95,7 @@ export class LlmTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_llm',
     topic: ToolTopics.Llm,
+    effect: 'read',
     title: 'Show a credential',
     template: 'Show the LLM credential «name»',
     description:
@@ -119,6 +120,7 @@ export class LlmTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_llm_models',
     topic: ToolTopics.Llm,
+    effect: 'read',
     title: 'List known models',
     template: 'Which models can I use with «provider»?',
     description:
@@ -158,6 +160,7 @@ export class LlmTool implements IConditionallyListedTool {
   @Tool({
     name: 'llm_usage',
     topic: ToolTopics.Llm,
+    effect: 'read',
     title: 'Usage of a credential',
     template: 'How much did the credential «name» cost in the last 30 days?',
     description:
@@ -203,6 +206,7 @@ export class LlmTool implements IConditionallyListedTool {
   @Tool({
     name: 'create_llm',
     topic: ToolTopics.Llm,
+    effect: 'write',
     title: 'Create a credential',
     template: 'Create an LLM credential «name» for «provider» with key «key»',
     description:
@@ -261,6 +265,7 @@ export class LlmTool implements IConditionallyListedTool {
   @Tool({
     name: 'update_llm',
     topic: ToolTopics.Llm,
+    effect: 'write',
     title: 'Update a credential',
     template: 'Change the LLM credential «name»: «what to change»',
     description:
@@ -335,6 +340,7 @@ export class LlmTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_llm',
     topic: ToolTopics.Llm,
+    effect: 'write',
     title: 'Delete a credential',
     template: 'Delete the LLM credential «name»',
     destructive: true,
@@ -421,6 +427,7 @@ export class LlmTool implements IConditionallyListedTool {
   @Tool({
     name: 'health_check_llm',
     topic: ToolTopics.Llm,
+    effect: 'read',
     title: 'Health-check a credential',
     template: 'Check that the LLM credential «name» works',
     description:

@@ -219,6 +219,9 @@ async function onDeploy() {
           <Badge v-if="admin" variant="default" class="gap-1">
             <IconShield class="size-3" /> {{ admin.name }}
           </Badge>
+          <!-- The level this person uses it at (CLEAN-240); the Owner has
+               no level and sees no badge. -->
+          <AssistantAccessBadge v-if="!isOwner" />
         </div>
         <p class="text-sm text-muted-foreground">
           {{ t('rancher.subtitle') }}

@@ -84,6 +84,7 @@ export class KnowledgeDocumentsTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_knowledge_documents',
     topic: ToolTopics.Knowledge,
+    effect: 'read',
     title: 'List the documents you can read',
     template: 'Which documents do you have about «topic»?',
     description: DESCRIPTION,

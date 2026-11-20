@@ -69,6 +69,7 @@ specs, `api/src/slices/mcp/testing.ts` has `asTrustedAgent`, `asPerson`,
   topic: ToolTopics.McpServers,         // an accordion of the Tools panel
   title: 'Register an MCP server',      // ≤ 60 chars, sentence case, no period
   template: 'Register the MCP server at «url» named «name»',  // ≤ 200 chars, «…» placeholders
+  effect: 'write',                      // 'read' or 'write'; required
   destructive: false,                   // true ⇒ confirm parameter required
   description: '…what it does, what it returns, what to do next…',
   parameters: z.object({ … }),
@@ -82,6 +83,15 @@ specs, `api/src/slices/mcp/testing.ts` has `asTrustedAgent`, `asPerson`,
   as one imperative English sentence; placeholders are `«noun»`, never an id
   the person would not know (say `«agent name»`; the model resolves names via
   `list_*`).
+- **`effect`** says what the tool does to the platform (CLEAN-240): `read`
+  when calling it changes nothing anyone else could notice, `write`
+  otherwise. A tool that stores something, starts a job, sends something or
+  mints a link is a `write`, however small. The assistant's access levels are
+  a rule over this mark — "Basic" is the tools filed as `read` plus the
+  person's own — so a write filed as a read reaches people who were given
+  "see and ask". A destructive tool is always a `write`; the API refuses to
+  boot otherwise, and `tool-metadata.spec.ts` asks why a `read` tool is named
+  `create_…`, `set_…`, `delete_…` and the like.
 - **Descriptions** are read by the model. Say what the tool returns and what
   to call next on the usual failure ("call list_agents to find the id").
 - **A refusal names only a tool the caller has.** The next move in a result
@@ -328,6 +338,38 @@ party is checked.
 `manage-agent` tools: a new tool file, or a changed audience, fails it until
 the tables there are updated.
 
+### What the assistant offers a person: the grant
+
+A third question, asked only when a signed-in Admin or User talks **through
+the Ranch assistant** (CLEAN-240, `api/src/slices/user/assistantAccess/`): of
+the tools their audience admits, which ones were they given. The Owner sets
+it per role (default: Admins everything, Users Basic) and per account, as a
+level or a custom pick.
+
+- It only takes away. The audience filters first; `AssistantToolPolicyService`
+  is a `CallerToolPolicy` the catalogue asks afterwards, for `tools/list` and
+  `tools/call` alike. Nothing in a setting can give a role what it does not
+  have.
+- A level is a rule over a tool's `topic`, `effect` and audience
+  (`assistantLevels.ts`): **Basic** = every `read` plus every `person` tool;
+  **Standard** = Basic plus `write` in agents, agent workspace, knowledge,
+  skills, peers and paddock; **Full** = everything. A new tool lands in the
+  right levels by itself; `mcp/assistantGrant.spec.ts` holds one named tool
+  per area to it.
+- Not governed: the Owner, the assistant acting for itself, a guest, a person
+  calling the MCP endpoint with their own console token, any other agent, and
+  the tools of audience `everyone` and `agent` — the assistant needs those to
+  hold any conversation.
+- `get_my_assistant_access` (`person`) is always listed for a person and
+  cannot be switched off. It says what their role has and their setting
+  leaves out, so the assistant can answer "that is not included for you, the
+  Owner decides" instead of "I have no such tool". The guidance is in that
+  tool's description, not in the assistant's `SOUL.md`: a description reaches
+  a running pod with the next `tools/list`, an agent-owned file does not.
+- Whether a person has the assistant at all is the same setting's switch,
+  and it is asked through reach (below): the assistant is not an entry in the
+  access lists, and `set_user_agent_access` refuses its id.
+
 ### Which agents: reach
 
 The audience says what kind of caller may use a tool. Which agents it may
@@ -361,6 +403,7 @@ its tables.
 |---|---|
 | `list_agents`, `get_agent` (`reader`) | only reached agents; an agent the caller may not manage comes as its reader view (no `config`, credential, knowledge binding or deploy history); `pinned` is the person's own |
 | `pin_agent` (`person`) | pins for the person the call is made for; an unreached agent is not found; an agent acting for itself is refused |
+| `get_assistant_access`, `set_assistant_role_access` (`owner`); `get_user_assistant_access`, `set_user_assistant_access`, `reset_user_assistant_access` (`admin`); `get_my_assistant_access` (`person`) | no agent id: they are about the one assistant. `AssistantAccessService` asks who may edit whom (an Admin: Users only, and never above the Admin's own grant); a change that takes abilities away answers "who loses what" until `confirm: true` |
 | `get_user_agent_access`, `set_user_agent_access` (`admin`) | `AgentAccessService.view` / `adjust` as the party: an Admin sees and may name only agents they reach, and meets the ceiling |
 | the 35 `manage-agent` tools | through `manageable` |
 | `list_agent_limits`, `list_skill_agents`, `get_usage_overview`, `llm_usage`, `list_paddock_evaluations`, `list_paddock_scenarios` | filtered; usage totals are of the reached agents |
@@ -529,8 +572,11 @@ puts the block back (it is idempotent and `make init` runs it).
 ## Review checklist
 
 - Does the PR add or change a console capability? Then: is there a tool, in
-  the slice, with topic/title/template, gated to the right audience, with a
-  spec?
+  the slice, with topic/title/template/effect, gated to the right audience,
+  with a spec?
+- Is each new tool's `effect` right? A tool that stores, starts, sends or
+  mints anything is a `write`. Filed as a `read` it lands in the assistant's
+  Basic level and reaches people who were only given "see and ask".
 - Which audience does each new tool declare, and does the console route
   agree? Read the controller's `@Roles` next to the `@ToolAudience`. A tool
   wider than its route is a hole; a tool narrower than its route says why.

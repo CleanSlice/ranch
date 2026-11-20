@@ -183,6 +183,7 @@ export class PeerSelfTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_my_peers',
     topic: ToolTopics.Peers,
+    effect: 'read',
     title: 'My peers',
     template: 'Who are your peers?',
     description:
@@ -215,6 +216,7 @@ export class PeerSelfTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_ranch_agents',
     topic: ToolTopics.Peers,
+    effect: 'read',
     title: 'Agents of this Ranch',
     template: 'Which agents on this Ranch could you ask for help?',
     description:
@@ -241,6 +243,7 @@ export class PeerSelfTool implements IConditionallyListedTool {
   @Tool({
     name: 'preview_agent_card_by_address',
     topic: ToolTopics.Peers,
+    effect: 'read',
     title: 'Preview a card by address',
     template: 'What does the agent at «url» say it can do?',
     description:
@@ -280,6 +283,7 @@ export class PeerSelfTool implements IConditionallyListedTool {
   @Tool({
     name: 'connect_my_peer',
     topic: ToolTopics.Peers,
+    effect: 'write',
     title: 'Connect a peer for yourself',
     template: 'Add the agent «name» as your peer',
     description:
@@ -318,6 +322,7 @@ export class PeerSelfTool implements IConditionallyListedTool {
   @Tool({
     name: 'import_my_peer_by_address',
     topic: ToolTopics.Peers,
+    effect: 'write',
     title: 'Import a peer by address',
     template: 'Add the external agent at «url» as your peer',
     description:
@@ -377,6 +382,7 @@ export class PeerSelfTool implements IConditionallyListedTool {
   @Tool({
     name: 'connect_my_peer_from_card',
     topic: ToolTopics.Peers,
+    effect: 'write',
     title: 'Connect from a card I was given',
     template: 'Connect this agent from its card: «card»',
     description:
@@ -432,6 +438,7 @@ export class PeerSelfTool implements IConditionallyListedTool {
   @Tool({
     name: 'remove_my_peer',
     topic: ToolTopics.Peers,
+    effect: 'write',
     title: 'Remove one of my peers',
     template: 'Drop your peer «name»',
     destructive: true,

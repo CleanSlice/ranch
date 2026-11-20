@@ -83,6 +83,7 @@ const CLASS_AUDIENCE: Record<string, ToolAudienceTypes> = {
   'usage/usage.tool.ts': 'admin',
   'user/agentAccess/agentAccess.tool.ts': 'admin',
   'user/apiKey/apiKey.tool.ts': 'admin',
+  'user/assistantAccess/assistantAccess.tool.ts': 'admin',
   'user/user/user.tool.ts': 'admin',
 };
 
@@ -104,6 +105,12 @@ const METHOD_AUDIENCE: Record<string, ToolAudienceTypes> = {
   send_test_notification: 'owner',
   remove_notification_destination: 'owner',
   set_agent_admin: 'owner',
+  // What a whole role gets from the assistant is the Owner's decision
+  // (CLEAN-240); an Admin sets it for single Users, with the class's audience.
+  get_assistant_access: 'owner',
+  set_assistant_role_access: 'owner',
+  // A person's own view of what the assistant offers them, whatever their role.
+  get_my_assistant_access: 'person',
   // `person` (CLEAN-231): a pin is the asking person's own, whatever their
   // role; an agent acting for itself has none.
   pin_agent: 'person',

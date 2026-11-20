@@ -95,6 +95,7 @@ export class AgentChannelTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_agent_channels',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'read',
     title: 'Show delivery channels',
     template: 'Which channels is the agent «name» connected to?',
     description:
@@ -131,6 +132,7 @@ export class AgentChannelTool implements IConditionallyListedTool {
   @Tool({
     name: 'set_agent_channels',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Set delivery channels',
     template: 'Connect the agent «name» to «channel list»',
     description:

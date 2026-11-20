@@ -103,6 +103,7 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_paddock_scenarios',
     topic: ToolTopics.Paddock,
+    effect: 'read',
     title: 'List paddock scenarios',
     template: 'List the paddock scenarios of «template or agent»',
     description:
@@ -139,6 +140,7 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_paddock_scenario',
     topic: ToolTopics.Paddock,
+    effect: 'read',
     title: 'Show a scenario',
     template: 'Show the paddock scenario «id»',
     description: 'Get a single paddock scenario by id.',
@@ -153,6 +155,7 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_agent_paddock_scenarios',
     topic: ToolTopics.Paddock,
+    effect: 'read',
     title: 'Scenarios of an agent',
     template: 'Which paddock scenarios does the agent «name» have?',
     description:
@@ -174,6 +177,7 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
   @Tool({
     name: 'create_paddock_scenario',
     topic: ToolTopics.Paddock,
+    effect: 'write',
     title: 'Create a scenario',
     template:
       'Create a paddock scenario for «agent or template» that checks «what it checks»',
@@ -249,6 +253,7 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
   @Tool({
     name: 'update_paddock_scenario',
     topic: ToolTopics.Paddock,
+    effect: 'write',
     title: 'Update a scenario',
     template: 'Change the paddock scenario «id»: «what to change»',
     description:
@@ -279,6 +284,7 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_paddock_scenario',
     topic: ToolTopics.Paddock,
+    effect: 'write',
     title: 'Delete a scenario',
     template: 'Delete the paddock scenario «id»',
     destructive: true,
@@ -311,6 +317,7 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
   @Tool({
     name: 'generate_paddock_scenarios',
     topic: ToolTopics.Paddock,
+    effect: 'write',
     title: 'Generate scenarios from a description',
     template:
       'Generate «3» paddock scenarios for the agent «name» about «topic»',

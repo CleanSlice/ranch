@@ -81,6 +81,7 @@ export class IntegrationTool {
   @Tool({
     name: 'list_integration_catalogue',
     topic: ToolTopics.Browser,
+    effect: 'read',
     title: 'Available integrations',
     template: 'Which integrations can I connect?',
     description:
@@ -99,6 +100,7 @@ export class IntegrationTool {
   @Tool({
     name: 'list_integration_accounts',
     topic: ToolTopics.Browser,
+    effect: 'read',
     title: 'My integration accounts',
     template: 'Which integration accounts do I have?',
     description:
@@ -117,6 +119,7 @@ export class IntegrationTool {
   @Tool({
     name: 'create_integration_account',
     topic: ToolTopics.Browser,
+    effect: 'write',
     title: 'Connect an integration account',
     template: 'Connect my «service» account «label»',
     description:
@@ -168,6 +171,7 @@ export class IntegrationTool {
   @Tool({
     name: 'request_integration_login',
     topic: ToolTopics.Browser,
+    effect: 'write',
     title: 'Ask for a login',
     template: 'Ask me to log in to «service»',
     description:
@@ -198,6 +202,7 @@ export class IntegrationTool {
   @Tool({
     name: 'delete_integration_account',
     topic: ToolTopics.Browser,
+    effect: 'write',
     title: 'Disconnect an account',
     template: 'Disconnect my «service» account',
     destructive: true,

@@ -422,3 +422,44 @@ describe('AgentController.restartByTemplate — agents the caller may not manage
     });
   });
 });
+
+// CLEAN-240: who has the assistant is a switch of its own. The route is the
+// same for every role; the lists of ordinary agents no longer decide it.
+describe('GET /agents/admin/current follows the assistant switch', () => {
+  const withSwitch = (off: string[]) => {
+    const { gateway, service } = accessHarness(AGENTS.map((a) => a.id));
+    service.attachAssistant({
+      assistantId: async () => 'ag-ranch',
+      forPerson: async ({ userId }) => ({
+        id: 'ag-ranch',
+        enabled: !off.includes(userId),
+      }),
+    });
+    return { gateway, ...build(AGENTS, { access: service }) };
+  };
+
+  it('an account limited to other agents still gets it', async () => {
+    const { gateway, controller } = withSwitch([]);
+    gateway.seed('user-a', true, [{ agentId: 'ag-plain', list: 'allowed' }]);
+    expect((await controller.findAdmin(admin))?.id).toBe('ag-ranch');
+  });
+
+  it('a User it is on for gets it, as a reader', async () => {
+    const { controller } = withSwitch([]);
+    const dto = await controller.findAdmin(user);
+    expect(dto?.id).toBe('ag-ranch');
+    // The assistant is the Owner's to manage: nobody else reads its config.
+    expect(dto?.config ?? {}).toEqual({});
+  });
+
+  it('switched off, it is not found, and is not in the list either', async () => {
+    const { controller } = withSwitch(['user-u']);
+    await expect(controller.findAdmin(user)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect((await controller.findAll(user)).map((a) => a.id)).not.toContain(
+      'ag-ranch',
+    );
+    expect((await controller.findAdmin(owner))?.id).toBe('ag-ranch');
+  });
+});

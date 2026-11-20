@@ -79,6 +79,7 @@ export class SecretTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_agent_secrets',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'read',
     title: 'List secret names',
     template: 'Which secrets does the agent «name» have?',
     description:
@@ -106,6 +107,7 @@ export class SecretTool implements IConditionallyListedTool {
   @Tool({
     name: 'set_agent_secret',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Set a secret',
     template: 'Set the secret «KEY» of the agent «name» to «value»',
     description:
@@ -145,6 +147,7 @@ export class SecretTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_agent_secret',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Delete a secret',
     template: 'Delete the secret «KEY» of the agent «name»',
     destructive: true,
@@ -191,6 +194,7 @@ export class SecretTool implements IConditionallyListedTool {
   @Tool({
     name: 'replace_agent_secrets',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Replace all secrets',
     template: 'Replace all secrets of the agent «name» with: «KEY=value, …»',
     destructive: true,

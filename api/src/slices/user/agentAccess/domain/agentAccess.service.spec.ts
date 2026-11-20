@@ -558,6 +558,137 @@ describe('AgentAccessService: an account that no longer exists', () => {
   });
 });
 
+// The assistant is not an entry in anybody's lists (CLEAN-240). Whether a
+// person has it is a switch of its own, handed to this service; the lists
+// neither grant nor take it.
+describe('AgentAccessService: the assistant is set apart from the lists', () => {
+  // 'R' is the assistant among the agents A, B, C.
+  const withAssistant = (enabledFor: Record<string, boolean> = {}) => {
+    const { gateway, service } = accessHarness(['A', 'B', 'C', 'R']);
+    const asked: string[] = [];
+    service.attachAssistant({
+      assistantId: async () => 'R',
+      forPerson: async ({ userId }) => {
+        asked.push(userId);
+        return { id: 'R', enabled: enabledFor[userId] ?? true };
+      },
+    });
+    return { gateway, service, asked };
+  };
+
+  it('an account limited to other agents still reaches it', async () => {
+    const { service } = withAssistant();
+    await service.replace(person(OWNER), ADMIN.id, {
+      allowed: ['A'],
+      denied: [],
+    });
+
+    expect(await service.reaches(person(ADMIN), 'R')).toBe(true);
+    expect(await service.reaches(person(ADMIN), 'A')).toBe(true);
+    expect(await service.reaches(person(ADMIN), 'B')).toBe(false);
+    expect(await service.reachesExisting(person(ADMIN), 'R')).toBe(true);
+  });
+
+  it('switched off, it is not reached whatever the lists say', async () => {
+    const { service } = withAssistant({ [USER.id]: false });
+    expect(await service.reaches(person(USER), 'R')).toBe(false);
+    expect(await service.reachesExisting(person(USER), 'R')).toBe(false);
+    expect(await service.reaches(person(USER), 'A')).toBe(true);
+    await expect(
+      service.assertReaches(person(USER), 'R'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('the Owner and callers that are not people are never asked about', async () => {
+    const { service, asked } = withAssistant({ [OWNER.id]: false });
+    expect(await service.reaches(person(OWNER), 'R')).toBe(true);
+    expect(await service.reaches({ kind: 'trusted' }, 'R')).toBe(true);
+    expect(await service.reaches(null, 'R')).toBe(true);
+    expect(asked).toEqual([]);
+  });
+
+  it('filters and scopes follow the switch, not the lists', async () => {
+    const on = withAssistant();
+    await on.service.replace(person(OWNER), ADMIN.id, {
+      allowed: ['A'],
+      denied: [],
+    });
+    const limited = await on.service.reachableIds(person(ADMIN));
+    expect(limited.filter(['A', 'B', 'R'], (id) => id)).toEqual(['A', 'R']);
+    expect(limited.where()).toEqual({ in: ['A', 'R'] });
+
+    const off = withAssistant({ [USER.id]: false });
+    const open = await off.service.reachableIds(person(USER));
+    expect(open.unrestricted).toBe(false);
+    expect(open.filter(['A', 'B', 'R'], (id) => id)).toEqual(['A', 'B']);
+    expect(open.where()).toEqual({ notIn: ['R'] });
+
+    await off.service.replace(person(OWNER), USER.id, {
+      allowed: [],
+      denied: ['B'],
+    });
+    expect((await off.service.reachableIds(person(USER))).where()).toEqual({
+      notIn: ['B', 'R'],
+    });
+  });
+
+  it('with it on and no lists the account is still unrestricted', async () => {
+    const { service } = withAssistant();
+    expect((await service.reachableIds(person(USER))).unrestricted).toBe(true);
+    expect((await service.reachableIds(person(USER))).where()).toBeUndefined();
+  });
+
+  it('is not shown among the agents of an account’s lists', async () => {
+    const { service } = withAssistant();
+    await service.replace(person(OWNER), ADMIN.id, {
+      allowed: ['A'],
+      denied: ['B'],
+    });
+    const view = await service.view(person(OWNER), ADMIN.id);
+    expect([...view.allowed, ...view.denied]).not.toContain('R');
+    expect(view.outcome).toEqual({ kind: 'only', count: 1 });
+  });
+
+  it.each([
+    ['allowed', { allowed: ['A', 'R'], denied: [] }],
+    ['denied', { allowed: [], denied: ['R'] }],
+  ])('cannot be put on the %s list', async (_list, desired) => {
+    const { service, gateway } = withAssistant();
+    expect(
+      await refusal(service.replace(person(OWNER), ADMIN.id, desired)),
+    ).toBe(AgentAccessErrorCodes.AssistantNotListed);
+    expect((await gateway.load(ADMIN.id)).entries).toEqual([]);
+  });
+
+  it('an entry left from before it was set apart changes nothing', async () => {
+    const { service, gateway } = withAssistant();
+    await gateway.transaction(USER.id, (tx) =>
+      tx.save({
+        limited: false,
+        entries: [{ agentId: 'R', list: 'denied' }],
+        updatedById: null,
+      }),
+    );
+    expect(await service.reaches(person(USER), 'R')).toBe(true);
+  });
+
+  it('without an assistant on the installation nothing changes', async () => {
+    const { service } = accessHarness(['A', 'B']);
+    service.attachAssistant({
+      assistantId: async () => null,
+      forPerson: async () => null,
+    });
+    await service.replace(person(OWNER), ADMIN.id, {
+      allowed: ['A'],
+      denied: [],
+    });
+    expect(await service.reaches(person(ADMIN), 'B')).toBe(false);
+    expect((await service.reachableIds(person(ADMIN))).where()).toEqual({
+      in: ['A'],
+    });
+  });
+});
+
 /**
  * CLEAN-236. A reach with some agents taken out, for a question narrower
  * than "may they use the agent": the conversations of an agent only the
@@ -592,6 +723,25 @@ describe('AgentReach.without', () => {
     expect(allowed.has('R')).toBe(false);
     expect(allowed.has('A')).toBe(true);
     expect(allowed.has('Z')).toBe(false);
+  });
+
+  // CLEAN-240 meets CLEAN-236: the agent taken out is usually the assistant,
+  // and the assistant is not in the lists but behind its own switch.
+  it('takes the assistant out even when its switch is on, and keeps the switch otherwise', () => {
+    const reach = new AgentReach(
+      { limited: true, entries: [{ agentId: 'A', list: 'allowed' }] },
+      { id: 'R', enabled: true },
+    );
+    expect(reach.has('R')).toBe(true);
+
+    const withoutAssistant = reach.without(['R']);
+    expect(withoutAssistant.has('R')).toBe(false);
+    expect(withoutAssistant.has('A')).toBe(true);
+    expect(withoutAssistant.where()).toEqual({ in: ['A'] });
+
+    const withoutAnother = reach.without(['B']);
+    expect(withoutAnother.has('R')).toBe(true);
+    expect(withoutAnother.where()).toEqual({ in: ['A', 'R'] });
   });
 
   it('is the same reach when nothing is taken out', () => {

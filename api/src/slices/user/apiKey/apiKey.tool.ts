@@ -90,6 +90,7 @@ export class ApiKeyTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_api_keys',
     topic: ToolTopics.UsersKeys,
+    effect: 'read',
     title: 'List API keys',
     template: 'List the API keys',
     description:
@@ -112,6 +113,7 @@ export class ApiKeyTool implements IConditionallyListedTool {
   @Tool({
     name: 'create_api_key',
     topic: ToolTopics.UsersKeys,
+    effect: 'write',
     title: 'Create an API key',
     template: 'Create an API key named «name» with the scopes «scopes»',
     description:
@@ -181,6 +183,7 @@ export class ApiKeyTool implements IConditionallyListedTool {
   @Tool({
     name: 'revoke_api_key',
     topic: ToolTopics.UsersKeys,
+    effect: 'write',
     title: 'Revoke an API key',
     template: 'Revoke the API key «name»',
     destructive: true,

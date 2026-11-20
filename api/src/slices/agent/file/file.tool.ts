@@ -114,6 +114,7 @@ export class FileTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_agent_files',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'read',
     title: 'List workspace files',
     template: 'List the files of the agent «name»',
     description:
@@ -160,6 +161,7 @@ export class FileTool implements IConditionallyListedTool {
   @Tool({
     name: 'read_agent_file',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'read',
     title: 'Read a workspace file',
     template: 'Read «path» from the agent «name»',
     description:
@@ -210,6 +212,7 @@ export class FileTool implements IConditionallyListedTool {
   @Tool({
     name: 'write_agent_file',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Change a workspace file',
     template: 'Change «path» of the agent «name»: «what to change»',
     destructive: true,
@@ -252,6 +255,7 @@ export class FileTool implements IConditionallyListedTool {
   @Tool({
     name: 'create_agent_file',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Create a workspace file',
     template: 'Create «path» in the agent «name»',
     destructive: true,
@@ -337,6 +341,7 @@ export class FileTool implements IConditionallyListedTool {
   @Tool({
     name: 'import_agent_files',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Import files into a workspace',
     template: 'Import «attachment(s) or link» into the agent «name»',
     destructive: true,
@@ -772,6 +777,7 @@ export class FileTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_agent_file',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Delete a workspace file',
     template: 'Delete «path» from the agent «name»',
     destructive: true,
@@ -838,6 +844,7 @@ export class FileTool implements IConditionallyListedTool {
   @Tool({
     name: 'sync_agent_files',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Sync files from the pod',
     template: 'Sync the workspace files of the agent «name» from its pod',
     description:
@@ -916,6 +923,7 @@ export class FileTool implements IConditionallyListedTool {
   @Tool({
     name: 'export_agent_files',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'read',
     title: 'Export the workspace',
     template: 'Export the workspace of the agent «name»',
     description:

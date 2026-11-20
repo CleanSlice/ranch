@@ -98,6 +98,7 @@ export class KnowledgeTool implements IDynamicallyDescribedTool {
   @Tool({
     name: 'query_knowledge',
     topic: ToolTopics.Knowledge,
+    effect: 'read',
     title: 'Ask the knowledge bases',
     template: 'What does our knowledge say about «question»?',
     description: BASE_DESCRIPTION,

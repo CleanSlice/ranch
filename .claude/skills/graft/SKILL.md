@@ -161,7 +161,7 @@ available; the guidance is identical.
 A module is not done until the Ranch agent has tools for what the console
 can do. Before adding or changing an admin-console capability, read
 `docs/agent-tools.md`: tools live in the slice as `<name>.tool.ts` with
-`topic` / `title` / `template`, audience gating, `confirm` on anything
+`topic` / `title` / `template` / `effect`, audience gating, `confirm` on anything
 destructive, no secrets in results, and a spec. The API refuses to boot a
 tool without that metadata.
 <!-- ranch:agent-tools:end -->

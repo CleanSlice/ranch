@@ -630,11 +630,15 @@ export class AgentController {
     return this.presentOne(agent, req);
   }
 
+  // Open to every signed-in person since CLEAN-240: whether one has the
+  // assistant is its own setting, asked through the reach below, and a User
+  // meets it in their console too. Who may *manage* it is unchanged — the
+  // view comes back as a reader's for everybody but the Owner.
   @Get('admin/current')
-  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin, UserRoleTypes.User)
   @ApiOperation({
     summary:
-      'Get the agent currently flagged as Ranch admin (or null). 404 for a caller whose access lists hide it (CLEAN-231).',
+      'Get the agent currently flagged as Ranch admin (or null). 404 for a caller the assistant is switched off for (CLEAN-240); the access lists of ordinary agents no longer decide it.',
   })
   async findAdmin(@Req() req?: Request) {
     const agent = await this.agentGateway.findAdmin();

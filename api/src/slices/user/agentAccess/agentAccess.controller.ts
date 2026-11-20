@@ -9,6 +9,7 @@ import {
   Param,
   Put,
   Req,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -59,6 +60,8 @@ export function agentAccessErrorToHttp(err: unknown): never {
       throw new ForbiddenException(body);
     case AgentAccessErrorCodes.ListsOverlap:
       throw new BadRequestException(body);
+    case AgentAccessErrorCodes.AssistantNotListed:
+      throw new UnprocessableEntityException(body);
     // The ordinary "not found", with no code: an agent outside the caller's
     // view is not told apart from one that does not exist.
     case AgentAccessErrorCodes.AgentNotFound:

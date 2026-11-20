@@ -70,6 +70,7 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_knowledges',
     topic: ToolTopics.Knowledge,
+    effect: 'read',
     title: 'List knowledge bases',
     template: 'List the knowledge bases',
     description:
@@ -120,6 +121,7 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_knowledge',
     topic: ToolTopics.Knowledge,
+    effect: 'read',
     title: 'Show a knowledge base',
     template: 'Show the knowledge base «name»',
     description:
@@ -145,6 +147,7 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_knowledge_overview',
     topic: ToolTopics.Knowledge,
+    effect: 'read',
     title: 'Source counts and size',
     template: 'How big is the knowledge base «name» and what is in it?',
     description:
@@ -170,6 +173,7 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_knowledge_graph_labels',
     topic: ToolTopics.Knowledge,
+    effect: 'read',
     title: 'Entity labels',
     template: 'Which entity labels does the knowledge base «name» have?',
     description:
@@ -206,6 +210,7 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_knowledge_status',
     topic: ToolTopics.Knowledge,
+    effect: 'read',
     title: 'Knowledge service status',
     template: 'Is the knowledge service ready?',
     description:
@@ -263,6 +268,7 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'create_knowledge',
     topic: ToolTopics.Knowledge,
+    effect: 'write',
     title: 'Create a knowledge base',
     template: 'Create a knowledge base «name» described as «description»',
     description:
@@ -299,6 +305,7 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'update_knowledge',
     topic: ToolTopics.Knowledge,
+    effect: 'write',
     title: 'Update a knowledge base',
     template: 'Change the knowledge base «name»: «what to change»',
     description:
@@ -336,6 +343,7 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'set_knowledge_reader_access',
     topic: ToolTopics.Knowledge,
+    effect: 'write',
     title: 'Let readers open cited documents',
     template: 'Let readers open the documents of the knowledge base «name»',
     // Widening who may read documents is not undone by flipping it back:
@@ -394,6 +402,7 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'index_knowledge',
     topic: ToolTopics.Knowledge,
+    effect: 'write',
     title: 'Start indexing',
     template: 'Index the knowledge base «name»',
     description:
@@ -427,6 +436,7 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_knowledge',
     topic: ToolTopics.Knowledge,
+    effect: 'write',
     title: 'Delete a knowledge base',
     template: 'Delete the knowledge base «name»',
     destructive: true,

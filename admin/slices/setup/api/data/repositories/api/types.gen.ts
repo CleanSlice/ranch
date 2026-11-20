@@ -2160,6 +2160,231 @@ export type SetAgentAccessDto = {
   confirmOpen?: boolean;
 };
 
+export type AssistantRefDto = {
+  id: string;
+  name: string;
+};
+
+export type AssistantPickDto = {
+  /**
+   * The abilities offered.
+   */
+  on: Array<string>;
+  /**
+   * Abilities that appeared after the pick was saved. Off until saved again.
+   */
+  new: Array<string>;
+};
+
+export type AssistantRoleRowDto = {
+  enabled: boolean;
+  level: "basic" | "standard" | "full" | "custom";
+  /**
+   * For a custom pick that equals a level.
+   */
+  matchesLevel: "basic" | "standard" | "full";
+  /**
+   * Where it comes from: the role, the account’s own exception, or `owner` — the Owner always has everything.
+   */
+  source: "owner" | "role" | "account";
+  /**
+   * Abilities offered, within the role.
+   */
+  offered: number;
+  /**
+   * Abilities the role can have at all.
+   */
+  available: number;
+  version: string | null;
+  pick: AssistantPickDto | null;
+  /**
+   * Accounts of the role that follow it.
+   */
+  accounts: number;
+};
+
+export type AssistantRolesDto = {
+  Admin: AssistantRoleRowDto;
+  User: AssistantRoleRowDto;
+};
+
+export type AssistantResolvedDto = {
+  enabled: boolean;
+  level: "basic" | "standard" | "full" | "custom";
+  /**
+   * For a custom pick that equals a level.
+   */
+  matchesLevel: "basic" | "standard" | "full";
+  /**
+   * Where it comes from: the role, the account’s own exception, or `owner` — the Owner always has everything.
+   */
+  source: "owner" | "role" | "account";
+  /**
+   * Abilities offered, within the role.
+   */
+  offered: number;
+  /**
+   * Abilities the role can have at all.
+   */
+  available: number;
+  version: string | null;
+};
+
+export type AssistantExceptionDto = {
+  userId: string;
+  name: string;
+  email: string;
+  role: "Owner" | "Admin" | "User";
+  resolved: AssistantResolvedDto;
+  /**
+   * Who set it.
+   */
+  updatedBy: string | null;
+  updatedAt: string | null;
+  /**
+   * The pick holds abilities the account’s present role cannot have.
+   */
+  reducedByRole: boolean;
+};
+
+export type AssistantNoticeDto = {
+  usersManagingAgents: number;
+};
+
+export type AssistantOverviewDto = {
+  /**
+   * Null while the installation has no assistant.
+   */
+  assistant: AssistantRefDto | null;
+  roles: AssistantRolesDto;
+  exceptions: Array<AssistantExceptionDto>;
+  /**
+   * Until the Owner has saved the Users’ setting: how many Users created agents and, starting on Basic, no longer manage them through the chat. Null afterwards, and when there are none.
+   */
+  notice: AssistantNoticeDto | null;
+};
+
+export type AbilityDto = {
+  name: string;
+  title: string;
+  area: string;
+  effect: "read" | "write";
+  destructive: boolean;
+  /**
+   * The lowest role that can have it.
+   */
+  minRole: "Owner" | "Admin" | "User";
+  levels: Array<"basic" | "standard" | "full">;
+};
+
+export type AbilityAreaDto = {
+  key: string;
+  title: string;
+  order: number;
+  abilities: Array<AbilityDto>;
+};
+
+export type AssistantCatalogDto = {
+  areas: Array<AbilityAreaDto>;
+  /**
+   * What the assistant needs to hold any conversation. No setting governs these.
+   */
+  alwaysOn: Array<AbilityDto>;
+};
+
+export type SetAssistantAccessDto = {
+  /**
+   * Whether the assistant is on.
+   */
+  enabled?: boolean;
+  /**
+   * basic: see and ask. standard: plus day-to-day work on agents. full: everything the role can do in the console. custom: the names in `on`.
+   */
+  level?: "basic" | "standard" | "full" | "custom";
+  /**
+   * Only with level custom: the ability names offered. Names the assistant does not have, and names above the role, are refused.
+   */
+  on?: Array<string>;
+  /**
+   * The `version` last read. A change made on a stale one is refused with 409 ASSISTANT_ACCESS_STALE.
+   */
+  version?: string | null;
+};
+
+export type AssistantRoleDto = {
+  enabled: boolean;
+  level: "basic" | "standard" | "full" | "custom";
+  /**
+   * For a custom pick that equals a level.
+   */
+  matchesLevel: "basic" | "standard" | "full";
+  /**
+   * Where it comes from: the role, the account’s own exception, or `owner` — the Owner always has everything.
+   */
+  source: "owner" | "role" | "account";
+  /**
+   * Abilities offered, within the role.
+   */
+  offered: number;
+  /**
+   * Abilities the role can have at all.
+   */
+  available: number;
+  version: string | null;
+  pick: AssistantPickDto | null;
+};
+
+export type AssistantAccountDto = {
+  enabled: boolean;
+  level: "basic" | "standard" | "full" | "custom";
+  /**
+   * For a custom pick that equals a level.
+   */
+  matchesLevel: "basic" | "standard" | "full";
+  /**
+   * Where it comes from: the role, the account’s own exception, or `owner` — the Owner always has everything.
+   */
+  source: "owner" | "role" | "account";
+  /**
+   * Abilities offered, within the role.
+   */
+  offered: number;
+  /**
+   * Abilities the role can have at all.
+   */
+  available: number;
+  version: string | null;
+  pick: AssistantPickDto | null;
+  userId: string;
+  role: "Owner" | "Admin" | "User";
+  /**
+   * What the account would get without its own setting.
+   */
+  roleSetting: AssistantResolvedDto | null;
+  /**
+   * Whether the caller may change it.
+   */
+  editable: boolean;
+  /**
+   * For an Admin: the abilities they may hand out, their own. Null for the Owner, who has no such limit.
+   */
+  ceiling: Array<string> | null;
+};
+
+export type AssistantAreaCountDto = {
+  key: string;
+  title: string;
+  offered: number;
+  available: number;
+};
+
+export type MyAssistantAccessDto = {
+  enabled: boolean;
+  level: "basic" | "standard" | "full" | "custom" | "owner";
+  matchesLevel: "basic" | "standard" | "full";
+  areas: Array<AssistantAreaCountDto>;
+};
+
 export type AgentInterfaceDto = {
   /**
    * Where another agent sends tasks for this one.
@@ -6319,6 +6544,164 @@ export type SetUserAgentAccessResponses = {
 
 export type SetUserAgentAccessResponse =
   SetUserAgentAccessResponses[keyof SetUserAgentAccessResponses];
+
+export type GetAssistantAccessData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/assistant-access";
+};
+
+export type GetAssistantAccessResponses = {
+  200: AssistantOverviewDto;
+};
+
+export type GetAssistantAccessResponse =
+  GetAssistantAccessResponses[keyof GetAssistantAccessResponses];
+
+export type GetAssistantCatalogData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/assistant-access/catalog";
+};
+
+export type GetAssistantCatalogResponses = {
+  200: AssistantCatalogDto;
+};
+
+export type GetAssistantCatalogResponse =
+  GetAssistantCatalogResponses[keyof GetAssistantCatalogResponses];
+
+export type SetAssistantRoleAccessData = {
+  body: SetAssistantAccessDto;
+  path: {
+    role: string;
+  };
+  query?: never;
+  url: "/assistant-access/roles/{role}";
+};
+
+export type SetAssistantRoleAccessErrors = {
+  /**
+   * `ASSISTANT_ACCESS_STALE`.
+   */
+  409: unknown;
+  /**
+   * `UNKNOWN_ABILITY` or `ABOVE_THE_ROLE`, with the names in `names`.
+   */
+  422: unknown;
+};
+
+export type SetAssistantRoleAccessResponses = {
+  200: AssistantRoleDto;
+};
+
+export type SetAssistantRoleAccessResponse =
+  SetAssistantRoleAccessResponses[keyof SetAssistantRoleAccessResponses];
+
+export type ResetUserAssistantAccessData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}/assistant-access";
+};
+
+export type ResetUserAssistantAccessErrors = {
+  /**
+   * `ASSISTANT_ACCESS_NOT_ALLOWED`.
+   */
+  403: unknown;
+  /**
+   * No user with this id.
+   */
+  404: unknown;
+};
+
+export type ResetUserAssistantAccessResponses = {
+  200: AssistantAccountDto;
+};
+
+export type ResetUserAssistantAccessResponse =
+  ResetUserAssistantAccessResponses[keyof ResetUserAssistantAccessResponses];
+
+export type GetUserAssistantAccessData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}/assistant-access";
+};
+
+export type GetUserAssistantAccessErrors = {
+  /**
+   * `ASSISTANT_ACCESS_NOT_ALLOWED`: for an Admin, any account that is not a User, and their own.
+   */
+  403: unknown;
+  /**
+   * No user with this id.
+   */
+  404: unknown;
+};
+
+export type GetUserAssistantAccessResponses = {
+  200: AssistantAccountDto;
+};
+
+export type GetUserAssistantAccessResponse =
+  GetUserAssistantAccessResponses[keyof GetUserAssistantAccessResponses];
+
+export type SetUserAssistantAccessData = {
+  body: SetAssistantAccessDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/users/{id}/assistant-access";
+};
+
+export type SetUserAssistantAccessErrors = {
+  /**
+   * `ASSISTANT_ACCESS_NOT_ALLOWED`.
+   */
+  403: unknown;
+  /**
+   * No user with this id.
+   */
+  404: unknown;
+  /**
+   * `ASSISTANT_ACCESS_STALE`.
+   */
+  409: unknown;
+  /**
+   * `ABOVE_YOUR_OWN`, `ABOVE_THE_ROLE` or `UNKNOWN_ABILITY`, with the names in `names`.
+   */
+  422: unknown;
+};
+
+export type SetUserAssistantAccessResponses = {
+  200: AssistantAccountDto;
+};
+
+export type SetUserAssistantAccessResponse =
+  SetUserAssistantAccessResponses[keyof SetUserAssistantAccessResponses];
+
+export type GetMyAssistantAccessData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/me/assistant-access";
+};
+
+export type GetMyAssistantAccessResponses = {
+  200: MyAssistantAccessDto;
+};
+
+export type GetMyAssistantAccessResponse =
+  GetMyAssistantAccessResponses[keyof GetMyAssistantAccessResponses];
 
 export type UnpinAgentData = {
   body?: never;

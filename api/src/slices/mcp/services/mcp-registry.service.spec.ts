@@ -79,6 +79,7 @@ describe('McpRegistryService', () => {
       topic: 'mcp_servers',
       title: 'Register a thing',
       template: 'Register the thing «name»',
+      effect: 'write',
       parameters: z.object({ name: z.string() }),
     });
 
@@ -91,6 +92,23 @@ describe('McpRegistryService', () => {
         audience: 'admin',
       }));
     };
+
+    // CLEAN-240: nothing that removes or interrupts may sit in "see and ask".
+    it('refuses a destructive tool filed as a read', () => {
+      withTools({
+        ...complete(),
+        effect: 'read',
+        destructive: true,
+        parameters: z.object({ name: z.string(), confirm: z.boolean() }),
+      });
+      expect(() => service.validateToolMetadata()).toThrow(
+        expect.objectContaining({
+          message: expect.stringContaining(
+            'register_thing: destructive tool filed as a read',
+          ),
+        }),
+      );
+    });
 
     it('accepts a complete tool', () => {
       withTools(complete());
@@ -107,6 +125,12 @@ describe('McpRegistryService', () => {
         'placeholder',
         { template: 'Register the thing' },
         'template has parameters but no «…» placeholder',
+      ],
+      ['effect', { effect: undefined }, "missing effect ('read' or 'write')"],
+      [
+        'effect value',
+        { effect: 'both' },
+        "missing effect ('read' or 'write')",
       ],
     ])('refuses a tool with a bad %s', (_label, patch, expected) => {
       withTools({ ...complete(), ...patch });
@@ -147,7 +171,9 @@ describe('McpRegistryService', () => {
 
     it('refuses duplicate tool names', () => {
       withTools(complete(), complete());
-      expect(() => service.validateToolMetadata()).toThrow(/duplicate tool name/);
+      expect(() => service.validateToolMetadata()).toThrow(
+        /duplicate tool name/,
+      );
     });
 
     it('refuses a tool nobody declared an audience for (CLEAN-232)', () => {
@@ -183,6 +209,7 @@ describe('McpRegistryService', () => {
       topic: ToolTopics.Agents,
       title: `Title of ${name}`,
       template: 'Do the thing',
+      effect: 'read' as const,
     });
 
     @ToolAudience('admin')

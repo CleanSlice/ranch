@@ -49,6 +49,7 @@ export default defineNuxtPlugin({
         useAgentStore().resetForAccount();
         useChatStore().resetForAccount();
         useShareStore().resetForAccount();
+        useAssistantAccessStore().resetForAccount();
         clearNuxtData();
       });
     }

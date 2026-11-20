@@ -4768,6 +4768,556 @@ export const SetAgentAccessDtoSchema = {
   required: ["allowed", "denied", "version"],
 } as const;
 
+export const AssistantRefDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+    },
+  },
+  required: ["id", "name"],
+} as const;
+
+export const AssistantPickDtoSchema = {
+  type: "object",
+  properties: {
+    on: {
+      description: "The abilities offered.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    new: {
+      description:
+        "Abilities that appeared after the pick was saved. Off until saved again.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["on", "new"],
+} as const;
+
+export const AssistantRoleRowDtoSchema = {
+  type: "object",
+  properties: {
+    enabled: {
+      type: "boolean",
+    },
+    level: {
+      type: "string",
+      enum: ["basic", "standard", "full", "custom"],
+    },
+    matchesLevel: {
+      type: "string",
+      enum: ["basic", "standard", "full"],
+      nullable: true,
+      description: "For a custom pick that equals a level.",
+    },
+    source: {
+      type: "string",
+      enum: ["owner", "role", "account"],
+      description:
+        "Where it comes from: the role, the account’s own exception, or `owner` — the Owner always has everything.",
+    },
+    offered: {
+      type: "number",
+      description: "Abilities offered, within the role.",
+    },
+    available: {
+      type: "number",
+      description: "Abilities the role can have at all.",
+    },
+    version: {
+      type: "string",
+      nullable: true,
+    },
+    pick: {
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssistantPickDto",
+        },
+      ],
+    },
+    accounts: {
+      type: "number",
+      description: "Accounts of the role that follow it.",
+    },
+  },
+  required: [
+    "enabled",
+    "level",
+    "matchesLevel",
+    "source",
+    "offered",
+    "available",
+    "version",
+    "pick",
+    "accounts",
+  ],
+} as const;
+
+export const AssistantRolesDtoSchema = {
+  type: "object",
+  properties: {
+    Admin: {
+      $ref: "#/components/schemas/AssistantRoleRowDto",
+    },
+    User: {
+      $ref: "#/components/schemas/AssistantRoleRowDto",
+    },
+  },
+  required: ["Admin", "User"],
+} as const;
+
+export const AssistantResolvedDtoSchema = {
+  type: "object",
+  properties: {
+    enabled: {
+      type: "boolean",
+    },
+    level: {
+      type: "string",
+      enum: ["basic", "standard", "full", "custom"],
+    },
+    matchesLevel: {
+      type: "string",
+      enum: ["basic", "standard", "full"],
+      nullable: true,
+      description: "For a custom pick that equals a level.",
+    },
+    source: {
+      type: "string",
+      enum: ["owner", "role", "account"],
+      description:
+        "Where it comes from: the role, the account’s own exception, or `owner` — the Owner always has everything.",
+    },
+    offered: {
+      type: "number",
+      description: "Abilities offered, within the role.",
+    },
+    available: {
+      type: "number",
+      description: "Abilities the role can have at all.",
+    },
+    version: {
+      type: "string",
+      nullable: true,
+    },
+  },
+  required: [
+    "enabled",
+    "level",
+    "matchesLevel",
+    "source",
+    "offered",
+    "available",
+    "version",
+  ],
+} as const;
+
+export const AssistantExceptionDtoSchema = {
+  type: "object",
+  properties: {
+    userId: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+    },
+    email: {
+      type: "string",
+    },
+    role: {
+      type: "string",
+      enum: ["Owner", "Admin", "User"],
+    },
+    resolved: {
+      $ref: "#/components/schemas/AssistantResolvedDto",
+    },
+    updatedBy: {
+      type: "string",
+      nullable: true,
+      description: "Who set it.",
+    },
+    updatedAt: {
+      type: "string",
+      format: "date-time",
+      nullable: true,
+    },
+    reducedByRole: {
+      type: "boolean",
+      description:
+        "The pick holds abilities the account’s present role cannot have.",
+    },
+  },
+  required: [
+    "userId",
+    "name",
+    "email",
+    "role",
+    "resolved",
+    "updatedBy",
+    "updatedAt",
+    "reducedByRole",
+  ],
+} as const;
+
+export const AssistantNoticeDtoSchema = {
+  type: "object",
+  properties: {
+    usersManagingAgents: {
+      type: "number",
+    },
+  },
+  required: ["usersManagingAgents"],
+} as const;
+
+export const AssistantOverviewDtoSchema = {
+  type: "object",
+  properties: {
+    assistant: {
+      nullable: true,
+      description: "Null while the installation has no assistant.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssistantRefDto",
+        },
+      ],
+    },
+    roles: {
+      $ref: "#/components/schemas/AssistantRolesDto",
+    },
+    exceptions: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AssistantExceptionDto",
+      },
+    },
+    notice: {
+      nullable: true,
+      description:
+        "Until the Owner has saved the Users’ setting: how many Users created agents and, starting on Basic, no longer manage them through the chat. Null afterwards, and when there are none.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssistantNoticeDto",
+        },
+      ],
+    },
+  },
+  required: ["assistant", "roles", "exceptions", "notice"],
+} as const;
+
+export const AbilityDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+    },
+    title: {
+      type: "string",
+    },
+    area: {
+      type: "string",
+    },
+    effect: {
+      type: "string",
+      enum: ["read", "write"],
+    },
+    destructive: {
+      type: "boolean",
+    },
+    minRole: {
+      type: "string",
+      enum: ["Owner", "Admin", "User"],
+      description: "The lowest role that can have it.",
+    },
+    levels: {
+      type: "array",
+      items: {
+        type: "string",
+        enum: ["basic", "standard", "full"],
+      },
+    },
+  },
+  required: [
+    "name",
+    "title",
+    "area",
+    "effect",
+    "destructive",
+    "minRole",
+    "levels",
+  ],
+} as const;
+
+export const AbilityAreaDtoSchema = {
+  type: "object",
+  properties: {
+    key: {
+      type: "string",
+    },
+    title: {
+      type: "string",
+    },
+    order: {
+      type: "number",
+    },
+    abilities: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AbilityDto",
+      },
+    },
+  },
+  required: ["key", "title", "order", "abilities"],
+} as const;
+
+export const AssistantCatalogDtoSchema = {
+  type: "object",
+  properties: {
+    areas: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AbilityAreaDto",
+      },
+    },
+    alwaysOn: {
+      description:
+        "What the assistant needs to hold any conversation. No setting governs these.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AbilityDto",
+      },
+    },
+  },
+  required: ["areas", "alwaysOn"],
+} as const;
+
+export const SetAssistantAccessDtoSchema = {
+  type: "object",
+  properties: {
+    enabled: {
+      type: "boolean",
+      description: "Whether the assistant is on.",
+    },
+    level: {
+      type: "string",
+      enum: ["basic", "standard", "full", "custom"],
+      description:
+        "basic: see and ask. standard: plus day-to-day work on agents. full: everything the role can do in the console. custom: the names in `on`.",
+    },
+    on: {
+      description:
+        "Only with level custom: the ability names offered. Names the assistant does not have, and names above the role, are refused.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    version: {
+      type: "string",
+      nullable: true,
+      description:
+        "The `version` last read. A change made on a stale one is refused with 409 ASSISTANT_ACCESS_STALE.",
+    },
+  },
+} as const;
+
+export const AssistantRoleDtoSchema = {
+  type: "object",
+  properties: {
+    enabled: {
+      type: "boolean",
+    },
+    level: {
+      type: "string",
+      enum: ["basic", "standard", "full", "custom"],
+    },
+    matchesLevel: {
+      type: "string",
+      enum: ["basic", "standard", "full"],
+      nullable: true,
+      description: "For a custom pick that equals a level.",
+    },
+    source: {
+      type: "string",
+      enum: ["owner", "role", "account"],
+      description:
+        "Where it comes from: the role, the account’s own exception, or `owner` — the Owner always has everything.",
+    },
+    offered: {
+      type: "number",
+      description: "Abilities offered, within the role.",
+    },
+    available: {
+      type: "number",
+      description: "Abilities the role can have at all.",
+    },
+    version: {
+      type: "string",
+      nullable: true,
+    },
+    pick: {
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssistantPickDto",
+        },
+      ],
+    },
+  },
+  required: [
+    "enabled",
+    "level",
+    "matchesLevel",
+    "source",
+    "offered",
+    "available",
+    "version",
+    "pick",
+  ],
+} as const;
+
+export const AssistantAccountDtoSchema = {
+  type: "object",
+  properties: {
+    enabled: {
+      type: "boolean",
+    },
+    level: {
+      type: "string",
+      enum: ["basic", "standard", "full", "custom"],
+    },
+    matchesLevel: {
+      type: "string",
+      enum: ["basic", "standard", "full"],
+      nullable: true,
+      description: "For a custom pick that equals a level.",
+    },
+    source: {
+      type: "string",
+      enum: ["owner", "role", "account"],
+      description:
+        "Where it comes from: the role, the account’s own exception, or `owner` — the Owner always has everything.",
+    },
+    offered: {
+      type: "number",
+      description: "Abilities offered, within the role.",
+    },
+    available: {
+      type: "number",
+      description: "Abilities the role can have at all.",
+    },
+    version: {
+      type: "string",
+      nullable: true,
+    },
+    pick: {
+      nullable: true,
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssistantPickDto",
+        },
+      ],
+    },
+    userId: {
+      type: "string",
+    },
+    role: {
+      type: "string",
+      enum: ["Owner", "Admin", "User"],
+    },
+    roleSetting: {
+      nullable: true,
+      description: "What the account would get without its own setting.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/AssistantResolvedDto",
+        },
+      ],
+    },
+    editable: {
+      type: "boolean",
+      description: "Whether the caller may change it.",
+    },
+    ceiling: {
+      nullable: true,
+      description:
+        "For an Admin: the abilities they may hand out, their own. Null for the Owner, who has no such limit.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: [
+    "enabled",
+    "level",
+    "matchesLevel",
+    "source",
+    "offered",
+    "available",
+    "version",
+    "pick",
+    "userId",
+    "role",
+    "roleSetting",
+    "editable",
+    "ceiling",
+  ],
+} as const;
+
+export const AssistantAreaCountDtoSchema = {
+  type: "object",
+  properties: {
+    key: {
+      type: "string",
+    },
+    title: {
+      type: "string",
+    },
+    offered: {
+      type: "number",
+    },
+    available: {
+      type: "number",
+    },
+  },
+  required: ["key", "title", "offered", "available"],
+} as const;
+
+export const MyAssistantAccessDtoSchema = {
+  type: "object",
+  properties: {
+    enabled: {
+      type: "boolean",
+    },
+    level: {
+      type: "string",
+      enum: ["basic", "standard", "full", "custom", "owner"],
+    },
+    matchesLevel: {
+      type: "string",
+      enum: ["basic", "standard", "full"],
+      nullable: true,
+    },
+    areas: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AssistantAreaCountDto",
+      },
+    },
+  },
+  required: ["enabled", "level", "matchesLevel", "areas"],
+} as const;
+
 export const AgentInterfaceDtoSchema = {
   type: "object",
   properties: {

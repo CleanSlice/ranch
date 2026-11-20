@@ -35,6 +35,7 @@ export interface IListedTool {
 @Injectable()
 export class ToolCatalogService {
   private readonly logger = new Logger(ToolCatalogService.name);
+  private readonly policies = new Set<CallerToolPolicy>();
 
   constructor(
     private readonly moduleRef: ModuleRef,
@@ -110,6 +111,44 @@ export class ToolCatalogService {
    * same question on tools/call, so a cached name past the list is refused.
    */
   async allowedNamesFor(httpRequest: Request): Promise<Set<string> | null> {
+    let allowed = await this.templatePolicyFor(httpRequest);
+    for (const policy of this.policies) {
+      let answer: Set<string> | null;
+      try {
+        answer = await policy.allowedToolsFor(httpRequest);
+      } catch (e) {
+        // A policy added here is a narrowing somebody configured. One that
+        // cannot answer must not turn into "every tool": that would hand
+        // back exactly what was taken away. Nothing is allowed until it can.
+        this.logger.warn(
+          `caller tool policy failed, allowing nothing for this request: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        );
+        return new Set();
+      }
+      if (answer === null) continue;
+      allowed =
+        allowed === null
+          ? new Set(answer)
+          : new Set([...allowed].filter((name) => answer.has(name)));
+    }
+    return allowed;
+  }
+
+  /**
+   * One more policy to ask (CLEAN-240). Each policy can only take names
+   * away, so a caller gets what all of them allow. The template's allowlist
+   * is still found by its token; a policy that lives in a slice the token
+   * cannot name twice registers itself here at start.
+   */
+  addPolicy(policy: CallerToolPolicy): void {
+    this.policies.add(policy);
+  }
+
+  private async templatePolicyFor(
+    httpRequest: Request,
+  ): Promise<Set<string> | null> {
     try {
       const policy = this.moduleRef.get(CallerToolPolicy, { strict: false });
       return policy ? await policy.allowedToolsFor(httpRequest) : null;

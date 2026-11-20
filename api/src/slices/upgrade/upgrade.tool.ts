@@ -36,6 +36,7 @@ export class UpgradeTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_upgrade_status',
     topic: ToolTopics.Platform,
+    effect: 'read',
     title: 'Ranch upgrade status',
     template: 'Is a Ranch upgrade available?',
     description:
@@ -54,6 +55,7 @@ export class UpgradeTool implements IConditionallyListedTool {
   @Tool({
     name: 'run_upgrade',
     topic: ToolTopics.Platform,
+    effect: 'write',
     title: 'Upgrade Ranch',
     template: 'Upgrade Ranch to the latest version',
     destructive: true,

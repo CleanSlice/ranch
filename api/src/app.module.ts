@@ -13,6 +13,7 @@ import { AgentPermissionModule } from './slices/agent/agent/agentPermission.modu
 import { AgentManageGuard } from './slices/agent/agent/guards';
 import { AgentPinModule } from './slices/agent/pin/agentPin.module';
 import { AgentAccessModule } from './slices/user/agentAccess/agentAccess.module';
+import { AssistantAccessModule } from './slices/user/assistantAccess/assistantAccess.module';
 import { AgentAccessGuard } from './slices/user/agentAccess/guards';
 import { AgentChannelModule } from './slices/agent/agentChannel/agentChannel.module';
 import { ShareLinkModule } from './slices/agent/shareLink/shareLink.module';
@@ -78,6 +79,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     AgentModule,
     AgentPermissionModule,
     AgentAccessModule,
+    AssistantAccessModule,
     AgentPinModule,
     AgentChannelModule,
     ShareLinkModule,

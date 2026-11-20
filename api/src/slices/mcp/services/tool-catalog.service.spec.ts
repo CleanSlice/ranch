@@ -202,6 +202,72 @@ describe('ToolCatalogService caller tool policy (CLEAN-209)', () => {
   });
 });
 
+// More than one policy may narrow a caller (CLEAN-240): the template's tool
+// allowlist and what the assistant offers the person. Each can only take
+// away, so the answer is what all of them allow.
+describe('ToolCatalogService with several caller tool policies (CLEAN-240)', () => {
+  const twoTools = () =>
+    makeHarness([
+      { name: 'query_knowledge', instance: { run: jest.fn() } },
+      { name: 'delete_agent', instance: { run: jest.fn() } },
+    ]);
+  const req = plain;
+  const policy = (answer: string[] | null | Error) => ({
+    allowedToolsFor: jest.fn(async () => {
+      if (answer instanceof Error) throw answer;
+      return answer === null ? null : new Set(answer);
+    }),
+  });
+  const names = async (service: ToolCatalogService) =>
+    [...((await service.allowedNamesFor(req())) ?? ['<all>'])].sort();
+
+  it('keeps what every policy allows', async () => {
+    const { service, moduleRef } = twoTools();
+    (moduleRef as unknown as { get: jest.Mock }).get = jest.fn(() =>
+      policy(['a', 'b', 'c']),
+    );
+    service.addPolicy(policy(['b', 'c', 'd']));
+    expect(await names(service)).toEqual(['b', 'c']);
+  });
+
+  it('a policy with no opinion leaves the other’s answer', async () => {
+    const { service } = twoTools();
+    service.addPolicy(policy(null));
+    service.addPolicy(policy(['a']));
+    expect(await names(service)).toEqual(['a']);
+  });
+
+  it('no opinion from anyone is every tool', async () => {
+    const { service } = twoTools();
+    service.addPolicy(policy(null));
+    expect(await service.allowedNamesFor(req())).toBeNull();
+  });
+
+  it('two policies that share nothing allow nothing', async () => {
+    const { service } = twoTools();
+    service.addPolicy(policy(['a']));
+    service.addPolicy(policy(['b']));
+    expect(await names(service)).toEqual([]);
+  });
+
+  // An added policy is a narrowing someone configured. If it cannot answer,
+  // listing everything would hand out what was taken away.
+  it('an added policy that fails allows nothing, and the failure is not swallowed into "all"', async () => {
+    const { service } = twoTools();
+    service.addPolicy(policy(new Error('db down')));
+    expect(await names(service)).toEqual([]);
+  });
+
+  it('asks each policy with the request', async () => {
+    const { service } = twoTools();
+    const one = policy(null);
+    service.addPolicy(one);
+    const request = req();
+    await service.allowedNamesFor(request);
+    expect(one.allowedToolsFor).toHaveBeenCalledWith(request);
+  });
+});
+
 describe('ToolCatalogService.listFor', () => {
   it('lists a tool with no opinion, with its static description, schema and metadata', async () => {
     const { service } = makeHarness([

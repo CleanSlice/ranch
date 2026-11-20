@@ -14,6 +14,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
   forwardRef,
+  Optional,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -29,6 +30,8 @@ import {
   type BridleSendAck,
   type BridleSurfaceTypes,
   type ChatRequesterKinds,
+  IActingAssistant,
+  actingAssistantOf,
   type IBridleActing,
   type IBridleUserIdentity,
   type IConsoleSession,
@@ -124,6 +127,9 @@ export class BridleClientWsHandler
     private readonly shareLinks: ShareLinkService,
     private readonly actingParty: ActingPartyService,
     private readonly reach: ConsoleReachService,
+      // What the assistant offers the sender, for the wording of the turn
+    // (CLEAN-240). Optional: a hub built without it says nothing.
+    @Optional() private readonly assistant?: IActingAssistant,
   ) {}
 
   private stopListening: (() => void) | undefined;
@@ -614,6 +620,10 @@ export class BridleClientWsHandler
           }),
           role: consoleAuth.role,
           ...(consoleAuth.surface ? { surface: consoleAuth.surface } : {}),
+          ...(await actingAssistantOf(this.assistant, agentId, {
+            userId: consoleAuth.userId,
+            role: consoleAuth.role,
+          })),
         };
       } catch (err) {
         // The message still goes; without a token the turn is a guest's,

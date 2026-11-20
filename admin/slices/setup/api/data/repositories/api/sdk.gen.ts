@@ -278,6 +278,20 @@ import type {
   GetUserAgentAccessResponse,
   SetUserAgentAccessData,
   SetUserAgentAccessResponse,
+  GetAssistantAccessData,
+  GetAssistantAccessResponse,
+  GetAssistantCatalogData,
+  GetAssistantCatalogResponse,
+  SetAssistantRoleAccessData,
+  SetAssistantRoleAccessResponse,
+  ResetUserAssistantAccessData,
+  ResetUserAssistantAccessResponse,
+  GetUserAssistantAccessData,
+  GetUserAssistantAccessResponse,
+  SetUserAssistantAccessData,
+  SetUserAssistantAccessResponse,
+  GetMyAssistantAccessData,
+  GetMyAssistantAccessResponse,
   UnpinAgentData,
   UnpinAgentResponse,
   PinAgentData,
@@ -1320,7 +1334,7 @@ export class AgentsService {
   }
 
   /**
-   * Get the agent currently flagged as Ranch admin (or null). 404 for a caller whose access lists hide it (CLEAN-231).
+   * Get the agent currently flagged as Ranch admin (or null). 404 for a caller the assistant is switched off for (CLEAN-240); the access lists of ordinary agents no longer decide it.
    */
   public static agentControllerFindAdmin<ThrowOnError extends boolean = false>(
     options?: Options<AgentControllerFindAdminData, ThrowOnError>,
@@ -3651,6 +3665,128 @@ export class PaddockScenariosService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+}
+
+export class AssistantAccessService {
+  /**
+   * Who can use the assistant: what Admins and Users get, how many accounts follow each, and every account that differs from its role, with who set it. Owner only.
+   */
+  public static getAssistantAccess<ThrowOnError extends boolean = false>(
+    options?: Options<GetAssistantAccessData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetAssistantAccessResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/assistant-access",
+      ...options,
+    });
+  }
+
+  /**
+   * Everything the assistant can do for a person, area by area, with the levels each ability belongs to, whether it changes or deletes something, and the lowest role that can have it. Names and titles only. Owner or Admin.
+   */
+  public static getAssistantCatalog<ThrowOnError extends boolean = false>(
+    options?: Options<GetAssistantCatalogData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetAssistantCatalogResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/assistant-access/catalog",
+      ...options,
+    });
+  }
+
+  /**
+   * Set what a role gets from the assistant: on or off, and a level or a custom pick. `:role` is Admin or User. Applies to every account of the role without its own setting, from their next message. Owner only.
+   */
+  public static setAssistantRoleAccess<ThrowOnError extends boolean = false>(
+    options: Options<SetAssistantRoleAccessData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      SetAssistantRoleAccessResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/assistant-access/roles/{role}",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Drop an account’s own setting, so it follows its role again. Answers the same when there was nothing to drop.
+   */
+  public static resetUserAssistantAccess<ThrowOnError extends boolean = false>(
+    options: Options<ResetUserAssistantAccessData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).delete<
+      ResetUserAssistantAccessResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}/assistant-access",
+      ...options,
+    });
+  }
+
+  /**
+   * What one account gets from the assistant, where that comes from (its role or its own setting), what its role would give it, and whether the caller may change it. Owner: any account. Admin: Users.
+   */
+  public static getUserAssistantAccess<ThrowOnError extends boolean = false>(
+    options: Options<GetUserAssistantAccessData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetUserAssistantAccessResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}/assistant-access",
+      ...options,
+    });
+  }
+
+  /**
+   * Give one account its own setting: on or off, a level or a custom pick. What is not sent stays as the account has it now. An Admin sets it for Users only, and to no more than the assistant offers the Admin.
+   */
+  public static setUserAssistantAccess<ThrowOnError extends boolean = false>(
+    options: Options<SetUserAssistantAccessData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).put<
+      SetUserAssistantAccessResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/users/{id}/assistant-access",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * What the assistant offers the person asking: whether it is on, their level, and how much of each area it covers. Nothing about any other account, and not who set it.
+   */
+  public static getMyAssistantAccess<ThrowOnError extends boolean = false>(
+    options?: Options<GetMyAssistantAccessData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetMyAssistantAccessResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/assistant-access",
+      ...options,
     });
   }
 }

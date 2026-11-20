@@ -65,6 +65,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   @Tool({
     name: 'run_paddock_evaluation',
     topic: ToolTopics.Paddock,
+    effect: 'write',
     title: 'Run an evaluation',
     template: 'Run a paddock evaluation for the agent «name»',
     description:
@@ -106,6 +107,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_paddock_evaluations',
     topic: ToolTopics.Paddock,
+    effect: 'read',
     title: 'List evaluations',
     template: 'List the paddock evaluations of «agent»',
     description:
@@ -132,6 +134,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_paddock_evaluation',
     topic: ToolTopics.Paddock,
+    effect: 'read',
     title: 'Show an evaluation',
     template: 'How did the evaluation «id» go?',
     description:
@@ -147,6 +150,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_paddock_evaluation_report',
     topic: ToolTopics.Paddock,
+    effect: 'read',
     title: 'Evaluation report',
     template: 'Show the report of the evaluation «id»',
     description:
@@ -166,6 +170,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   @Tool({
     name: 'abort_paddock_evaluation',
     topic: ToolTopics.Paddock,
+    effect: 'write',
     title: 'Abort an evaluation',
     template: 'Abort the evaluation «id»',
     destructive: true,
@@ -195,6 +200,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   @Tool({
     name: 'rerun_paddock_evaluation',
     topic: ToolTopics.Paddock,
+    effect: 'write',
     title: 'Rerun an evaluation',
     template: 'Rerun the evaluation «id»',
     description:
@@ -210,6 +216,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_paddock_evaluation_logs',
     topic: ToolTopics.Paddock,
+    effect: 'read',
     title: 'Evaluation logs',
     template: 'Show the logs of evaluation «id»',
     description:
@@ -242,6 +249,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_paddock_evaluation_scenario_result',
     topic: ToolTopics.Paddock,
+    effect: 'read',
     title: "One scenario's result",
     template: 'How did scenario «scenario» go in evaluation «id»?',
     description:
@@ -276,6 +284,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_paddock_evaluation_trace',
     topic: ToolTopics.Paddock,
+    effect: 'read',
     title: 'Evaluation trace',
     template: 'Show the trace of evaluation «id»',
     description:

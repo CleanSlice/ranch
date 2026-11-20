@@ -140,6 +140,7 @@ export class ShareLinkTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_share_link',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'read',
     title: 'Show the share link',
     template: 'Does the agent «name» have a public share link?',
     description:
@@ -169,6 +170,7 @@ export class ShareLinkTool implements IConditionallyListedTool {
   @Tool({
     name: 'create_share_link',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Create a share link',
     template: 'Create a public share link for the agent «name»',
     description:
@@ -202,6 +204,7 @@ export class ShareLinkTool implements IConditionallyListedTool {
   @Tool({
     name: 'regenerate_share_link',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Regenerate the share link',
     template: 'Regenerate the share link of the agent «name»',
     destructive: true,
@@ -246,6 +249,7 @@ export class ShareLinkTool implements IConditionallyListedTool {
   @Tool({
     name: 'revoke_share_link',
     topic: ToolTopics.AgentWorkspace,
+    effect: 'write',
     title: 'Revoke the share link',
     template: 'Revoke the share link of the agent «name»',
     destructive: true,

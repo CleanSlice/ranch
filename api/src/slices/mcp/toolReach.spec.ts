@@ -744,3 +744,49 @@ describe('get_rancher_status, when the Ranch admin agent is the hidden one', () 
     expect(text).not.toContain('llm-1');
   });
 });
+
+// CLEAN-240: the assistant is not an entry in the lists. Whether the limited
+// Admin has it is its own switch, and the tools follow the switch the same
+// way they follow the lists. Here the hidden agent plays the assistant.
+describe('the assistant among the tools of a limited Admin (CLEAN-240)', () => {
+  const asAssistant = (enabled: boolean) =>
+    access.attachAssistant({
+      assistantId: () => Promise.resolve(HIDDEN),
+      forPerson: () => Promise.resolve({ id: HIDDEN, enabled }),
+    });
+  // The other suites in this file run with no assistant on the installation.
+  afterEach(() =>
+    access.attachAssistant({
+      assistantId: () => Promise.resolve(null),
+      forPerson: () => Promise.resolve(null),
+    }),
+  );
+
+  it('switched on, it is listed and found, though no list names it', async () => {
+    asAssistant(true);
+    const listed = await said(() => LISTS.list_agents(asAdmin()));
+    expect(listed).toContain(HIDDEN);
+    expect(listed).toContain(A);
+    const one = await said(() =>
+      rancher.getAgent({ id: HIDDEN }, null, asAdmin()),
+    );
+    expect(one).not.toMatch(/not found/i);
+  });
+
+  it('switched off, it is an agent that does not exist', async () => {
+    asAssistant(false);
+    const listed = await said(() => LISTS.list_agents(asAdmin()));
+    expect(listed).not.toContain(HIDDEN);
+    expect(listed).not.toContain(HIDDEN_NAME);
+    const one = await said(() =>
+      rancher.getAgent({ id: HIDDEN }, null, asAdmin()),
+    );
+    expect(one).toMatch(/not found/i);
+    expect(one).not.toContain(HIDDEN_NAME);
+  });
+
+  it('the Owner has it either way', async () => {
+    asAssistant(false);
+    expect(await said(() => LISTS.list_agents(asOwner()))).toContain(HIDDEN);
+  });
+});

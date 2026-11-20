@@ -152,6 +152,7 @@ export class ChatTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_chats',
     topic: ToolTopics.ChatsUsage,
+    effect: 'read',
     title: 'List chats',
     template: 'List the recent chats «of agent name»',
     description:
@@ -222,6 +223,7 @@ export class ChatTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_chat',
     topic: ToolTopics.ChatsUsage,
+    effect: 'read',
     title: 'Show a chat',
     template: 'Show the chat «id»',
     description:
@@ -247,6 +249,7 @@ export class ChatTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_chat_messages',
     topic: ToolTopics.ChatsUsage,
+    effect: 'read',
     title: 'Read chat messages',
     template: 'Show the last «20» messages of chat «id»',
     description:
@@ -347,6 +350,7 @@ export class ChatTool implements IConditionallyListedTool {
   @Tool({
     name: 'sync_chats',
     topic: ToolTopics.ChatsUsage,
+    effect: 'write',
     title: 'Sync chats from runtimes',
     template: 'Sync chats «of agent name» from their runtimes',
     description:
@@ -379,6 +383,7 @@ export class ChatTool implements IConditionallyListedTool {
   @Tool({
     name: 'summarize_chat',
     topic: ToolTopics.ChatsUsage,
+    effect: 'write',
     title: 'Summarize a chat',
     template: 'Summarize the chat «id»',
     description:
@@ -429,6 +434,7 @@ export class ChatTool implements IConditionallyListedTool {
   @Tool({
     name: 'export_chat',
     topic: ToolTopics.ChatsUsage,
+    effect: 'read',
     title: 'Export a chat',
     template: 'Export the chat «id»',
     description:

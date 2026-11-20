@@ -1,0 +1,12 @@
+{
+  "assistantAccess": {
+    "level_basic": "Базовый",
+    "level_standard": "Стандартный",
+    "level_full": "Полный",
+    "level_custom": "Свой",
+    "badge_title": "Ваш уровень доступа к ассистенту",
+    "areas_title": "Что ассистент может для вас сделать",
+    "area_count": "{offered} из {available}",
+    "who_decides": "Владелец определяет, что ассистент может для вас делать."
+  }
+}

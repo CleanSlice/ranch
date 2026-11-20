@@ -26,6 +26,7 @@ import {
   UseInterceptors,
   applyDecorators,
   forwardRef,
+  Optional,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -72,6 +73,7 @@ import {
   parseBearer,
   resolveShareIdentity,
 } from './domain';
+import { IActingAssistant, actingAssistantOf } from './domain/bridle.types';
 import type {
   ChatHeaders,
   IAttachmentRequester,
@@ -284,6 +286,9 @@ export class BridleController {
     private readonly sourceAccess: SourceAccessService,
     private readonly actingParty: ActingPartyService,
     private readonly reach: ConsoleReachService,
+    // What the assistant offers the sender, for the wording of the turn
+    // (CLEAN-240). Optional: a hub built without it says nothing.
+    @Optional() private readonly assistant?: IActingAssistant,
   ) {}
 
   /**
@@ -330,7 +335,16 @@ export class BridleController {
         agentId,
         sid: session.sid,
       });
-      return { acting: { token, role: session.role } };
+      return {
+        acting: {
+          token,
+          role: session.role,
+          ...(await actingAssistantOf(this.assistant, agentId, {
+            userId: session.userId,
+            role: session.role,
+          })),
+        },
+      };
     } catch (err) {
       // The message still goes; without a token the turn is a guest's,
       // which is the safe side to fail on.

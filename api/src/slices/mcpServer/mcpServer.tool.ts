@@ -86,6 +86,7 @@ export class McpServerTool implements IConditionallyListedTool {
   @Tool({
     name: 'list_mcp_servers',
     topic: ToolTopics.McpServers,
+    effect: 'read',
     title: 'List MCP servers',
     template: 'List the MCP servers registered in this Ranch',
     description:
@@ -109,6 +110,7 @@ export class McpServerTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_mcp_server',
     topic: ToolTopics.McpServers,
+    effect: 'read',
     title: 'Show an MCP server',
     template: 'Show the MCP server «name»',
     description:
@@ -136,6 +138,7 @@ export class McpServerTool implements IConditionallyListedTool {
   @Tool({
     name: 'register_mcp_server',
     topic: ToolTopics.McpServers,
+    effect: 'write',
     title: 'Register an MCP server',
     template:
       'Register the MCP server at «url» named «name» with «bearer|none» auth',
@@ -210,6 +213,7 @@ export class McpServerTool implements IConditionallyListedTool {
   @Tool({
     name: 'update_mcp_server',
     topic: ToolTopics.McpServers,
+    effect: 'write',
     title: 'Update or enable/disable a server',
     template: 'Disable the MCP server «name»',
     description:
@@ -292,6 +296,7 @@ export class McpServerTool implements IConditionallyListedTool {
   @Tool({
     name: 'delete_mcp_server',
     topic: ToolTopics.McpServers,
+    effect: 'write',
     title: 'Delete an MCP server',
     template: 'Delete the MCP server «name»',
     destructive: true,

@@ -75,6 +75,7 @@ export class TemplateInstallTool implements IConditionallyListedTool {
   @Tool({
     name: 'preview_template_install_from_git',
     topic: ToolTopics.Templates,
+    effect: 'read',
     title: 'Preview a git template',
     template:
       'What would installing the template from «git url» at «ref» bring?',
@@ -123,6 +124,7 @@ export class TemplateInstallTool implements IConditionallyListedTool {
   @Tool({
     name: 'install_template_from_git',
     topic: ToolTopics.Templates,
+    effect: 'write',
     title: 'Install a template from git',
     template: 'Install the template from «git url» at «ref»',
     description:
@@ -172,6 +174,7 @@ export class TemplateInstallTool implements IConditionallyListedTool {
   @Tool({
     name: 'export_template',
     topic: ToolTopics.Templates,
+    effect: 'read',
     title: 'Export a template',
     template: 'Export the template «name»',
     description:

@@ -49,6 +49,7 @@ export class UsageTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_usage_overview',
     topic: ToolTopics.ChatsUsage,
+    effect: 'read',
     title: 'Usage across all agents',
     template: 'How much did all agents cost in the last 30 days?',
     description:

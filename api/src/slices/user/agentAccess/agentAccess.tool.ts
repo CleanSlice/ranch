@@ -72,6 +72,7 @@ export class AgentAccessTool implements IConditionallyListedTool {
   @Tool({
     name: 'get_user_agent_access',
     topic: ToolTopics.UsersKeys,
+    effect: 'read',
     title: "Show a user's agent access",
     template: 'Which agents can «email» use?',
     description:
@@ -103,6 +104,7 @@ export class AgentAccessTool implements IConditionallyListedTool {
   @Tool({
     name: 'set_user_agent_access',
     topic: ToolTopics.UsersKeys,
+    effect: 'write',
     title: "Change a user's agent access",
     template: 'Let «email» use only «agents»',
     destructive: true,

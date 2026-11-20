@@ -135,6 +135,7 @@ export class BridleAttachmentTool {
   @Tool({
     name: 'query_attachment',
     topic: ToolTopics.Attachments,
+    effect: 'read',
     title: 'Ask a question about an attached file',
     template: 'In the attached file, «question»',
     description: DESCRIPTION,

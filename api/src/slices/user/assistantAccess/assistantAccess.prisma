@@ -1,0 +1,35 @@
+// What the Ranch assistant offers people (CLEAN-240). Kept apart from the
+// access lists of ordinary agents on purpose: whether an account has the
+// assistant must not depend on which agents it reaches.
+
+// What a role gets. One row per role the Owner has configured; no row means
+// the default (Admin: on, full. User: on, basic). Never a row for Owner.
+model AssistantRoleAccess {
+  // 'Admin' | 'User'
+  role        String   @id
+  enabled     Boolean  @default(true)
+  // 'basic' | 'standard' | 'full' | 'custom'
+  level       String
+  // Only with level 'custom': { on: string[], known: string[] } — the tool
+  // names offered, and every governed name that existed when it was saved.
+  // A name in the catalogue and not in `known` is new: off until looked at.
+  custom      Json?
+  // Bare user id, the repo convention for User (see session.prisma).
+  updatedById String?
+  createdAt   DateTime @default(now())
+  // Also the `version` of the optimistic check on PUT.
+  updatedAt   DateTime @updatedAt
+}
+
+// One account's exception. Exists only while the account differs from its
+// role; deleting the row returns it to the role's setting. Removed with the
+// account, explicitly (AssistantAccessService.removeUser).
+model AssistantAccountAccess {
+  userId      String   @id
+  enabled     Boolean  @default(true)
+  level       String
+  custom      Json?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

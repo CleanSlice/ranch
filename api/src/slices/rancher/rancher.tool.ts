@@ -131,6 +131,7 @@ export class RancherTool {
   @Tool({
     name: 'get_rancher_status',
     topic: ToolTopics.Platform,
+    effect: 'read',
     title: 'Rancher setup status',
     template: 'Is the Rancher setup complete?',
     description:
@@ -169,6 +170,7 @@ export class RancherTool {
   @Tool({
     name: 'list_agents',
     topic: ToolTopics.Agents,
+    effect: 'read',
     title: 'List agents',
     template: 'List all agents and their status',
     description:
@@ -195,6 +197,7 @@ export class RancherTool {
   @Tool({
     name: 'get_agent',
     topic: ToolTopics.Agents,
+    effect: 'read',
     title: 'Show an agent',
     template: 'Show the agent «name»',
     description:
@@ -227,6 +230,7 @@ export class RancherTool {
   @Tool({
     name: 'restart_agent',
     topic: ToolTopics.Agents,
+    effect: 'write',
     title: 'Restart an agent',
     template: 'Restart the agent «name»',
     description:
@@ -263,6 +267,7 @@ export class RancherTool {
   @Tool({
     name: 'create_agent',
     topic: ToolTopics.Agents,
+    effect: 'write',
     title: 'Create an agent',
     template:
       'Create an agent «name» from the template «template» using the LLM credential «credential»',
@@ -351,6 +356,7 @@ export class RancherTool {
   @Tool({
     name: 'update_agent',
     topic: ToolTopics.Agents,
+    effect: 'write',
     title: 'Update an agent',
     template: 'Change the agent «name»: «what to change»',
     description:
@@ -431,6 +437,7 @@ export class RancherTool {
   @Tool({
     name: 'set_agent_admin',
     topic: ToolTopics.Agents,
+    effect: 'write',
     title: 'Make an agent the Ranch admin',
     template: 'Make «name» the Ranch admin agent',
     description:
@@ -455,6 +462,7 @@ export class RancherTool {
   @Tool({
     name: 'list_templates',
     topic: ToolTopics.Templates,
+    effect: 'read',
     title: 'List templates',
     template: 'List all agent templates',
     description:
@@ -473,6 +481,7 @@ export class RancherTool {
   @Tool({
     name: 'get_template',
     topic: ToolTopics.Templates,
+    effect: 'read',
     title: 'Show a template',
     template: 'Show the template «name»',
     description:
@@ -492,6 +501,7 @@ export class RancherTool {
   @Tool({
     name: 'set_template_skills',
     topic: ToolTopics.Templates,
+    effect: 'write',
     title: 'Set template skills',
     template: 'Give the template «name» the skills «skill list»',
     description:
@@ -519,6 +529,7 @@ export class RancherTool {
   @Tool({
     name: 'update_template',
     topic: ToolTopics.Templates,
+    effect: 'write',
     title: 'Update a template',
     template: 'Change the template «name»: «what to change»',
     description:
@@ -563,6 +574,7 @@ export class RancherTool {
   @Tool({
     name: 'list_template_files',
     topic: ToolTopics.Templates,
+    effect: 'read',
     title: 'List template files',
     template: 'List the files of the template «name»',
     description:
@@ -584,6 +596,7 @@ export class RancherTool {
   @Tool({
     name: 'read_template_file',
     topic: ToolTopics.Templates,
+    effect: 'read',
     title: 'Read a template file',
     template: 'Show «path» of the template «name»',
     description:
@@ -610,6 +623,7 @@ export class RancherTool {
   @Tool({
     name: 'write_template_file',
     topic: ToolTopics.Templates,
+    effect: 'write',
     title: 'Write a template file',
     template: 'Write «path» in the template «name» with: «content»',
     description:
@@ -648,6 +662,7 @@ export class RancherTool {
   @Tool({
     name: 'list_llms',
     topic: ToolTopics.Llm,
+    effect: 'read',
     title: 'List LLM credentials',
     template: 'List the LLM credentials',
     description:
@@ -668,6 +683,7 @@ export class RancherTool {
   @Tool({
     name: 'list_skills',
     topic: ToolTopics.Skills,
+    effect: 'read',
     title: 'List skills',
     template: 'List all skills',
     description:
@@ -686,6 +702,7 @@ export class RancherTool {
   @Tool({
     name: 'update_skill',
     topic: ToolTopics.Skills,
+    effect: 'write',
     title: 'Update a skill',
     template: 'Change the skill «name»: «what to change»',
     description:
@@ -733,6 +750,7 @@ export class RancherTool {
   @Tool({
     name: 'list_skill_agents',
     topic: ToolTopics.Skills,
+    effect: 'read',
     title: 'Which agents use a skill',
     template: 'Which agents use the skill «name»?',
     description:
@@ -758,6 +776,7 @@ export class RancherTool {
   @Tool({
     name: 'redeploy_skill_agents',
     topic: ToolTopics.Skills,
+    effect: 'write',
     title: 'Redeploy agents of a skill',
     template: 'Redeploy every agent that uses the skill «name»',
     destructive: true,
@@ -856,6 +875,7 @@ export class RancherTool {
   @Tool({
     name: 'agent_usage',
     topic: ToolTopics.ChatsUsage,
+    effect: 'read',
     title: 'Usage of an agent',
     template: 'How much did the agent «name» cost in the last «30» days?',
     description: 'Recent token usage records for an agent (default 30 days).',
@@ -889,6 +909,7 @@ export class RancherTool {
   @Tool({
     name: 'list_settings',
     topic: ToolTopics.Settings,
+    effect: 'read',
     title: 'List settings',
     template: 'Show the settings in «group»',
     // The catalogue rides in the description so tools/list already tells the
@@ -934,6 +955,7 @@ export class RancherTool {
   @Tool({
     name: 'upsert_setting',
     topic: ToolTopics.Settings,
+    effect: 'write',
     title: 'Set a setting',
     template: 'Set «group».«name» to «value»',
     description:

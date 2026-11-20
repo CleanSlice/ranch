@@ -1,0 +1,97 @@
+# Contract: sign-ins and chat identities
+
+## 1. A sign-in belongs to a console
+
+Header on every console request: `X-Ranch-Console: admin` or `app`. Set once
+in each console's API client plugin. The hub handshake already states the
+console (`auth.surface`) and needs nothing new.
+
+| Route | With the header | Without, or with another value |
+|---|---|---|
+| `POST /auth/login`, `POST /auth/register` | session created with that `surface`; cookie `ranch_session_<surface>` set | 400 `CONSOLE_REQUIRED` |
+| `POST /auth/refresh` | reads only `ranch_session_<surface>`; the session must be live and of that surface, else 401 `SESSION_INVALID` | 401 `SESSION_INVALID` |
+| `POST /auth/logout` | revokes the session behind `ranch_session_<surface>` and clears that cookie only | 200 `{ revoked: false }` |
+
+- Cookie options are today's: `httpOnly`, `sameSite: lax`, `path: /auth`,
+  host-only, `secure` by configuration.
+- The cookie `ranch_session` is cleared on every response of the three
+  routes above when the request carried it. It is never read.
+- A `Session` row with no `surface` is never renewed.
+- CORS: the header is added to the allowed request headers wherever a list
+  is stated.
+- Everything that ends all sessions of an account is unchanged and covers
+  both surfaces.
+
+Console side, both consoles, same code in each `user/auth` slice:
+
+- the header constant lives next to the API client plugin;
+- a `SESSION_INVALID` on the first refresh after the upgrade leads to the
+  existing "session ended" state, not to an error;
+- nothing else changes in the stores: `accountScope.client.ts` already
+  resets on a change of account id.
+
+## 2. Chat identity of a console person
+
+Decided at the hub handshake and on each HTTP chat route. "Console token" is
+a token that carries a session id (`IConsoleSession`), which an embed token
+never does:
+
+| Who | `clientId` | `isAdmin` |
+|---|---|---|
+| The Owner, console token | `admin` | true |
+| An Admin, console token | their user id | true |
+| A User, console token | their user id | false |
+| Embed token with administrator roles | its `sub` | true |
+| Embed token otherwise | its `sub` | false |
+| Share visitor, anonymous | as today | false |
+
+- `admin` is given to nobody else. `clientIdFromJwtPayload` stops deriving
+  it from token roles; an embed token whose `sub` is an account id or a
+  reserved id is unusable, and `mintEmbedToken` refuses such a `sub` with
+  400 `EMBED_SUB_RESERVED`.
+- `isAdmin` travels to the runtime as `admin: true` on the message
+  ([handover.md](./handover.md) §2).
+
+## 3. Reading a conversation
+
+`GET /api/agent/:agentId/transcript?channel=…` and the other routes that
+take a channel:
+
+| Requester | May read |
+|---|---|
+| any identity | their own channel (the default when none is given) |
+| `isAdmin` and manages the agent | any channel of that agent |
+| share visitor | their own share channel, as today |
+| anybody holding the name | an open (`anon-`, `http-`) channel, as today |
+
+An Admin asking for `channel=admin` of an agent they manage reads the
+Owner's conversation with it; of the Ranch assistant they read nothing,
+since only the Owner manages it. This is the supervision rule of FR-035.
+
+`GET /chats` and the routes under it are unchanged (reach-scoped, Owner and
+Admin). The list DTO gains:
+
+- `user`: `{ name }` for a conversation whose id is an account's, and for
+  `admin` the Owner's name;
+- `peer`: `{ name? }` for a conversation named `peer:…`, the name present
+  only when the caller reaches the asking agent.
+
+## 4. Console changes
+
+| Console | File | Change |
+|---|---|---|
+| admin | `slices/bridle/stores/bridle.ts`, `components/bridle/Provider.vue` | the channel is the id the hub's `welcome` gives, not the literal `admin` |
+| admin | `slices/chat/utils/chatList.ts` | kinds: `admin` shows the Owner's name; an account id shows the person's name; new kind `peer`, label `Colleague` |
+| app | `slices/bridle/stores/bridle.ts` | already takes its channel from `welcome`; verified, no change expected |
+| both | `slices/setup/api/plugins/*` | `X-Ranch-Console` |
+
+## 5. Tests that pin it
+
+- `session.service.spec.ts`, `auth.controller.spec.ts`: the table of §1,
+  including the other surface's cookie value under this surface's name.
+- `chatIdentity.spec.ts`: the table of §2.
+- `bridle.controller.spec.ts`: the table of §3.
+- Browser, `e2e/consoles.mjs`: two accounts, two consoles, one profile,
+  through a renewal, a reload and a sign-out.
+- Browser, `e2e/conversations.mjs`: the Owner and an Admin on one agent at
+  once; a message of one during the other's turn.

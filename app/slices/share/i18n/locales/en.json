@@ -27,7 +27,31 @@
       "revoked_title": "This link is no longer active",
       "invalid_hint": "Ask the person who shared it for a new link.",
       "unavailable": "The agent is unavailable right now. Messages will go through once it is back.",
-      "powered_by": "Shared agent"
+      "powered_by": "Shared agent",
+      "info_open": "About this agent"
+    },
+    "info": {
+      "title": "About this agent",
+      "close": "Close",
+      "status_online": "Online",
+      "status_starting": "Starting",
+      "status_unavailable": "Unavailable",
+      "skills": "Can help with",
+      "limits": "Message limits",
+      "limit_minute": "Per minute",
+      "limit_hour": "Per hour",
+      "limit_day": "Per day",
+      "limits_shared": "These limits are shared by everyone using this agent.",
+      "attachments": "Attachments",
+      "attachments_count": "No files per message | Up to {count} file per message | Up to {count} files per message",
+      "attachments_size": "{file} per file, {message} per message",
+      "kind_image": "Images",
+      "kind_pdf": "PDF",
+      "kind_document": "Documents",
+      "kind_spreadsheet": "Spreadsheets",
+      "kind_presentation": "Presentations",
+      "kind_text": "Text files",
+      "privacy": "The owner of this agent can read this conversation."
     }
   }
 }

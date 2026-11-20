@@ -7,7 +7,8 @@
  * (FR-013): a link either opens a chat or it does not, and an unknown token, a
  * revoked one and a regenerated one are indistinguishable here on purpose.
  *
- * `ready` draws its own slim header (name + status dot) and hands the
+ * `ready` draws its own slim header (name, status dot, one line of the
+ * agent's description, the info button of `<SharePageInfo>`) and hands the
  * conversation to `<BridleChatProvider>` with `:show-header="false"` — the same
  * chat the console runs, carrying a descriptor whose `share` credentials become
  * the `X-Share-Token` / `X-Share-Visitor` pair on every request.
@@ -350,14 +351,17 @@ onBeforeUnmount(() => {
                 />
               </span>
             </div>
+            <!-- One line of what the agent is for; the info panel has the
+                 whole text. An agent with no description keeps the old line. -->
             <p class="mt-0.5 truncate text-xs text-muted-foreground">
-              {{ $t('share.page.powered_by') }}
+              {{ resolved?.description || $t('share.page.powered_by') }}
             </p>
           </div>
 
           <!-- The visitor's way out of a conversation (CLEAN-136). Same
                descriptor as the chat below: it resets that conversation and
                no other. -->
+          <SharePageInfo v-if="resolved" :resolved="resolved" />
           <BridleChatNewChat :conversation="conversation" />
         </div>
       </header>

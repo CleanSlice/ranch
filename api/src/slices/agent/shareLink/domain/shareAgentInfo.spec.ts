@@ -71,7 +71,14 @@ describe('attachmentsForVisitor', () => {
       maxPerMessage: 5,
       maxFileBytes: 10 * 1024 * 1024,
       maxMessageBytes: 25 * 1024 * 1024,
-      kinds: ['image', 'pdf', 'document', 'spreadsheet', 'presentation', 'text'],
+      kinds: [
+        'image',
+        'pdf',
+        'document',
+        'spreadsheet',
+        'presentation',
+        'text',
+      ],
     });
   });
 

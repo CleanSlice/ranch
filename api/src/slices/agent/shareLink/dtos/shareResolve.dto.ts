@@ -64,7 +64,10 @@ export class ShareAttachmentsDto {
   @ApiProperty({ description: 'Attachments per message.', example: 5 })
   maxPerMessage: number;
 
-  @ApiProperty({ description: 'Largest single file, bytes.', example: 10485760 })
+  @ApiProperty({
+    description: 'Largest single file, bytes.',
+    example: 10485760,
+  })
   maxFileBytes: number;
 
   @ApiProperty({

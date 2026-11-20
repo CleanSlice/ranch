@@ -39,6 +39,21 @@ import { IFileGateway } from '#/agent/file/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { RancherService } from './domain/rancher.service';
 import { rancherStatusFor } from './domain/rancherStatusView';
+import { SHARE_DESCRIPTION_MAX } from '#/agent/shareLink/domain';
+
+/**
+ * The agent's config with its description set, or removed when there is none.
+ * The description is one key of a bag the pod also reads, so everything else
+ * in it is carried over untouched.
+ */
+function withDescription(
+  config: Record<string, unknown> | null | undefined,
+  description: string | null,
+): Record<string, unknown> {
+  const { description: _previous, ...rest } = config ?? {};
+  const text = description?.trim();
+  return text ? { ...rest, description: text } : rest;
+}
 
 /**
  * The original Ranch management tools — agents, templates, skills, LLM
@@ -339,13 +354,23 @@ export class RancherTool {
     title: 'Update an agent',
     template: 'Change the agent «name»: «what to change»',
     description:
-      'Update an agent: rename, switch LLM credential, or bind knowledge ' +
-      'bases. knowledgeIds REPLACES the full list (fetch current via ' +
+      'Update an agent: rename, describe, switch LLM credential, or bind ' +
+      'knowledge bases. knowledgeIds REPLACES the full list (fetch current via ' +
       'get_agent first). Binding/credential changes apply on the next ' +
       'restart — offer restart_agent.',
     parameters: z.object({
       id: z.string(),
       name: z.string().optional(),
+      description: z
+        .string()
+        .max(SHARE_DESCRIPTION_MAX)
+        .nullable()
+        .optional()
+        .describe(
+          'What the agent is for, in a sentence or two. Shown on its A2A ' +
+            'card and to people who open its share link. null or empty ' +
+            "falls back to the template's description",
+        ),
       llmCredentialId: z
         .string()
         .nullable()
@@ -363,11 +388,13 @@ export class RancherTool {
     {
       id,
       name,
+      description,
       llmCredentialId,
       knowledgeIds,
     }: {
       id: string;
       name?: string;
+      description?: string | null;
       llmCredentialId?: string | null;
       knowledgeIds?: string[];
     },
@@ -383,6 +410,9 @@ export class RancherTool {
       name,
       llmCredentialId,
       knowledgeIds,
+      ...(description !== undefined && {
+        config: withDescription(existing.config, description),
+      }),
     });
     const needsRestart =
       knowledgeIds !== undefined || llmCredentialId !== undefined;

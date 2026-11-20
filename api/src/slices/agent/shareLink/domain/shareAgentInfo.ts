@@ -6,7 +6,10 @@ import {
   MAX_MESSAGE_ATTACHMENT_BYTES,
   TEXT_MIME_TYPES,
 } from '#/bridle/domain/attachment.constants';
-import { IAgentLimits, hasAnyLimit } from '#/agent/limit/domain/agentLimit.types';
+import {
+  IAgentLimits,
+  hasAnyLimit,
+} from '#/agent/limit/domain/agentLimit.types';
 import {
   IShareAttachments,
   IShareLimits,

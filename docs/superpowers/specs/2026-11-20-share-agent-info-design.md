@@ -66,8 +66,9 @@ info button that opens a right-side panel with the rest.
 The open choice was how to show limits. The allowance is one per agent, shared
 by every visitor (CLEAN-224).
 
-1. **Rules only (picked).** The panel states the configured limits: "Up to 20
-   messages an hour, 100 a day". When a window is full, the existing
+1. **Rules only (picked).** The panel states the configured limits and says
+   whose they are: "Up to 20 messages an hour and 100 a day, shared by
+   everyone using this agent". When a window is full, the existing
    "Try again in 12:05" notice above the composer does its job, unchanged.
    Nothing about other people's activity is revealed.
 2. **Shared usage bar**, claude.ai style. Readable at a glance, but the bar
@@ -88,7 +89,7 @@ shared allowance without leaking load.
 |---|---|---|
 | Description | Free text | `Agent.description` → `config.description` → template description → none |
 | What it can do | Skill titles and descriptions | Skills of the agent's template |
-| Limits | Configured windows, as rules | `AgentLimit` (`perMinute` / `perHour` / `perDay`); section absent when no row |
+| Limits | Configured windows, as rules, worded as shared by everyone using the agent | `AgentLimit` (`perMinute` / `perHour` / `perDay`); section absent when no row |
 | Attachments | Files per message, size per file, size per message, accepted kinds | `attachment.constants.ts` |
 | Status | A word: online / starting / unavailable | `agentStatus`, mapped on the client; never `statusReason` |
 | Privacy | "The owner of this agent can read this conversation." | Static copy |
@@ -106,6 +107,7 @@ no skills and no limits still gets a panel: status, attachments, privacy.
 │                                                │   │  • Orders  • FAQ        │
 │                                                │   │ Limits                  │
 └────────────────────────────────────────────────┘   │  20 / hour · 100 / day  │
+                                                     │  shared by everyone     │
                                                      │ Attachments             │
                                                      │  5 files · 10 MB each   │
                                                      │ Privacy note            │
@@ -164,6 +166,19 @@ attachments: { maxPerMessage: number; maxFileBytes: number; maxMessageBytes: num
 - The page re-resolves every 30 s, so the panel follows edits without reload.
 - A spec asserts the exact key set of the response, so a field added to the
   agent later cannot reach visitors by accident.
+
+### Limits wording
+
+The allowance is one per agent, so a bare "100 a day" reads as a personal
+remainder and turns into a broken promise the first time other visitors have
+spent it. The limits line always says the allowance is shared by everyone
+using the agent — in the sentence itself, not in a tooltip or a footnote. It
+still says nothing about how much is used or how many people there are.
+
+Showing the numbers is not a security exposure of its own: anyone can find
+them by sending until refused. The exposure that exists — one visitor
+spending the whole shared allowance — is there with or without this panel and
+is what a per-visitor limit (approach 3) would close.
 
 ## Calls made by the designer (not decided by the requester)
 

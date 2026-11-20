@@ -14,7 +14,7 @@ info button that opens a right-side panel with the rest.
 - Everything shown is safe for an anonymous person holding only the link.
 - The chat keeps its height: the header stays one strip, details live in the
   panel.
-- The owner can write the agent's description.
+- The owner's existing agent description reaches the visitor.
 
 ## Non-goals
 
@@ -87,7 +87,7 @@ shared allowance without leaking load.
 
 | Section | Content | Source |
 |---|---|---|
-| Description | Free text | `Agent.description` → `config.description` → template description → none |
+| Description | Free text | `config.description` → template description → none |
 | What it can do | Skill titles and descriptions | Skills of the agent's template |
 | Limits | Configured windows, as rules, worded as shared by everyone using the agent | `AgentLimit` (`perMinute` / `perHour` / `perDay`); section absent when no row |
 | Attachments | Files per message, size per file, size per message, accepted kinds | `attachment.constants.ts` |
@@ -122,25 +122,27 @@ no skills and no limits still gets a panel: status, attachments, privacy.
 
 ### Description field
 
-- New nullable column `Agent.description`, plain text, at most 500 characters,
-  trimmed; empty saves as null.
-- Accepted on create and update of an agent; returned on `AgentDto`.
-- Edited in `admin`, in the agent form next to `name`
-  (`admin/slices/agent/agent/components/agent/item/Form.vue`). `app` has no
-  place that edits an agent today (its store's `update()` has no caller), so
-  there it is shown read-only in the workspace sheet
-  (`app/slices/agent/components/agent/workspace/Sheet.vue`). The PR says so
-  under the twin check.
-- It also appears on `GET /agents/public` through `AgentDto`. Accepted: it is
-  text the owner wrote for visitors.
-- The A2A agent card's `describe()` reads the column first, then keeps its
-  existing fallbacks. The share page uses the same order minus the last
-  fallback sentence ("Ranch agent «name».") — a visitor gets no description
-  rather than a filler one.
+No new column. The description already exists: the admin agent form
+(`admin/slices/agent/agent/components/agent/item/Form.vue`) has a Description
+textarea that saves to `config.description`, and the A2A agent card reads it
+with a fallback to the template description (CLEAN-74). The share page reads
+the same two sources in the same order and stops there — the card's last
+fallback sentence ("Ranch agent «name».") is not shown to a visitor; no
+description is better than a filler one.
+
+- The form's hint says the text is also shown to people who open the share
+  link, and the textarea is capped at 500 characters. The server trims and
+  caps what it sends to visitors at 500 as well, for descriptions saved
+  before the cap.
+- `app` has no place that edits an agent (its store's `update()` has no
+  caller), so the twin console needs nothing here. The PR says so.
+- `config` already travels on `AgentDto`, so nothing new reaches
+  `GET /agents/public`.
 - The Ranch agent can set it: `update_agent`
-  (`api/src/slices/rancher/rancher.tool.ts`) accepts `description`
-  (docs/agent-tools.md). No new tool is needed for the visitor
-  panel itself — it is not a console capability.
+  (`api/src/slices/rancher/rancher.tool.ts`) gains `description`, written to
+  `config.description` with the rest of `config` kept (docs/agent-tools.md).
+  No new tool is needed for the visitor panel itself — it is not a console
+  capability.
 
 ### API
 
@@ -185,31 +187,28 @@ is what a per-visitor limit (approach 3) would close.
 - **Knowledge bases are left out.** Their names are often internal ("HR
   policies 2026 draft"), and showing them safely needs an owner switch, which
   is its own change. Skills come from the template and are written to be read.
-- **A real column, not `config.description`.** `config` is a free-form bag
-  handed to the pod; a field the console edits and visitors read deserves a
-  validated home. `config.description` stays as a read-only fallback so the
-  agent card does not change for existing agents.
+- **The existing `config.description`, not a new column.** The field, its
+  form and its fallback rule are already there; a second home for the same
+  text would need a migration and a rule for which one wins.
 - **500 characters.** Enough for two or three sentences; the header shows one
   line of it anyway.
 - **Sheet via `reka-ui` in `app`**, components copied from `admin`'s
-  `ui/sheet`, same version as `admin`. Shared behaviour is copied between the
+  `ui/sheet`; `reka-ui` and `@vueuse/core` (which the copy imports) at
+  `admin`'s versions. Shared behaviour is copied between the
   consoles, per the repo's convention.
 - **Attachment kinds shown as families** (images, PDF, documents,
   spreadsheets, presentations, text — CSV, JSON and Markdown count as text),
   not raw MIME types.
-- **No agent editing in `app`.** Adding the first edit form to that console is
-  a wider change than this ticket; `admin` and the `update_agent` tool cover
-  writing the description.
-- **Minute window is shown** in the rules alongside hour and day. It is a
-  configured value, not a state, so it does not flicker.
+- **Limits as labelled rows** ("Per hour — 20"), with the shared-by-everyone
+  sentence under them, instead of one composed sentence: no plural forms or
+  list joining to get wrong in the generated Russian.
 
 ## Left to the builder
 
 - Exact copy, in `app/slices/share/i18n/locales/en.json`.
 - How the attachment constants reach the service (import vs. a small provider),
   within slice boundaries.
-- Migration name and the regenerated OpenAPI client (`build:api` in both
-  consoles).
+- The regenerated OpenAPI client (`build:api` in both consoles).
 
 ## Verification
 

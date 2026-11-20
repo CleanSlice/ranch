@@ -149,11 +149,26 @@ two steps is refused at `tools/call` by the same policy.
 
 The runtime's `# Audience` block already tells the model that the tools in
 the conversation are the ones this person may use, and tells a User to say
-"their account cannot do that". It does not know about levels. Teaching it
-(the hub would carry the level in `acting`, the block would name it) is a
-possible follow-up in the runtime repository, not part of this feature: it
-needs a runtime release and a restart of the assistant's pod, and
-`get_my_assistant_access` gives the same answer without either.
+"their account cannot do that". It does not know about levels.
+
+**Decision (changed 2026-11-20, on the requester's word)**: the runtime is
+taught the levels as part of this feature. The hub adds
+`acting.assistant = { level }` to a console person's message to the
+assistant; the runtime's block names the level and points at the two tools
+that hold the definitions ([contracts/acting.md](./contracts/acting.md)).
+Enforcement stays where it is: the field is wording only.
+
+**What the runtime does not get**: the definitions. A level is a rule the API
+owns; a copy in the runtime or in an agent file would be wrong after the
+first release that adds a tool. The runtime knows *that* levels exist and
+which one this person has; `get_assistant_access` and
+`get_my_assistant_access` say what they contain.
+
+**Cost**: a runtime release and a restart of the assistant's pod (a runtime
+release does nothing until the pod restarts). Until then the feature works
+without the lines (FR-035). The runtime's `main` is at 0.35.0 and its
+`fix/CLEAN-236-identity-boundaries` branch, not merged, also edits
+`audience.prompt.ts`; whichever merges second rebases.
 
 ## R8. Telling the person (FR-028, FR-029)
 

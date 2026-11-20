@@ -13,6 +13,12 @@ Per docs/agent-tools.md: in the slice, with `topic` / `title` / `template` /
 | `reset_user_assistant_access` | `admin` | write | Drops the exception. |
 | `get_my_assistant_access` | `person` | read | The caller's own level, areas, and the titles of abilities their role has and their setting leaves out. Always listed for a person, at every level, including when everything else is off. |
 
+Explaining levels: `get_assistant_access` and `get_my_assistant_access` both
+return a `levels` section ([acting.md](./acting.md), "Where the level
+definitions come from") — the first for both roles, the second for the
+caller's role only. It is built from the rule the API enforces, so the
+assistant never explains a level from memory.
+
 Rules:
 
 - The party is `callerParty(httpRequest)`, never the agent's token.

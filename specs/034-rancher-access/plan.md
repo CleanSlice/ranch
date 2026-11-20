@@ -28,6 +28,12 @@ piece of tool metadata:
 3. **`effect: 'read' | 'write'`** on every `@Tool`, enforced at boot, so levels
    are a rule over (area, effect, audience) and not a list someone maintains
    ([research R3, R4](./research.md)).
+4. **The assistant is told the person's level.** The hub adds it to what it
+   already tells the runtime about the person; the runtime's `# Audience`
+   block names it and points at the tools that hold the definitions, so the
+   assistant can explain levels to the Owner and a person's own level to that
+   person ([contracts/acting.md](./contracts/acting.md)). Wording only —
+   nothing here decides access.
 
 ## Technical Context
 
@@ -41,13 +47,13 @@ piece of tool metadata:
 
 **Target Platform**: Linux containers on Kubernetes; evergreen browsers
 
-**Project Type**: Web application — one API, two consoles (twin slices)
+**Project Type**: Web application — one API, two consoles (twin slices) — plus one prompt change in the agent runtime (separate repository, `runtime`, TypeScript on bun, released as its own image)
 
 **Performance Goals**: no added round trip a person can notice — the grant is two primary-key reads per `tools/list` / `tools/call`, memoised on the request
 
 **Constraints**: a setting never widens the role ceiling; a change is in force on the affected person's next message with more than one API replica (no process-wide cache); the API refuses to boot a tool without `effect`; `admin` English-only, `app` English source
 
-**Scale/Scope**: 174 existing tools to classify (157 within an Admin's ceiling, 49 within a User's); 2 role rows; exceptions in the tens; 1 new API slice, 1 new `admin` slice area, 1 small `app` addition; 6 new agent tools
+**Scale/Scope**: 174 existing tools to classify (157 within an Admin's ceiling, 49 within a User's); 2 role rows; exceptions in the tens; 1 new API slice, 1 new `admin` slice area, 1 small `app` addition; 6 new agent tools; 1 runtime release (three files)
 
 ## Constitution Check
 
@@ -61,7 +67,7 @@ piece of tool metadata:
 | **IV. One entity, one store** | `admin`: one `assistantAccess` Pinia store (roles, exceptions by user id, catalogue). Optimistic switch/level changes go through `patch()` with rollback. `app`: one small store for the person's own grant. |
 | **V. The console is a window, the chat is the hands** | Every console capability here has a tool ([contracts/tools.md](./contracts/tools.md)): overview, set per role, get/set/reset per account, and the person's own view. Narrowing asks for `confirm`. |
 | **VI. English is the source** | `app` copy in `en.json`, `ru` through `i18n:sync` (R11 notes the key that answered 401 and the documented fallback). `admin` literal English. Numbers through the format modules. |
-| **VII. A rule stays a rule** | No model judgment anywhere: availability is a lookup, a level is a rule over three stored facts, precedence is account → role → default. The one thing the model is asked to do — call `get_my_assistant_access` before saying it cannot — changes wording, never access. |
+| **VII. A rule stays a rule** | No model judgment anywhere: availability is a lookup, a level is a rule over three stored facts, precedence is account → role → default. What the model is asked to do — name the person's level, call a tool before saying it cannot, explain levels from a tool's answer — changes wording, never access; the level it is told is `acting.assistant`, which grants nothing. |
 
 **Quality gates** carried into tasks: tool metadata boot check, `toolReach` table extended with the assistant grant, `locale:check`, typecheck of both consoles, docs updated in the same PR (`docs/agent-tools.md` for `effect` and the grant; `CLAUDE.md` + `constitution.md` Agent-tools lines gain `effect`).
 
@@ -79,6 +85,7 @@ specs/034-rancher-access/
 ├── contracts/
 │   ├── api.md           # HTTP routes
 │   ├── tools.md         # agent tools
+│   ├── acting.md        # what the hub tells the runtime about the level
 │   └── ui.md            # what the consoles show
 ├── checklists/requirements.md
 └── tasks.md             # /speckit-tasks — not created here
@@ -132,7 +139,21 @@ app/slices/
 ├── user/…                                  # store for /me/assistant-access
 └── */i18n/locales/en.json (+ generated ru)
 
+api/src/slices/bridle/                      # acting.assistant on a person's message to the assistant
+├── domain/bridle.types.ts                  # IBridleActing.assistant
+└── (where `acting` is minted: bridle.controller.ts, handlers/bridleClientWs.handler.ts, domain/bridleSync.service.ts)
+
 docs/agent-tools.md, CLAUDE.md, .specify/memory/constitution.md   # effect + the grant
+specs/032-agent-user-access/contracts/acting-party.md             # §4 points at contracts/acting.md
+```
+
+Runtime repository (`runtime`, its own branch `feat/CLEAN-240-assistant-levels` from its `main`):
+
+```text
+src/slices/setup/channel/domain/channel.types.ts          # IActing.assistant
+src/slices/agent/agent/domain/prompts/audience.prompt.ts  # the level lines (+ its spec)
+src/slices/runtime/runtime/domain/runtime.service.ts      # pass acting.assistant to audienceOf
+package.json                                              # version, release notes
 ```
 
 **Structure Decision**: the feature lives next to the thing it replaces —
@@ -160,7 +181,12 @@ Each step leaves the product working and is a commit (or small PR) of its own.
    moves.
 5. **`admin` UI** — card A, block B, sheet C, the notice, badge.
 6. **`app`** — the person's badge, i18n.
-7. **The remaining five tools** and the quickstart on a live stack.
+7. **The remaining five tools**, with the `levels` section in the two that
+   explain.
+8. **The assistant is told the level** — hub field, then the runtime release,
+   then a restart of the assistant's pod; quickstart §8 on a live stack. Last
+   on purpose: everything before it works without it, and it is the only step
+   that needs a second repository and a pod restart.
 
 ## Risks
 
@@ -170,6 +196,8 @@ Each step leaves the product working and is a commit (or small PR) of its own.
 | Users lose agent management through chat on update | Decided (Clarifications). One-time notice with the count and a one-click raise to Standard. |
 | An old runtime caches a tool list across turns | `tools/call` asks the same policy; a removed tool is refused there. |
 | Overlap with `fix/CLEAN-236` in colleague tool files | One metadata line per tool; second to merge rebases (R12). |
+| The runtime release lags, or the assistant's pod is not restarted | Nothing depends on it for access (FR-035). The PR and the Jira ticket say that the level lines appear only after the restart; quickstart §8 is run after it. |
+| The runtime's CLEAN-236 branch edits the same prompt file | Branch from the runtime's `main`; whichever merges second rebases one function. |
 | The model says "I have no tool" instead of explaining | `get_my_assistant_access` is always listed and its description, plus the instruction paragraph, tell it to check first; quickstart 2.2 verifies on a live stack. |
 
 ## Complexity Tracking

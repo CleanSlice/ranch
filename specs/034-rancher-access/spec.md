@@ -274,11 +274,15 @@ account's setting; open the console and see both.
 
 ---
 
-### User Story 7 - A person can see why the assistant will not do something (Priority: P3)
+### User Story 7 - The assistant knows about levels and can explain them (Priority: P3)
 
-A person asks the assistant for something it does not offer them. Instead of
-"I have no tool for that", it says that this is not part of what they have
-been given and who can change that. Their console shows, next to the
+The assistant knows, in every conversation with a signed-in person, which
+level that person is on. A person who asks for something it does not offer
+them is told that this is not part of what they have been given and who can
+change that, instead of "I have no tool for that". A person who asks "what can
+you do for me?" gets their level explained. The Owner can ask the assistant
+what the levels are, what each includes and who has which, and gets an
+explanation that matches the console. A person's console shows, next to the
 assistant's name, what level they are on.
 
 **Why this priority**: Without it a narrowed assistant looks broken, and the
@@ -297,6 +301,19 @@ that the Owner decides it.
    **Then** the answer is the one they get today.
 3. **Given** a person with the assistant on, **When** they open it, **Then**
    they can see their level and, on request, the areas it covers.
+4. **Given** the Owner in chat, **When** they ask "what are the levels?" or
+   "what is the difference between Basic and Standard?", **Then** the
+   assistant explains each level in plain words, area by area, for Admins and
+   for Users, and says who is on which — the same as the console shows.
+5. **Given** a person on any level, **When** they ask "what does my level
+   mean?", **Then** the assistant names their level and what it covers for
+   their role, and nothing about other accounts.
+6. **Given** the contents of a level change with a release, **When** anyone
+   asks the assistant to explain it afterwards, **Then** the explanation
+   matches the new contents without the assistant being reconfigured.
+7. **Given** a person on a narrowed level, **When** they start a conversation,
+   **Then** the assistant already knows their level; they do not have to say
+   it, and it does not have to be asked to look it up.
 
 ---
 
@@ -430,6 +447,23 @@ that the Owner decides it.
   assistant MUST say it is not included for them and that the Owner decides,
   and MUST NOT describe what other accounts have.
 
+**What the assistant knows**
+
+- **FR-032**: In every turn with a signed-in person, the assistant MUST be
+  told that person's level by the platform, as part of what it is told about
+  who it is talking to. For the Owner it MUST be told that levels exist and
+  that the Owner sets them. This is wording only and MUST NOT be what decides
+  what the assistant may do.
+- **FR-033**: The assistant MUST be able to explain the levels — what each
+  includes, area by area, for each role — and MUST take that from the
+  installation's own definitions, not from text it carries, so that the
+  explanation stays true when a level's contents change.
+- **FR-034**: To anyone but the Owner the assistant MUST explain only the
+  person's own level and role, never what other accounts or roles have.
+- **FR-035**: An assistant running on an older runtime, which does not pass
+  the level on, MUST still be limited exactly the same and MUST still be able
+  to answer "why can't you do this" when asked.
+
 **Carrying over**
 
 - **FR-030**: On update, an account that had the assistant marked Denied MUST
@@ -478,6 +512,9 @@ that the Owner decides it.
 - **SC-008**: A person asking for an ability left out of their setting is told
   so in the first answer, 100% of the time, with no ability named that belongs
   to other accounts.
+- **SC-009**: Asked by the Owner to explain the three levels, the assistant's
+  answer agrees with the console on what each level includes in every area,
+  for both roles, in 100% of a scripted set of ten questions.
 
 ## Assumptions
 

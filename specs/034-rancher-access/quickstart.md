@@ -70,3 +70,18 @@ second account still reaches its other agent.
 - A share-link visitor of the assistant gets no management ability at any
   setting.
 - `get_my_assistant_access` names no other account.
+
+## 8. The assistant knows the levels (Story 7) — after the runtime release and a restart of the assistant
+
+1. As Owner: "what levels can people use you at, and what is the difference?"
+   → Basic, Standard, Full and custom, area by area for Admins and Users,
+   matching `GET /assistant-access/catalog`; it called `get_assistant_access`.
+2. As Owner: "who is on which level?" → matches card A.
+3. As A2 on Basic, first message of a new chat: "what can you do for me?" →
+   names Basic and what it covers for an Admin, without being told the level.
+4. As A2: "create an agent" → not included for this account, the Owner
+   decides; no mention of what other Admins have.
+5. As U1: "what do other users get?" → explains only U1's own level.
+6. Before the restart (old runtime image), repeat 4: same refusal content,
+   reached through `get_my_assistant_access` — proves FR-035.
+

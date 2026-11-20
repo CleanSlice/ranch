@@ -201,14 +201,43 @@
 
 ---
 
-## Phase 10: Polish & cross-cutting
+## Phase 10: The assistant knows the levels (US7, continued — FR-032…FR-035)
 
-- [ ] T068 [P] Update `docs/agent-tools.md`: the `effect` field in "The `@Tool` metadata" and the review checklist; a section "The assistant's grant" (what it narrows, what it never governs, where the policy lives); the new tools in the reach and audience tables
-- [ ] T069 [P] Update the Agent-tools line in `CLAUDE.md` and principle V in `.specify/memory/constitution.md` to name `effect` among the required metadata (both in the same commit, per the constitution's governance rule); update the `<!-- ranch:agent-tools -->` block of `.claude/skills/graft/SKILL.md` if it is tracked
-- [ ] T070 [P] Twin-console check: grep `assistantAccess`, `isAdmin`, `adminReach` in `admin/slices` and `app/slices`; record for the PR which console needed what and why `app` edits nothing
-- [ ] T071 Run from the repo root `bun run typecheck && bun run locale:check && bun run i18n:check && bun run test:scripts`, then `cd api && bun run test`, `cd admin && bun run test`, `cd app && bun run test`; report any failure with its output
-- [ ] T072 Run quickstart.md §1–§7 on a local stack (API from the worktree, both consoles); screenshot card A, block B and sheet C for the PR; note anything not exercised
-- [ ] T073 Bump the root `package.json` version above the highest `v*` tag, open the PR into `main` (what changed for Admins and Users on update, the twin-console note, the screenshots), link it on CLEAN-240
+**Goal**: the hub tells the runtime the person's level; the runtime's `# Audience` block names it; the two explaining tools carry the level definitions. Contract: contracts/acting.md.
+
+**Independent Test**: after the runtime release and a restart of the assistant's pod — the Owner asks "what are the levels?" and gets an explanation that matches the console; an Admin on Basic asks "what can you do for me?" in a new chat and is told Basic without naming it first (quickstart §8). On the old runtime image the refusal still explains itself (FR-035).
+
+**Two repositories.** T068–T071 are in this one. T072–T075 are in the `runtime` repository (local clone `../runtime`), on a branch `feat/CLEAN-240-assistant-levels` cut from its `origin/main`, with its own PR; commit subjects end with `(CLEAN-240)`.
+
+### API (this repository)
+
+- [ ] T068 [P] [US7] Add to `api/src/slices/user/assistantAccess/assistantAccess.tool.spec.ts`: `get_assistant_access` returns `levels` for both roles and `get_my_assistant_access` for the caller's role only — three entries (basic, standard, full), each with `title`, a one-sentence `summary` and per-area `offered`/`available` equal to `levelSet(level) ∩ audienceAllows(role)`; a made-up new tool in the registry changes the counts without any other change (FR-033); a User's answer contains no Admin-only area
+- [ ] T069 [US7] Implement `levelsFor(role)` in `api/src/slices/user/assistantAccess/domain/assistantAccess.service.ts` (summaries as constants next to `levelSet` in `domain/assistantLevels.ts`) and add the `levels` section to both tools in `assistantAccess.tool.ts` until T068 passes
+- [ ] T070 [P] [US7] Add to the hub's specs (`api/src/slices/bridle/handlers/bridleClientWs.handler.spec.ts` and the spec covering the HTTP message route in `api/src/slices/bridle/bridle.controller.ts`): a console person's message to the assistant carries `acting.assistant.level` — `'owner'` for the Owner, the resolved level otherwise, `'custom'` for a custom choice; a message to any other agent carries no `assistant`; a guest's and a hand-over's message carry none; the acting token itself is unchanged
+- [ ] T071 [US7] Add `assistant?: { level: 'owner' | 'basic' | 'standard' | 'full' | 'custom' }` to `IBridleActing` in `api/src/slices/bridle/domain/bridle.types.ts` and fill it wherever `acting` is minted (`bridle.controller.ts`, `handlers/bridleClientWs.handler.ts`, `domain/bridleSync.service.ts`) from `AssistantAccessService.resolveFor`, only when the target agent is the assistant, until T070 passes; add one line to `specs/032-agent-user-access/contracts/acting-party.md` §4 pointing at `specs/034-rancher-access/contracts/acting.md`
+
+### Runtime (`runtime` repository)
+
+- [ ] T072 [US7] In `../runtime`: branch `feat/CLEAN-240-assistant-levels` from `origin/main`; add cases to `src/slices/agent/agent/domain/prompts/audience.prompt.spec.ts` (create it beside the prompt if absent): no `assistant` → today's block byte for byte, for each role; `level: 'owner'` → the Owner lines naming `get_assistant_access`; `'basic' | 'standard' | 'full'` → the level's name and `get_my_assistant_access`, and for a User the old "their account cannot do that" sentence is replaced, not added to; `'custom'` → "a custom set of abilities chosen for them"; an unknown level string → as if absent; no tool name other than those two appears anywhere in the block
+- [ ] T073 [US7] In `../runtime`: add `assistant?: { level?: string }` to `IActing` in `src/slices/setup/channel/domain/channel.types.ts`, carry it through `audienceOf` and `IAudience` in `src/slices/agent/agent/domain/prompts/audience.prompt.ts`, write the lines of contracts/acting.md in `buildAudiencePrompt`, and pass `msg.acting` unchanged from `src/slices/runtime/runtime/domain/runtime.service.ts` until T072 passes; confirm the bridle channel repository (`src/slices/setup/channel/data/repositories/bridle/bridle.repository.ts`) copies the whole `acting` object rather than picking fields
+- [ ] T074 [P] [US7] In `../runtime`: add a case to `src/slices/runtime/loop/domain/loop.actor.spec.ts` (or the nearest spec that builds a turn from a message) that a message with `acting.assistant` produces a system prompt containing the level line, and one without it does not; run the runtime's full test and typecheck commands from its `package.json`
+- [ ] T075 [US7] In `../runtime`: bump the version in `package.json` (next minor above the highest release tag), write the release note ("the assistant is told the level of the person it is talking to — needs Ranch ≥ the version of T083"), open the PR, merge when CI is green, and watch its release workflow to the end
+
+### Rollout
+
+- [ ] T076 [US7] After the Ranch release (T083) and the runtime release (T075) are both out: restart the assistant's pod so it runs the new runtime image (a runtime release does nothing until the pod restarts), and confirm the image tag on the pod
+- [ ] T077 [US7] Run quickstart.md §8 on the live installation with the test accounts from `.env.project`: steps 1–5 on the restarted assistant; step 6 is run before T076, on the old image. Record the ten Owner questions of SC-009 and whether each answer agrees with `GET /assistant-access/catalog`
+
+---
+
+## Phase 11: Polish & cross-cutting
+
+- [ ] T078 [P] Update `docs/agent-tools.md`: the `effect` field in "The `@Tool` metadata" and the review checklist; a section "The assistant's grant" (what it narrows, what it never governs, where the policy lives); the new tools in the reach and audience tables
+- [ ] T079 [P] Update the Agent-tools line in `CLAUDE.md` and principle V in `.specify/memory/constitution.md` to name `effect` among the required metadata (both in the same commit, per the constitution's governance rule); update the `<!-- ranch:agent-tools -->` block of `.claude/skills/graft/SKILL.md` if it is tracked
+- [ ] T080 [P] Twin-console check: grep `assistantAccess`, `isAdmin`, `adminReach` in `admin/slices` and `app/slices`; record for the PR which console needed what and why `app` edits nothing
+- [ ] T081 Run from the repo root `bun run typecheck && bun run locale:check && bun run i18n:check && bun run test:scripts`, then `cd api && bun run test`, `cd admin && bun run test`, `cd app && bun run test`; report any failure with its output
+- [ ] T082 Run quickstart.md §1–§7 on a local stack (API from the worktree, both consoles); §8 is T077; screenshot card A, block B and sheet C for the PR; note anything not exercised
+- [ ] T083 Bump the root `package.json` version above the highest `v*` tag, open the PR into `main` (what changed for Admins and Users on update, the twin-console note, the screenshots), link it on CLEAN-240
 
 ---
 
@@ -225,7 +254,8 @@
 - **US5 (7)** needs US3 (there must be exceptions to list).
 - **US6 (8)** needs US2 and US3 (the service methods the tools call); the custom `on` argument needs US4's T051.
 - **US7 (9)** needs US2 (the grant). Independent of US3–US6.
-- **Polish (10)** last.
+- **Phase 10 (the assistant knows the levels)** needs US6 (T060: the tools that carry `levels`) and US7's T064. T072–T075 (runtime) need only contracts/acting.md and can run in parallel with everything from Phase 4 on. T076 needs both releases; T077 needs T076.
+- **Polish (11)**: T078–T082 before the Ranch release T083; T076–T077 after it.
 
 ### Story completion order
 
@@ -233,8 +263,9 @@
 Phase 2 ─┬─▶ US1 ─┐
          └─▶ US2 ─┴─▶ (ship MVP) ─┬─▶ US3 ─┬─▶ US4
                                   │        └─▶ US5
-                                  ├─▶ US7
-                                  └─▶ US6 (after US3, US4)
+                                  ├─▶ US7 ─┐
+                                  └─▶ US6 ─┴─▶ Phase 10 (hub field) ─▶ Ranch release ─┐
+                                  runtime PR (any time after Phase 2) ─▶ runtime release ─┴─▶ restart the assistant ─▶ quickstart §8
 ```
 
 ### Parallel opportunities
@@ -244,6 +275,7 @@ Phase 2 ─┬─▶ US1 ─┐
 - T012 and T013; then the `effect` group, the settings group and the catalogue group side by side.
 - All test tasks of one story marked [P].
 - After the MVP: US3 and US7 in parallel; then US4 and US5 in parallel.
+- The runtime tasks T072–T074 touch another repository and can be done by someone else at any point after the contract is agreed.
 
 ## Parallel Example: Phase 2, the `effect` mark
 
@@ -279,10 +311,13 @@ US1 alone fixes the reported failure but also moves Users from "everything their
 4. US7 (the person sees why) — small, valuable as soon as anyone is narrowed.
 5. US4 (Advanced) → release.
 6. US5 (overview), US6 (chat tools) → release. US6 closes the constitution's "the chat is the hands" for this feature; do not call the feature done before it.
+7. Phase 10 → Ranch release, runtime release, restart of the assistant, quickstart §8. Until the restart the assistant is limited identically and explains itself through `get_my_assistant_access`; the level lines in its prompt arrive with the restart.
 
 ### Notes
 
 - A test is written first and seen failing; a classification commit (T007–T010) is reviewed on its own.
 - Do not merge US1 without US2.
+- A runtime release does nothing until the assistant's pod restarts. Say so in both PRs and on the ticket.
+- The runtime's `fix/CLEAN-236-identity-boundaries` branch also edits `audience.prompt.ts`; branch from the runtime's `main` and let the second to merge rebase.
 - `fix/CLEAN-236-identity-boundaries` edits the colleague tool files T007 touches; whichever merges second rebases one line per tool.
 - Commit after each task or logical group; every subject ends with `(CLEAN-240)`.

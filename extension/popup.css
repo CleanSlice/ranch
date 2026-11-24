@@ -471,3 +471,45 @@ input:focus-visible {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ── console tabs ───────────────────────────────────────────────── */
+.console-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin: 12px 14px 0;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--secondary);
+}
+.console-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-weight: 500;
+  cursor: pointer;
+}
+.console-tabs button[aria-selected='true'] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 40%);
+}
+.console-tabs button:focus-visible {
+  outline: 2px solid var(--ring);
+}
+.console-tabs .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted-foreground);
+}
+.console-tabs .dot.on {
+  border-color: var(--success);
+  background: var(--success);
+}

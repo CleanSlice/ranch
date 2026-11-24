@@ -1,4 +1,5 @@
-// Ranch Cookies popup. Screens: loading → setup → login → main.
+// Ranch Cookies popup. Screens: loading → setup → login → main, under the
+// App / Admin tabs once a Ranch is connected.
 //
 // Signing in (CLEAN-243). Each console keeps its own HttpOnly session
 // cookie on the API host — `ranch_session_app` and `ranch_session_admin`
@@ -9,9 +10,14 @@
 // extension has host permission for it. A refresh does not rotate the
 // secret, so the console tab stays signed in.
 //
+// Which console's sign-in it uses is the person's pick, on the tabs: the
+// app and the admin console may be two different people on one browser,
+// and falling over to whichever is signed in sent cookies as the wrong one.
+//
 // The access token lives in this popup's memory and nowhere else. What is
-// stored is the Ranch address, the long-lived `integration:cookies` token
-// for the "all my agents" push, the catalogue and the last labels.
+// stored is the Ranch's addresses, the chosen console, the long-lived
+// `integration:cookies` token for the "all my agents" push (with whose it
+// is), the catalogue and the last labels.
 
 const STORE_KEY = 'ranch-cookies:v3';
 const LEGACY_STORE_KEY = 'ranch-cookies:v2';
@@ -33,14 +39,23 @@ let apiUrlEdited = false;
 
 async function loadState() {
   const data = await chrome.storage.local.get([STORE_KEY, LEGACY_STORE_KEY]);
-  if (data[STORE_KEY]) return data[STORE_KEY];
+  const current = data[STORE_KEY];
+  if (current && !current.consoleUrl) return current;
+  if (current) {
+    // 0.5.0 kept one console address; the tabs need both.
+    const { consoleUrl, ...rest } = current;
+    const migrated = { ...rest, consoles: withConsole(consolesOf(rest.apiUrl), consoleUrl) };
+    await chrome.storage.local.set({ [STORE_KEY]: migrated });
+    return migrated;
+  }
   // 0.4 stored the admin URL and a token minted from the admin cookie.
   // Keep the addresses, drop the rest: the token is re-minted on sign-in.
   const legacy = data[LEGACY_STORE_KEY];
   if (!legacy?.adminUrl) return {};
+  const apiUrl = legacy.apiUrl ?? deriveApiUrl(legacy.adminUrl);
   const migrated = {
-    consoleUrl: legacy.adminUrl,
-    apiUrl: legacy.apiUrl ?? deriveApiUrl(legacy.adminUrl),
+    apiUrl,
+    consoles: withConsole(consolesOf(apiUrl), legacy.adminUrl),
     lastAccountKeys: legacy.lastAccountKeys ?? {},
   };
   await chrome.storage.local.set({ [STORE_KEY]: migrated });
@@ -90,6 +105,44 @@ function deriveApiUrl(consoleOrigin) {
     return consoleOrigin;
   }
 }
+
+/**
+ * The two consoles of one Ranch, from its API address: `api.<domain>`
+ * serves the app at `<domain>` and the admin console at `admin.<domain>`.
+ * Empty for a local stack, where each console has a port of its own and is
+ * learnt from its tab.
+ */
+function consolesOf(apiUrl) {
+  try {
+    const url = new URL(apiUrl);
+    if (isLocal(url.hostname) || !url.hostname.startsWith('api.')) return {};
+    const domain = url.hostname.slice('api.'.length);
+    const at = (host) => {
+      const u = new URL(url.origin);
+      u.hostname = host;
+      return u.origin;
+    };
+    return { app: at(domain), admin: at(`admin.${domain}`) };
+  } catch {
+    return {};
+  }
+}
+
+/** Which console an address is, when nothing says: `admin.` is the admin's. */
+function consoleOfUrl(origin) {
+  try {
+    return new URL(origin).hostname.startsWith('admin.') ? 'admin' : 'app';
+  } catch {
+    return 'app';
+  }
+}
+
+/** The consoles with one address set, as the console it is. */
+function withConsole(consoles, origin, name = consoleOfUrl(origin)) {
+  return origin ? { ...consoles, [name]: origin } : { ...consoles };
+}
+
+const CONSOLE_NAMES = { app: 'the app', admin: 'the admin console' };
 
 function isLocal(hostname) {
   return hostname === 'localhost' || /^[\d.]+$/.test(hostname) || hostname.endsWith('.localhost');
@@ -165,31 +218,43 @@ async function fetchJson(url, opts = {}) {
 }
 
 /**
- * Borrow a console sign-in: renew the session of the console that has one.
- * Tries the console that worked last time first. Null when neither console
- * is signed in on this browser.
+ * Borrow the sign-in of one console: renew its session. Null when that
+ * console is not signed in on this browser — never the other console's
+ * instead, which may be somebody else.
  */
-async function signIn(state) {
-  const order = state.console
-    ? [state.console, ...CONSOLES.filter((c) => c !== state.console)]
-    : CONSOLES;
-  let lastError = null;
-  for (const name of order) {
-    try {
-      const auth = await fetchJson(`${state.apiUrl}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { [CONSOLE_HEADER]: name },
-      });
-      if (!auth?.accessToken) continue;
-      return { token: auth.accessToken, console: name, user: auth.user ?? null };
-    } catch (err) {
-      // 401 = no live session in this console; try the other one.
-      if (err.status !== 401) lastError = err;
-    }
+async function signIn(state, name) {
+  try {
+    const auth = await fetchJson(`${state.apiUrl}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { [CONSOLE_HEADER]: name },
+    });
+    return auth?.accessToken
+      ? { token: auth.accessToken, console: name, user: auth.user ?? null }
+      : null;
+  } catch (err) {
+    // 401 = no live session in this console.
+    if (err.status === 401) return null;
+    throw err;
   }
-  if (lastError) throw lastError;
-  return null;
+}
+
+/**
+ * Which consoles hold a session cookie on this browser, without asking the
+ * API: the dots on the tabs. A cookie can outlive its session; the refresh
+ * is what decides.
+ */
+async function sessionCookies(apiUrl) {
+  const has = async (name) => {
+    try {
+      const c = await chrome.cookies.get({ url: `${apiUrl}/auth`, name: `ranch_session_${name}` });
+      return !!c?.value;
+    } catch {
+      return false;
+    }
+  };
+  const [app, admin] = await Promise.all([has('app'), has('admin')]);
+  return { app, admin };
 }
 
 function authed(token, extra = {}) {
@@ -217,12 +282,15 @@ const api = {
 
 /** The `integration:cookies` token, minted again when missing or near expiry. */
 async function integrationToken(state, { force = false } = {}) {
-  const fresh = state.intToken && state.intExp && state.intExp * 1000 > Date.now() + 60_000;
+  // The token writes into one person's integrations: another console may
+  // be another person, so it is theirs only while they are the one here.
+  const mine = state.intSub && state.intSub === session?.user?.id;
+  const fresh = mine && state.intToken && state.intExp && state.intExp * 1000 > Date.now() + 60_000;
   if (fresh && !force) return state.intToken;
   const minted = await api.mintIntegrationToken(state);
-  await saveState({ intToken: minted.token, intExp: minted.exp });
-  state.intToken = minted.token;
-  state.intExp = minted.exp;
+  const patch = { intToken: minted.token, intExp: minted.exp, intSub: session?.user?.id ?? null };
+  await saveState(patch);
+  Object.assign(state, patch);
   return minted.token;
 }
 
@@ -358,16 +426,46 @@ function showError(el, message) {
 function setHeader(state) {
   const who = $('top-who');
   const menuBtn = $('menu-btn');
-  if (!state?.consoleUrl) {
+  if (!state?.apiUrl) {
     who.hidden = true;
     menuBtn.hidden = true;
+    $('console-tabs').hidden = true;
     return;
   }
-  who.textContent = session ? `${hostOf(state.consoleUrl)} · ${session.console}` : hostOf(state.consoleUrl);
-  who.title = session?.user?.email ? `Signed in as ${session.user.email}` : '';
+  // Who the cookies will be sent as.
+  who.textContent = session?.user?.email ?? hostOf(state.consoles?.app ?? state.apiUrl);
+  who.title = session?.user ? `Signed in to ${CONSOLE_NAMES[session.console]} as ${session.user.email} (${session.user.role})` : '';
   who.hidden = false;
   menuBtn.hidden = false;
-  $('menu-host').textContent = `${state.consoleUrl}\nAPI ${state.apiUrl}`;
+  $('menu-host').textContent = [
+    state.consoles?.app && `App ${state.consoles.app}`,
+    state.consoles?.admin && `Admin ${state.consoles.admin}`,
+    `API ${state.apiUrl}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** The tabs: the chosen console, and a dot for each one holding a session. */
+function setTabs(chosen, signedIn) {
+  $('console-tabs').hidden = false;
+  for (const tab of document.querySelectorAll('#console-tabs [role="tab"]')) {
+    const name = tab.dataset.console;
+    tab.setAttribute('aria-selected', String(name === chosen));
+    tab.tabIndex = name === chosen ? 0 : -1;
+    tab.querySelector('.dot').classList.toggle('on', !!signedIn[name]);
+    tab.title = signedIn[name] ? `Signed in to ${CONSOLE_NAMES[name]}` : `Not signed in to ${CONSOLE_NAMES[name]}`;
+  }
+}
+
+async function chooseConsole(name) {
+  const state = await loadState();
+  if (state.console === name && session?.console === name) return;
+  await saveState({ console: name });
+  // Another console may be another person: nothing of the last one's stays.
+  agentsCache = null;
+  session = null;
+  await startup();
 }
 
 function closeMenu() {
@@ -380,19 +478,42 @@ function closeMenu() {
 async function startup() {
   showScreen('loading');
   const state = await loadState();
-  if (!state.consoleUrl || !state.apiUrl) return goSetup();
+  if (!state.apiUrl) return goSetup();
+  // A local stack's consoles have no address to derive: learn the one in
+  // the open tab, when it is this Ranch's.
+  if (!state.consoles?.app || !state.consoles?.admin) {
+    const found = await detectRanchTab();
+    if (found?.apiUrl === state.apiUrl) {
+      const name = found.console ?? consoleOfUrl(found.consoleUrl);
+      if (state.consoles?.[name] !== found.consoleUrl) {
+        state.consoles = withConsole(state.consoles ?? {}, found.consoleUrl, name);
+        await saveState({ consoles: state.consoles });
+      }
+    }
+  }
+
+  // The person's pick; before they made one, the console signed in here,
+  // the app first.
+  const signedIn = await sessionCookies(state.apiUrl);
+  const chosen = CONSOLES.includes(state.console)
+    ? state.console
+    : signedIn.app || !signedIn.admin
+      ? 'app'
+      : 'admin';
+  if (state.console !== chosen) await saveState({ console: chosen });
+  state.console = chosen;
+  setTabs(chosen, signedIn);
   setHeader(state);
 
   try {
-    session = await signIn(state);
+    session = await signIn(state, chosen);
   } catch (err) {
     // The API itself is unreachable or answers garbage: the address is
     // what to fix.
     return goSetup(err.message);
   }
-  if (!session) return goLogin(state);
-  if (session.console !== state.console) await saveState({ console: session.console });
-  state.console = session.console;
+  setTabs(chosen, { ...signedIn, [chosen]: !!session });
+  if (!session) return goLogin(state, chosen, signedIn);
   setHeader(state);
   return renderMain(state);
 }
@@ -432,9 +553,10 @@ async function goSetup(error) {
   session = null;
   const state = await loadState();
   setHeader(null);
-  $('setup-url').value = state.consoleUrl ?? '';
+  const known = state.consoles?.[state.console] ?? state.consoles?.app ?? state.consoles?.admin ?? '';
+  $('setup-url').value = known;
   $('setup-api').value = state.apiUrl ?? '';
-  apiUrlEdited = !!state.apiUrl && state.apiUrl !== deriveApiUrl(state.consoleUrl ?? '');
+  apiUrlEdited = !!state.apiUrl && state.apiUrl !== deriveApiUrl(known);
   $('setup-advanced').open = apiUrlEdited;
   showError($('setup-error'), error);
   $('detect-card').hidden = true;
@@ -449,13 +571,16 @@ async function goSetup(error) {
   // Say where it connects, not what the page calls itself.
   $('detect-note').textContent = `API ${hostOf(found.apiUrl)}`;
   $('detect-use').onclick = async () => {
+    const name = found.console ?? consoleOfUrl(found.consoleUrl);
+    const known = state.apiUrl === found.apiUrl ? state.consoles : {};
     await saveState({
-      consoleUrl: found.consoleUrl,
       apiUrl: found.apiUrl,
-      console: found.console ?? undefined,
+      consoles: withConsole({ ...consolesOf(found.apiUrl), ...known }, found.consoleUrl, name),
+      console: name,
       catalogue: null,
       intToken: null,
       intExp: null,
+      intSub: null,
     });
     agentsCache = null;
     await startup();
@@ -489,11 +614,13 @@ $('setup-form').addEventListener('submit', async (event) => {
   }
   const state = await loadState();
   const sameRanch = state.apiUrl === apiUrl;
+  const name = consoleOfUrl(consoleUrl);
   // Another Ranch: nothing minted for the old one is any good here.
   await saveState({
-    consoleUrl,
     apiUrl,
-    ...(sameRanch ? {} : { console: null, catalogue: null, intToken: null, intExp: null }),
+    consoles: withConsole(sameRanch ? { ...consolesOf(apiUrl), ...state.consoles } : consolesOf(apiUrl), consoleUrl, name),
+    console: name,
+    ...(sameRanch ? {} : { catalogue: null, intToken: null, intExp: null, intSub: null }),
   });
   agentsCache = null;
   await startup();
@@ -501,18 +628,24 @@ $('setup-form').addEventListener('submit', async (event) => {
 
 // ── login ────────────────────────────────────────────────────────────
 
-function goLogin(state, error) {
+function goLogin(state, name, signedIn = {}, error) {
   session = null;
-  $('login-host').textContent = hostOf(state.consoleUrl);
+  const url = state.consoles?.[name];
+  const other = CONSOLES.find((c) => c !== name);
+  $('login-title').textContent = name === 'admin' ? 'Sign in to the admin console' : 'Sign in to the app';
+  $('login-text').replaceChildren(
+    `The extension sends cookies as the person signed in to ${CONSOLE_NAMES[name]}`,
+    ...(url ? [' on ', h('span', { class: 'mono' }, hostOf(url))] : []),
+    '. ',
+    url ? 'Sign in there, then come back.' : `Open ${CONSOLE_NAMES[name]} in a tab and click the icon there.`,
+    signedIn[other] ? ` You're signed in to ${CONSOLE_NAMES[other]} — switch above to send as that account.` : '',
+  );
+  $('login-open').disabled = !url;
+  $('login-open').onclick = () => url && chrome.tabs.create({ url: `${url}/login` });
   showError($('login-error'), error);
   setHeader(state);
   showScreen('login');
 }
-
-$('login-open').addEventListener('click', async () => {
-  const { consoleUrl } = await loadState();
-  if (consoleUrl) chrome.tabs.create({ url: `${consoleUrl}/login` });
-});
 $('login-retry').addEventListener('click', () => startup());
 
 // ── main ─────────────────────────────────────────────────────────────
@@ -521,6 +654,7 @@ async function renderMain(state) {
   showScreen('main');
   setStatus('');
   setMessage($('notice'), '');
+  $('ranch-self').hidden = true;
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const { host, cookies } = await readSite(tab);
@@ -537,7 +671,14 @@ async function renderMain(state) {
   if (!icon.hidden) icon.src = tab.favIconUrl;
   $('site-icon-fallback').hidden = !icon.hidden;
 
-  if (!host) {
+  // Ranch's own cookies are nothing an agent can use: its sign-in lives on
+  // the API host and is the person's, not a site's.
+  const ranchHosts = [state.apiUrl, state.consoles?.app, state.consoles?.admin]
+    .filter(Boolean)
+    .map((u) => new URL(u).hostname);
+  const isRanch = !!host && ranchHosts.includes(host);
+  $('ranch-self').hidden = !isRanch;
+  if (!host || isRanch) {
     $('send-form').hidden = true;
     $('site-service').hidden = true;
     return;
@@ -690,8 +831,10 @@ async function send(ctx) {
   setStatus('busy', h('span', { class: 'spinner', 'aria-hidden': 'true' }), 'Sending…');
   try {
     // The borrowed token is short-lived; a popup left open outlives it.
-    session = (await signIn(ctx.state)) ?? null;
-    if (!session) return goLogin(ctx.state, 'Your Ranch sign-in ended. Sign in again, then send.');
+    session = await signIn(ctx.state, ctx.state.console);
+    if (!session) {
+      return goLogin(ctx.state, ctx.state.console, {}, 'Your Ranch sign-in ended. Sign in again, then send.');
+    }
     if (scope === 'all') await sendToIntegrations(ctx, label);
     else await sendToAgents(ctx, label);
   } catch (err) {
@@ -766,6 +909,22 @@ async function sendToAgents(ctx, label) {
   } else {
     setStatus('err', `Sent to ${ok.join(', ')}. Failed: ${failed.join('; ')}`);
   }
+}
+
+// ── console tabs ─────────────────────────────────────────────────────
+
+{
+  const tabs = [...document.querySelectorAll('#console-tabs [role="tab"]')];
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => chooseConsole(tab.dataset.console));
+    tab.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const next = tabs[(i + 1) % tabs.length];
+      next.focus();
+      chooseConsole(next.dataset.console);
+    });
+  });
 }
 
 // ── menu ─────────────────────────────────────────────────────────────

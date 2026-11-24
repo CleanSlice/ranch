@@ -467,19 +467,38 @@ export class AgentAccessService implements IAgentReach {
   }
 
   /**
+   * An account as the database has it now, or null when it is gone or
+   * disabled. For a credential that outlives a session and names no agent
+   * (the extension's integration token, CLEAN-243).
+   */
+  async liveAccount(
+    userId: string,
+  ): Promise<{ id: string; role: UserRoleTypes } | null> {
+    const user = userId ? await this.users.findById(userId) : null;
+    if (!user || user.status === 'disabled') return null;
+    return { id: user.id, role: user.role };
+  }
+
+  /**
    * `reachesExisting` for an account named by id alone, with the role read
    * from the database now. For a credential that outlives a session (the
    * browser extension's token): an account that is gone or disabled
    * reaches nothing, an Admin or User what their lists reach today.
+   *
+   * Returns the account as it is now when it reaches the agent, null when it
+   * does not — so the caller acts on today's role too, not the token's
+   * (CLEAN-243).
    */
-  async accountReachesExisting(
+  async accountReachingExisting(
     userId: string,
     agentId: string,
-  ): Promise<boolean> {
-    const user = userId ? await this.users.findById(userId) : null;
-    if (!user || user.status === 'disabled') return false;
-    if (!agentId || !(await this.gateway.agentExists(agentId))) return false;
-    return this.reaches({ userId: user.id, role: user.role }, agentId);
+  ): Promise<{ id: string; role: UserRoleTypes } | null> {
+    const account = await this.liveAccount(userId);
+    if (!account) return null;
+    if (!agentId || !(await this.gateway.agentExists(agentId))) return null;
+    return (await this.reaches({ userId: account.id, role: account.role }, agentId))
+      ? account
+      : null;
   }
 
   /**

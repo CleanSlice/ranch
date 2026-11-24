@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Headers,
   Logger,
   NotFoundException,
@@ -25,16 +26,25 @@ import {
   IssueExtensionTokenResponseDto,
 } from './dtos';
 import { IAuthTokenPayload } from '../user/auth/domain/auth.types';
-import { JwtAuthGuard, Public } from '../user/auth/guards';
+import { JwtAuthGuard, Public, Roles } from '../user/auth/guards';
+import { UserRoleTypes } from '../user/user/domain/user.types';
 import { AgentScoped } from '../user/agentAccess/guards';
 import { AgentAccessService } from '../user/agentAccess/domain/agentAccess.service';
+import {
+  clientIdFromJwtPayload,
+  clientIdOfAccount,
+} from '#/bridle/domain/chatIdentity';
 
 interface IExtensionTokenPayload {
   /** Ranch user that minted the token (audit/replay). */
   sub: string;
   /** Agent the imported state belongs to. */
   agentId: string;
-  /** User ID within that agent (Telegram id, "admin", etc.). */
+  /**
+   * The chat identity the token was minted for. Informational since
+   * CLEAN-243: an import files the cookies under the minting account's
+   * identity as it is on the day of the import.
+   */
   userId: string;
   scope: 'browser:cookies';
   iat: number;
@@ -71,6 +81,9 @@ export class BrowserExtensionController {
   })
   @ApiOkResponse({ type: IssueExtensionTokenResponseDto })
   @UseGuards(JwtAuthGuard)
+  // Any signed-in person, for an agent they reach (CLEAN-243): the cookies
+  // land in their own browser state, filed under their chat identity below.
+  @Roles(UserRoleTypes.User)
   // The token imports cookies into one agent; minting it takes reaching
   // that agent (CLEAN-231).
   @AgentScoped('body.agentId')
@@ -81,11 +94,21 @@ export class BrowserExtensionController {
     // Cap at 365 days — practical upper bound for "set it once" UX
     // without making compromised tokens valid forever.
     const ttlDays = Math.max(1, Math.min(365, dto.ttlDays ?? 30));
+    // Whose cookies these are is the caller's own chat identity, the name
+    // the runtime files a person's browser state under: the Owner is
+    // `admin`, anyone else their id (CLEAN-236). The body used to say, and
+    // every Admin and User sent `admin` — into the Owner's file (CLEAN-243).
+    const identity = clientIdFromJwtPayload(
+      req.user as unknown as Record<string, unknown>,
+    );
+    if (!identity) {
+      throw new ForbiddenException('This token names no person.');
+    }
     const token = this.jwt.sign(
       {
         sub: req.user.sub,
         agentId: dto.agentId,
-        userId: dto.userId,
+        userId: identity.clientId,
         scope: 'browser:cookies',
       } satisfies Omit<IExtensionTokenPayload, 'iat' | 'exp'>,
       { expiresIn: `${ttlDays} days` },
@@ -113,9 +136,11 @@ export class BrowserExtensionController {
     // role and lists as the database has them now (CLEAN-231): an account
     // that was deleted or disabled, or that no longer reaches the agent,
     // imports nothing. The 404 of an agent that does not exist, either way.
-    if (
-      !(await this.access.accountReachesExisting(payload.sub, payload.agentId))
-    ) {
+    const account = await this.access.accountReachingExisting(
+      payload.sub,
+      payload.agentId,
+    );
+    if (!account) {
       this.logger.warn(
         `Extension token refused: sub=${payload.sub} no longer reaches agent=${payload.agentId}`,
       );
@@ -124,7 +149,9 @@ export class BrowserExtensionController {
     const result = await this.gateway.importStorageState(
       payload.sub,
       payload.agentId,
-      payload.userId,
+      // The account's identity today, not the token's claim: a token an
+      // Admin minted before CLEAN-243 names `admin`, the Owner's file.
+      clientIdOfAccount(account),
       dto.profile,
       dto.cookies,
       dto.origins ?? [],

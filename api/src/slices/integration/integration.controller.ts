@@ -17,7 +17,8 @@ import {
 } from '@nestjs/swagger';
 import { Request } from 'express';
 import { IAuthTokenPayload } from '../user/auth/domain/auth.types';
-import { JwtAuthGuard } from '../user/auth/guards';
+import { JwtAuthGuard, Roles } from '../user/auth/guards';
+import { UserRoleTypes } from '../user/user/domain/user.types';
 import { IntegrationService } from './domain/integration.service';
 import {
   CatalogueItemDto,
@@ -36,6 +37,9 @@ export class IntegrationController {
   constructor(private service: IntegrationService) {}
 
   @Get('catalogue')
+  // The list of services and nothing about anybody's accounts: the Ranch
+  // Cookies extension reads it for every signed-in person (CLEAN-243).
+  @Roles(UserRoleTypes.User)
   @ApiOperation({
     summary:
       'List supported services. Static — defined in api/src/slices/integration/domain/catalogue.ts and shipped with each API release.',

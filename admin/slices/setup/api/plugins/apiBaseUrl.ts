@@ -30,8 +30,14 @@ export default defineNuxtPlugin({
     client.instance.defaults.headers.common[RANCH_CONSOLE_HEADER] =
       RANCH_CONSOLE;
 
+    // The Ranch Cookies extension reads these off an open console tab: the
+    // API to sign in through, and which console's session to renew there
+    // (CLEAN-243).
     useHead({
-      meta: [{ name: 'ranch-api-url', content: apiUrl }],
+      meta: [
+        { name: 'ranch-api-url', content: apiUrl },
+        { name: 'ranch-console', content: RANCH_CONSOLE },
+      ],
     });
 
     // Interceptors run outside any component / Nuxt context; hand pinia in

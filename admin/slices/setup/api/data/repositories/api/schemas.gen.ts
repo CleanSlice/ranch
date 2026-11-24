@@ -6770,8 +6770,9 @@ export const IssueExtensionTokenDtoSchema = {
     },
     userId: {
       type: "string",
+      deprecated: true,
       description:
-        'User ID (within the agent context — typically the Telegram user ID for chat-driven agents, or "admin" for the admin agent). Used as the filename prefix so multiple humans can keep separate cookies inside one agent.',
+        "Ignored (CLEAN-243). The cookies are filed under the caller's own chat identity — `admin` for the Owner, the account id for anyone else — so nobody writes into another person's browser state. Accepted so an older extension still gets its token.",
     },
     ttlDays: {
       type: "number",
@@ -6780,7 +6781,7 @@ export const IssueExtensionTokenDtoSchema = {
       maximum: 365,
     },
   },
-  required: ["agentId", "userId"],
+  required: ["agentId"],
 } as const;
 
 export const IssueExtensionTokenResponseDtoSchema = {

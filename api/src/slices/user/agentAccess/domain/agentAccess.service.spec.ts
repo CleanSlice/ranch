@@ -545,16 +545,20 @@ describe('AgentAccessService: an account that no longer exists', () => {
     expect(removed).toEqual([USER.id, USER2.id]);
   });
 
-  it('accountReachesExisting reads the account now: gone, limited, or the Owner', async () => {
+  it('accountReachingExisting reads the account now: gone, limited, or the Owner', async () => {
     const { service, gateway } = accessHarness();
-    expect(await service.accountReachesExisting(USER.id, 'A')).toBe(true);
-    expect(await service.accountReachesExisting(USER.id, 'nope')).toBe(false);
-    expect(await service.accountReachesExisting('nobody', 'A')).toBe(false);
-    expect(await service.accountReachesExisting('', 'A')).toBe(false);
+    const reach = (id: string, agentId: string) =>
+      service.accountReachingExisting(id, agentId);
+    expect(await reach(USER.id, 'A')).toEqual({ id: USER.id, role: USER.role });
+    expect(await reach(USER.id, 'nope')).toBe(null);
+    expect(await reach('nobody', 'A')).toBe(null);
+    expect(await reach('', 'A')).toBe(null);
     gateway.seed(USER.id, true, [{ agentId: 'B', list: 'allowed' }]);
-    expect(await service.accountReachesExisting(USER.id, 'A')).toBe(false);
-    expect(await service.accountReachesExisting(USER.id, 'B')).toBe(true);
-    expect(await service.accountReachesExisting(OWNER.id, 'A')).toBe(true);
+    expect(await reach(USER.id, 'A')).toBe(null);
+    expect(await reach(USER.id, 'B')).toEqual({ id: USER.id, role: USER.role });
+    // The role comes back as the database has it: it decides whose file a
+    // browser import lands in (CLEAN-243).
+    expect(await reach(OWNER.id, 'A')).toEqual({ id: OWNER.id, role: OWNER.role });
   });
 });
 

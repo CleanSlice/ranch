@@ -237,6 +237,20 @@ export function clientIdFromJwtPayload(
 }
 
 /**
+ * The chat identity of an account as the database has it now: the Owner is
+ * `admin`, anyone else their own id — what `clientIdFromJwtPayload` gives
+ * that person's console token. For a credential that outlives the session
+ * it was minted in (the browser extension's token, CLEAN-243), so today's
+ * role decides, not the one the token was minted with.
+ */
+export function clientIdOfAccount(account: {
+  id: string;
+  role: string;
+}): string {
+  return account.role === 'Owner' ? OWNER_CLIENT_ID : account.id;
+}
+
+/**
  * The share visitor's chat identity for this agent, re-validated on every
  * call. Throws the service's 403 (`SHARE_LINK_INVALID` / `SHARE_VISITOR_INVALID`)
  * for a dead, foreign or empty token, or a missing/malformed visitor id — the

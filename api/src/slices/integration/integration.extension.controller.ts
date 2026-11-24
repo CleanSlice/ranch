@@ -24,6 +24,11 @@ import * as archiver from 'archiver';
 import { Request, Response } from 'express';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { JwtAuthGuard, Public } from '#/user/auth/guards';
+import {
+  hasAtLeastRole,
+  UserRoleTypes,
+} from '#/user/user/domain/user.types';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { IntegrationService } from './domain/integration.service';
 import {
   ExtensionImportStateDto,
@@ -55,6 +60,7 @@ export class IntegrationExtensionController {
   constructor(
     private readonly service: IntegrationService,
     private readonly jwt: JwtService,
+    private readonly access: AgentAccessService,
   ) {}
 
   @Post('token')
@@ -66,6 +72,10 @@ export class IntegrationExtensionController {
   })
   @ApiOkResponse({ type: IssueIntegrationExtensionTokenResponseDto })
   @UseGuards(JwtAuthGuard)
+  // Admin, as every route without `@Roles`. Not opened to a User with the
+  // rest of the extension (CLEAN-243): the runtime resolves an integration
+  // profile across every account (`findAccountByProfile`), so a User's
+  // `instagram:main` would be the one any agent signs in with.
   async issueToken(
     @Body() dto: IssueIntegrationExtensionTokenDto,
     @Req() req: Request & { user: IAuthTokenPayload },
@@ -96,6 +106,17 @@ export class IntegrationExtensionController {
   ): Promise<ExtensionImportStateResponseDto> {
     const token = this.parseBearer(auth);
     const payload = this.verifyExtensionToken(token);
+    // The token lives up to a year; what it was minted with was true on that
+    // day only. Asked again on every use, as the browser import does: an
+    // account that is gone, disabled, or no longer may mint the token
+    // imports nothing (CLEAN-243).
+    const owner = await this.access.liveAccount(payload.sub);
+    if (!owner || !hasAtLeastRole(owner.role, UserRoleTypes.Admin)) {
+      this.logger.warn(
+        `Integration extension token refused: sub=${payload.sub} may no longer import`,
+      );
+      throw new UnauthorizedException('Invalid extension token');
+    }
 
     const account = await this.service.connectAndImport(
       payload.sub,

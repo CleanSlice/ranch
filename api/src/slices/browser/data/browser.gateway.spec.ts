@@ -266,13 +266,19 @@ describe('BrowserGateway', () => {
       // must compose the same value or the file lands somewhere browser_play
       // doesn\'t look.
       expect(res).toEqual({
-        path: 'browser-state/admin-instagram.json',
+        path: 'browser-state/admin/instagram.json',
         cookies: 1,
       });
-      expect(files.save).toHaveBeenCalledTimes(1);
+      // The folder (CLEAN-244), and the old flat name for runtimes before
+      // 0.39 — the same content in both.
+      expect(files.save).toHaveBeenCalledTimes(2);
       const [agentId, path, content] = files.save.mock.calls[0];
       expect(agentId).toBe('agent-abc');
-      expect(path).toBe('browser-state/admin-instagram.json');
+      expect(path).toBe('browser-state/admin/instagram.json');
+      expect(files.save.mock.calls[1][1]).toBe(
+        'browser-state/admin-instagram.json',
+      );
+      expect(files.save.mock.calls[1][2]).toBe(content);
       const parsed = JSON.parse(content as string) as {
         cookies: unknown[];
         origins: unknown[];
@@ -290,12 +296,14 @@ describe('BrowserGateway', () => {
         cookies,
       );
       const [, path] = files.save.mock.calls[0];
-      // No slashes, no spaces, no dots-as-traversal: the runtime\'s
-      // localStatePath uses the same regex pair so they line up.
+      // The identity is encoded (no slash, no dot), the profile sanitized:
+      // the runtime's browserStatePath does the same, so they line up. No
+      // old flat name for such an id.
       expect(path).toBe(
-        'browser-state/55212224_.._.._etc-paypal:business_main.json',
+        'browser-state/55212224~2f~2e~2e~2f~2e~2e~2fetc/paypal:business_main.json',
       );
       expect(path).not.toContain('/etc');
+      expect(files.save).toHaveBeenCalledTimes(1);
     });
 
     it('case-folds profile so Instagram and instagram share one file', async () => {
@@ -312,7 +320,7 @@ describe('BrowserGateway', () => {
         cookies,
       );
       const [, path] = files.save.mock.calls[0];
-      expect(path).toBe('browser-state/admin-instagram.json');
+      expect(path).toBe('browser-state/admin/instagram.json');
     });
   });
 

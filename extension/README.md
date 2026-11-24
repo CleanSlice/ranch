@@ -22,6 +22,10 @@ the admin console — and click the icon. The console advertises its API
 (`<meta name="ranch-api-url">`) and names itself (`<meta name="ranch-console">`),
 so the popup offers **Connect** in one click.
 
+The popup trusts a page's API address only when it is on the page's own site
+and over https (a local stack aside), and shows the API host it will connect
+to — any page could carry that meta.
+
 On any other page the popup asks for the **Ranch address**: the console you
 sign in to. The API address is filled in for you (`api.` of the domain,
 `admin.` dropped). For a local stack open **API address** and type it — there
@@ -63,8 +67,10 @@ If neither console is signed in, the popup offers **Open sign-in**.
 5. **Send**. The agent signs in with `browser_play(profile: "<service>:<label>")`
    for a catalogue service, or `browser_play(profile: "<label>")` otherwise.
 
-Every signed-in role may send: an Owner or Admin, and a User for the agents
-they reach (CLEAN-243).
+Who may send what (CLEAN-243): **Specific agents** is open to every signed-in
+role, for the agents the person reaches. **All my agents** is an Owner's or
+Admin's: the runtime resolves an integration profile across every account,
+so a User's import would be the session any agent signs in with.
 
 ## What's not sent
 

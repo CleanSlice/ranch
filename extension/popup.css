@@ -467,3 +467,7 @@ input:focus-visible {
     animation-duration: 2s;
   }
 }
+.segmented button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

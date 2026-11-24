@@ -91,6 +91,34 @@ function deriveApiUrl(consoleOrigin) {
   }
 }
 
+function isLocal(hostname) {
+  return hostname === 'localhost' || /^[\d.]+$/.test(hostname) || hostname.endsWith('.localhost');
+}
+
+// The site a host belongs to, approximated by its last two labels. Enough to
+// tell ranch.cleanslice.org's API from a stranger's: no public-suffix list
+// here, so a two-label suffix (co.uk) only makes the check stricter.
+function siteOf(hostname) {
+  return isLocal(hostname) ? hostname : hostname.split('.').slice(-2).join('.');
+}
+
+/**
+ * Whether a page may name this API (CLEAN-243). Any page can carry a
+ * `ranch-api-url` meta; trusting it would send the next site's cookies
+ * wherever that page says. Only an API of the page's own site, over https
+ * unless it is a local stack.
+ */
+function trustedApiFor(pageOrigin, apiUrl) {
+  try {
+    const page = new URL(pageOrigin);
+    const api = new URL(apiUrl);
+    if (api.protocol !== 'https:' && !isLocal(api.hostname)) return false;
+    return siteOf(api.hostname) === siteOf(page.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function hostOf(origin) {
   try {
     return new URL(origin).host;
@@ -387,10 +415,12 @@ async function detectRanchTab() {
       }),
     });
     const found = injected?.result;
-    if (!found?.apiUrl) return null;
+    const consoleUrl = new URL(tab.url).origin;
+    const apiUrl = normalize(found?.apiUrl);
+    if (!apiUrl || !trustedApiFor(consoleUrl, apiUrl)) return null;
     return {
-      consoleUrl: new URL(tab.url).origin,
-      apiUrl: normalize(found.apiUrl) ?? found.apiUrl,
+      consoleUrl,
+      apiUrl,
       console: CONSOLES.includes(found.console) ? found.console : null,
     };
   } catch {
@@ -416,8 +446,8 @@ async function goSetup(error) {
     return;
   }
   $('detect-host').textContent = hostOf(found.consoleUrl);
-  $('detect-note').textContent =
-    found.console === 'admin' ? 'Ranch admin console in this tab' : 'Ranch console in this tab';
+  // Say where it connects, not what the page calls itself.
+  $('detect-note').textContent = `API ${hostOf(found.apiUrl)}`;
   $('detect-use').onclick = async () => {
     await saveState({
       consoleUrl: found.consoleUrl,
@@ -526,14 +556,11 @@ async function renderMain(state) {
   $('site-service').hidden = !service;
   $('site-service').textContent = service?.title ?? '';
 
-  if (catalogueError?.status === 403) {
-    setMessage(
-      $('notice'),
-      'warn',
-      h('strong', {}, 'Integrations need an administrator account. '),
-      'Your Ranch role can send cookies only where an administrator allows it.',
-    );
-  } else if (catalogueError) {
+  // Integrations are an administrator's (the API refuses anyone else's
+  // token); below that, a person sends to the agents they pick, and nothing
+  // about integrations is theirs to be told.
+  const canIntegrate = ['Owner', 'Admin'].includes(session?.user?.role);
+  if (canIntegrate && catalogueError) {
     setMessage(
       $('notice'),
       'warn',
@@ -541,7 +568,7 @@ async function renderMain(state) {
       catalogueError.message,
       ' You can still send to specific agents.',
     );
-  } else if (!service) {
+  } else if (canIntegrate && !service) {
     setMessage(
       $('notice'),
       'warn',
@@ -559,10 +586,11 @@ async function renderMain(state) {
     ? 'A name for this account, so one site can hold several.'
     : 'The profile your agents open with browser_play.';
 
-  const ctx = { state, host, service, cookies };
+  const ctx = { state, host, service, cookies, canIntegrate };
   accountKey.oninput = () => refreshSend(ctx);
   wireScope(ctx);
-  setScope(ctx, service ? 'all' : 'some');
+  document.querySelector('.segmented [data-scope="all"]').disabled = !canIntegrate;
+  setScope(ctx, service && canIntegrate ? 'all' : 'some');
   $('send-btn').onclick = () => send(ctx);
 }
 
@@ -643,6 +671,7 @@ function refreshSend(ctx) {
   if (ctx.cookies.length === 0) why = 'Sign in to this site first — there are no cookies to send.';
   else if (!label) why = 'Give the account a label.';
   else if (!LABEL_RE.test(label)) why = 'Labels use letters, digits and _ : . - only.';
+  else if (scope === 'all' && !ctx.canIntegrate) why = 'Integrations are set up by an administrator.';
   else if (scope === 'all' && !ctx.service) why = 'This site needs "Specific agents".';
   else if (scope === 'some' && picked === 0) why = 'Tick at least one agent.';
 

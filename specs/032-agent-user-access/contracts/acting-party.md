@@ -223,7 +223,7 @@ Routes that state `@Roles(User)` after this change, and nothing else may
 | `/me/chats…` (8 routes) | their own conversations |
 | `/agents/:agentId/share-link…` (4 routes) | sharing an agent they reach (already `User`) |
 | `PUT`/`DELETE /agents/:id/pin` | their pins. Not built yet: CLEAN-231 adds the routes and this row |
-| `GET /integrations/catalogue`, `POST /integrations/extension/token`, `POST /browser/extension/token` | the Ranch Cookies extension, signed in through the user console's session (CLEAN-243). The catalogue is the static list of services; the integration token writes only into the caller's own integration store; the browser token is `@AgentScoped` and the import files the cookies under the caller's chat identity |
+| `GET /integrations/catalogue`, `POST /browser/extension/token` | the Ranch Cookies extension, signed in through the user console's session (CLEAN-243). The catalogue is the static list of services; the browser token is `@AgentScoped` and the import files the cookies under the caller's chat identity. `POST /integrations/extension/token` stays Admin: the runtime resolves an integration profile across every account, so a User's import would be what any agent signs in with |
 
 That is everything the user console calls with a User's token. Its agent
 screens also call create, update, delete, restart, stop, start,

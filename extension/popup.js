@@ -330,9 +330,27 @@ function toStorageStateCookie(c) {
 }
 
 /**
- * Every cookie the site's session may stand on: the ones sent to this very
- * page — parent domains included, where sign-ins like `.google.com` live —
- * and the ones of the site's other subdomains.
+ * Whether the browser sends cookie `c` to `host`, on some path: a host-only
+ * cookie to its own host, a domain cookie to that domain and everything
+ * under it. The path is left out on purpose — a sign-in cookie often lives
+ * on `/api/auth` alone and is still what the site's session stands on.
+ */
+function sentToHost(c, host) {
+  const domain = c.domain.replace(/^\./, '').toLowerCase();
+  if (c.hostOnly) return host === domain;
+  return host === domain || host.endsWith(`.${domain}`);
+}
+
+/**
+ * Every cookie the site's session may stand on: every one the browser sends
+ * to this host on any path — parent domains included, where sign-ins like
+ * `.google.com` live — and the ones of the site's other subdomains.
+ *
+ * Read from the whole jar and filtered here (CLEAN-243): asking Chrome by
+ * the page's URL leaves out a cookie scoped to another path, and asking by
+ * domain leaves out the parent domains, so a `.example.com` cookie on
+ * `/api/auth` — the sign-in of a site whose API shares its host — was in
+ * neither.
  */
 async function readSite(tab) {
   if (!tab?.url) return { host: null, cookies: [] };
@@ -343,13 +361,15 @@ async function readSite(tab) {
     return { host: null, cookies: [] };
   }
   if (!/^https?:$/.test(url.protocol)) return { host: null, cookies: [] };
-  const [sent, family] = await Promise.all([
-    chrome.cookies.getAll({ url: url.href }),
-    chrome.cookies.getAll({ domain: url.hostname.replace(/^www\./, '') }),
-  ]);
-  const seen = new Map();
-  for (const c of [...sent, ...family]) seen.set(`${c.domain}|${c.path}|${c.name}`, c);
-  return { host: url.hostname, cookies: [...seen.values()].map(toStorageStateCookie) };
+  const host = url.hostname.toLowerCase();
+  const family = host.replace(/^www\./, '');
+  const jar = await chrome.cookies.getAll({});
+  const cookies = jar.filter((c) => {
+    if (sentToHost(c, host)) return true;
+    const domain = c.domain.replace(/^\./, '').toLowerCase();
+    return domain.endsWith(`.${family}`);
+  });
+  return { host: url.hostname, cookies: cookies.map(toStorageStateCookie) };
 }
 
 // Catalogue entries claim domains; a page belongs to the one whose domain
@@ -668,6 +688,8 @@ async function renderMain(state) {
     : cookies.length === 0
       ? 'No cookies — sign in to the site first'
       : `${cookies.length} cookie${cookies.length === 1 ? '' : 's'} on this site`;
+  // Which ones, by name — never the values — for "why isn't it signed in".
+  $('site-count').title = cookies.map((c) => `${c.name} (${c.domain}${c.path})`).join('\n');
   const icon = $('site-icon');
   icon.hidden = !(host && tab?.favIconUrl && /^https?:|^data:/.test(tab.favIconUrl));
   if (!icon.hidden) icon.src = tab.favIconUrl;

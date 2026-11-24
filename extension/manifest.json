@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Ranch Cookies",
   "short_name": "Ranch",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "description": "Hand your signed-in browser session to your Ranch agents — all of them through your integrations, or the ones you pick. No VNC, no passwords.",
   "icons": {
     "16": "icons/icon-16.png",

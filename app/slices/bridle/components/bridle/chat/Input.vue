@@ -7,6 +7,7 @@ import type { IBridleConversation } from '#bridle/stores/bridle';
 import type { ILimitCountdown } from '#bridle/composables/useLimitCountdown';
 import { restoredDraft as mergeRestoredDraft } from '#bridle/utils/limit';
 import { noticeParams } from '#bridle/utils/noticeParams';
+import { draftFromQuery, withLinkDraft, withoutDraft } from '#bridle/utils/draftLink';
 import { useFormat } from '#common/composables/useFormat';
 
 const props = defineProps<{
@@ -53,6 +54,26 @@ watch(
   },
   { immediate: true },
 );
+
+// A link may open the chat with a message to start from (CLEAN-243): the
+// Ranch Cookies extension does, after handing the agent a session. It goes
+// in the box, caret at the end, and never sends itself; the address loses
+// it so a reload does not put it back. The text is the link's, shown as
+// received.
+const route = useRoute();
+const router = useRouter();
+onMounted(() => {
+  const linked = draftFromQuery(route.query);
+  if (linked === null) return;
+  draft.value = withLinkDraft(draft.value, linked);
+  void router.replace({ query: withoutDraft(route.query) });
+  void nextTick(() => {
+    const el = textareaRef.value;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  });
+});
 
 // ── Request limit (CLEAN-224) ──────────────────────────────────
 // The limit turns sending off and nothing else: the field is never disabled,

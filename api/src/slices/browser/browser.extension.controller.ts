@@ -2,7 +2,9 @@ import {
   Body,
   Controller,
   ForbiddenException,
+  forwardRef,
   Headers,
+  Inject,
   Logger,
   NotFoundException,
   Post,
@@ -19,6 +21,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { IBrowserGateway } from './domain';
+import { IBridleGateway } from '#/bridle/domain';
 import {
   ImportStateDto,
   ImportStateResponseDto,
@@ -70,6 +73,8 @@ export class BrowserExtensionController {
     private readonly gateway: IBrowserGateway,
     private readonly jwt: JwtService,
     private readonly access: AgentAccessService,
+    @Inject(forwardRef(() => IBridleGateway))
+    private readonly bridle: IBridleGateway,
   ) {}
 
   @Post('token')
@@ -157,6 +162,9 @@ export class BrowserExtensionController {
       dto.origins ?? [],
       dto.userAgent,
     );
+    // The running agent restored its storage at boot and would not see the
+    // file until the next one (CLEAN-243).
+    this.bridle.notifyBrowserStateImported(payload.agentId, result.path);
     // Return the raw payload — ResponseInterceptor wraps it as
     // {success: true, data: <this>}. Pre-wrapping here would produce
     // {success, data: {success, data: …}} and break the extension's

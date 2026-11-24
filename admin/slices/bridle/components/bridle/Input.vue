@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Textarea } from '#theme/components/ui/textarea'
 import { Button } from '#theme/components/ui/button'
 import { AlertCircle, Paperclip, Send } from 'lucide-vue-next'
@@ -15,6 +16,7 @@ import {
   FILE_PICKER_ACCEPT,
   MAX_ATTACHMENTS_PER_MESSAGE,
 } from '../../utils/attachment'
+import { draftFromQuery, withLinkDraft, withoutDraft } from '../../utils/draftLink'
 
 const props = withDefaults(defineProps<{
   apiUrl: string
@@ -109,6 +111,25 @@ const onPickTemplate = (template: string) => {
     target.setSelectionRange(insertion.selectionStart, insertion.selectionEnd)
   })
 }
+
+// A link may open the chat with a message to start from (CLEAN-243): the
+// Ranch Cookies extension does, after handing the agent a session. It goes
+// in the box, caret at the end, and never sends itself; the address loses
+// it so a reload does not put it back.
+const route = useRoute()
+const router = useRouter()
+onMounted(() => {
+  const linked = draftFromQuery(route.query)
+  if (linked === null) return
+  input.value = withLinkDraft(input.value, linked)
+  void router.replace({ query: withoutDraft(route.query) })
+  void nextTick(() => {
+    const el = textareaEl()
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  })
+})
 
 // A «…» left in the draft is allowed — the agent will ask — but it is shown,
 // so nobody sends "Restart the agent «name»" by accident.

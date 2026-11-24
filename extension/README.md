@@ -74,8 +74,12 @@ last label per site.
      land in each agent's browser store under *your* chat identity (the Owner
      is `admin`, anyone else their account id), decided by the API — nobody
      writes into another person's browser state.
-5. **Send**. The agent signs in with `browser_play(profile: "<service>:<label>")`
-   for a catalogue service, or `browser_play(profile: "<label>")` otherwise.
+5. **Send**. For one agent, its chat opens in the console you sent from, with
+   a message ready in the box — the site, the profile, and a «what to do there»
+   for you to finish; nothing is sent until you press Enter. For several, a
+   button per agent opens each chat. The running agent pulls the session
+   straight away, and `session_list` shows it as a shared, connected profile
+   (runtime 0.38).
 
 Who may send what (CLEAN-243): **Specific agents** is open to every signed-in
 role, for the agents the person reaches. **All my agents** is an Owner's or

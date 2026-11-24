@@ -177,6 +177,15 @@ export abstract class IBridleGateway {
    * on the next boot. Silently skipped if the agent isn't currently connected —
    * the token is already persisted as a secret, so a fresh boot picks it up.
    */
+  /**
+   * Tell a running agent that browser state was written for it into its
+   * storage (CLEAN-243): the Ranch Cookies extension's import. The runtime
+   * restores its storage only at boot, so without this the agent signs in
+   * with nothing — or with a stale copy it would then push back over the
+   * import. It pulls the folder again. Silently skipped when the agent is
+   * not connected: the next boot restores the file anyway.
+   */
+  abstract notifyBrowserStateImported(agentId: string, path: string): void;
   abstract notifyMcpConnected(
     agentId: string,
     event: Omit<IBridleMcpConnectedEvent, 'type'>,

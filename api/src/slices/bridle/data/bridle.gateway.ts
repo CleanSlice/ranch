@@ -709,6 +709,20 @@ export class BridleGateway extends IBridleGateway {
     this.logger.log(`Pushed debug_set=${enabled} to agent agentId=${agentId}`);
   }
 
+  notifyBrowserStateImported(agentId: string, path: string): void {
+    const agentSend = this.agents.get(agentId)?.send;
+    if (!agentSend) {
+      this.logger.debug(
+        `browser_state skipped: agent not connected for agentId=${agentId}`,
+      );
+      return;
+    }
+    agentSend({ type: 'browser_state', path });
+    this.logger.log(
+      `Pushed browser_state path=${path} to agent agentId=${agentId}`,
+    );
+  }
+
   notifyMcpConnected(
     agentId: string,
     event: Omit<IBridleMcpConnectedEvent, 'type'>,

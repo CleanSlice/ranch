@@ -513,3 +513,14 @@ input:focus-visible {
   border-color: var(--success);
   background: var(--success);
 }
+.status p {
+  margin: 0 0 8px;
+}
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.status-actions .btn {
+  background: var(--card);
+}

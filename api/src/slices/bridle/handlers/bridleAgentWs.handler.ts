@@ -49,6 +49,7 @@ import {
  *   "message"        { clientId, text, messageId, images? }
  *   "sync"           { requestId }
  *   "session_clear"  { channel }
+ *   "browser_state"  { path }   // browser state imported for it; pull browser-state/ (CLEAN-243)
  *   "pong"           {}
  */
 @WebSocketGateway({ namespace: '/ws/agent', cors: { origin: '*' } })

@@ -759,8 +759,8 @@ async function renderMain(state) {
   accountKey.value = remembered ?? suggestLabel(tab?.title, host);
   accountKey.placeholder = service?.accountKeyHint ?? 'business';
   $('account-hint').textContent = service
-    ? 'A name for this account, so one site can hold several.'
-    : 'The profile your agents open with browser_play.';
+    ? 'Names this account, so one site can hold several. Agents open it by this name.'
+    : 'Agents open this site, signed in as you, by this name.';
 
   const ctx = { state, host, service, cookies, canIntegrate };
   accountKey.oninput = () => refreshSend(ctx);
@@ -910,17 +910,47 @@ async function sendToIntegrations(ctx, label) {
   await rememberLabel(ctx, label);
   setStatus(
     'ok',
-    `Sent ${res?.cookies ?? cookies.length} cookies to ${service.title}. Your agents sign in with `,
-    h('code', {}, `browser_play(profile: "${service.service}:${label}")`),
-    '.',
+    h('strong', {}, `Saved to your ${service.title} integration as "${label}". `),
+    `Every agent you use can now open ${service.title} as you — ask any of them, e.g. "open ${service.title} as ${label} and …". `,
+    `(${res?.cookies ?? cookies.length} cookies.)`,
   );
 }
 
 // "Specific agents": each agent's own browser store, filed under the
 // person's chat identity by the API.
+/**
+ * What to tell an agent that was just handed a session (CLEAN-243): the
+ * site, the profile to open it with, and a «…» for the task — the person
+ * finishes it in the chat and presses Enter. Nothing is sent by itself.
+ */
+function chatDraft(host, profile) {
+  return (
+    `I've shared my ${host} session with you as the browser profile "${profile}". ` +
+    `Open ${host} with browser_play(profile: "${profile}") — you're signed in as me there — and «what to do there».`
+  );
+}
+
+/** The agent's chat in the console the cookies were sent from, message in the box. */
+function chatUrl(state, agentId, draft) {
+  const consoleUrl = state.consoles?.[session?.console ?? state.console];
+  if (!consoleUrl) return null;
+  const url = new URL(`/agents/${encodeURIComponent(agentId)}`, consoleUrl);
+  url.searchParams.set('draft', draft);
+  return url.href;
+}
+
+function openChat(url) {
+  if (url) chrome.tabs.create({ url });
+}
+
+// "Specific agents": each agent's own browser store, filed under the
+// person's chat identity by the API. Then on to the chat: the agent knows
+// nothing until it is told, so the popup opens the chat with the message
+// in the box — straight away for one agent, a button per agent for more.
 async function sendToAgents(ctx, label) {
-  const { state, service, cookies } = ctx;
+  const { state, host, service, cookies } = ctx;
   const profile = service ? `${service.service}:${label}` : label;
+  const draft = chatDraft(service?.title ?? host, profile);
   const ok = [];
   const failed = [];
   for (const agentId of selectedAgentIds()) {
@@ -931,19 +961,38 @@ async function sendToAgents(ctx, label) {
         `${state.apiUrl}/browser/extension/import-state`,
         postJson(minted.token, { profile, cookies, origins: [], userAgent: navigator.userAgent }),
       );
-      ok.push(name);
+      ok.push({ agentId, name });
     } catch (err) {
       failed.push(`${name} (${describeSendError(err)})`);
     }
   }
   if (ok.length) await rememberLabel(ctx, label);
-  if (!failed.length) {
-    setStatus('ok', `Sent to ${ok.join(', ')}. They sign in with `, h('code', {}, `browser_play(profile: "${profile}")`), '.');
-  } else if (!ok.length) {
+  if (!ok.length) {
     setStatus('err', `Couldn't send — ${failed.join('; ')}`);
-  } else {
-    setStatus('err', `Sent to ${ok.join(', ')}. Failed: ${failed.join('; ')}`);
+    return;
   }
+
+  const site = service?.title ?? host;
+  const chatButtons = ok.map(({ agentId, name }) => {
+    const btn = h('button', { type: 'button', class: 'btn sm' }, ok.length === 1 ? 'Open the chat again' : `Open chat with ${name}`);
+    btn.onclick = () => openChat(chatUrl(state, agentId, draft));
+    return btn;
+  });
+  setStatus(
+    failed.length ? 'err' : 'ok',
+    h(
+      'p',
+      {},
+      h('strong', {}, ok.length === 1 ? `${ok[0].name} can now open ${site} as you. ` : `Sent to ${ok.map((a) => a.name).join(', ')}. `),
+      ok.length === 1
+        ? 'Its chat is open with a message ready — say what to do there and send it.'
+        : 'Open a chat — the message is ready, say what to do and send it.',
+    ),
+    failed.length ? h('p', {}, `Failed: ${failed.join('; ')}`) : null,
+    h('div', { class: 'status-actions' }, chatButtons),
+  );
+  // One agent: go there now. Several: the person picks.
+  if (ok.length === 1) openChat(chatUrl(state, ok[0].agentId, draft));
 }
 
 // ── console tabs ─────────────────────────────────────────────────────

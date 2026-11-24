@@ -57,16 +57,18 @@ The access token lives in the popup's memory only. Stored in
 `chrome.storage.local`: the API and console addresses, the chosen console,
 the long-lived `integration:cookies` token for "All my agents" with the
 account it belongs to, the integration catalogue (refreshed daily) and the
-last label per site.
+last profile name per site.
 
 ## Use
 
 1. Open the site you want your agents to use and sign in to it.
 2. Click the Ranch icon. The site, its cookie count and — for a known service —
    the integration it belongs to are shown at the top.
-3. Check the **account label** — a name for this account, so one site can
-   hold several (e.g. `business`). It's guessed from the page title and
-   remembered per site.
+3. Check the **Profile name** — the name agents open this site by, so one
+   site can hold several accounts (e.g. `business`). It's guessed from the
+   page title and remembered per site. For a catalogue service the profile is
+   `<service>:<name>` (e.g. `instagram:business`); for any other site, the
+   name itself.
 4. Choose **who gets the cookies**:
    - **All my agents** — saved to your integrations; every agent you use can
      sign in with it. The site must be a catalogue service.
@@ -76,12 +78,28 @@ last label per site.
      writes into another person's browser state.
 5. **Send**. For one agent, its chat opens in the console you sent from, with
    a message ready in the box — the site, the profile, and a «what to do there»
-   for you to finish; nothing is sent until you press Enter. The link carries
-   only the profile and the site (`?shared=…&site=…`); the console writes the
-   message itself, so no link can put free text in front of an agent. For several, a
-   button per agent opens each chat. The running agent pulls the session
-   straight away, and `session_list` shows it as a shared, connected profile
-   (runtime 0.38).
+   for you to finish; nothing is sent until you press Enter. For several
+   agents, a button per agent opens each chat. The link carries only the
+   profile and the site (`?shared=…&site=…`); the console writes the message
+   itself, so no link can put free text in front of an agent.
+
+Talk to the agent as the same person who sent the cookies — from the same
+console. The session is filed under your chat identity: sent from the Admin
+tab as the Owner, only your admin-console chat finds it; the app is another
+identity and sees nothing.
+
+## How the agent gets it
+
+1. The API writes the cookies into the agent's storage as
+   `browser-state/<your chat identity>-<profile>.json`
+   (`{ userAgent, storageState: { cookies, origins } }`).
+2. It tells the running agent through the hub: `browser_state { path }`.
+3. The runtime pulls `browser-state/` from storage over its local copy — no
+   restart (runtime 0.38). An agent that is offline gets the file at its next
+   boot.
+4. `session_list` lists the profile as `source: shared`, `connected`, and
+   `browser_play(profile: …)` opens the site with those cookies and that user
+   agent, then saves the updated cookies back to the same file.
 
 Who may send what (CLEAN-243): **Specific agents** is open to every signed-in
 role, for the agents the person reaches. **All my agents** is an Owner's or

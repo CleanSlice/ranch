@@ -480,10 +480,12 @@ async function startup() {
   const state = await loadState();
   if (!state.apiUrl) return goSetup();
   // A local stack's consoles have no address to derive: learn the one in
-  // the open tab, when it is this Ranch's.
-  if (!state.consoles?.app || !state.consoles?.admin) {
+  // the open tab, when it is this Ranch's. Local only: a deployed Ranch's
+  // addresses are derived, and a page must never get to say where the
+  // sign-in button leads.
+  if (isLocal(new URL(state.apiUrl).hostname) && (!state.consoles?.app || !state.consoles?.admin)) {
     const found = await detectRanchTab();
-    if (found?.apiUrl === state.apiUrl) {
+    if (found?.apiUrl === state.apiUrl && isLocal(new URL(found.consoleUrl).hostname)) {
       const name = found.console ?? consoleOfUrl(found.consoleUrl);
       if (state.consoles?.[name] !== found.consoleUrl) {
         state.consoles = withConsole(state.consoles ?? {}, found.consoleUrl, name);

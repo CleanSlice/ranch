@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { BrowserController } from './browser.controller';
@@ -16,6 +16,7 @@ import { PrismaModule } from '#/setup/prisma';
 import { AuthModule } from '../user/auth/auth.module';
 import { BridleApiKeyGuard } from '../bridle/guards/bridleApiKey.guard';
 import { FileModule } from '#/agent/file/file.module';
+import { BridleModule } from '#/bridle/bridle.module';
 
 /**
  * Browser module — owns browser-pool session lifecycle.
@@ -34,6 +35,9 @@ import { FileModule } from '#/agent/file/file.module';
     PrismaModule,
     AuthModule,
     FileModule,
+    // The extension's import tells the running agent to pull the file
+    // (CLEAN-243). forwardRef: BridleModule reaches FileModule too.
+    forwardRef(() => BridleModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({

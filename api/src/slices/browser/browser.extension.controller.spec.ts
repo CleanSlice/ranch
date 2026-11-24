@@ -42,7 +42,13 @@ function harness(accounts: IAccount[]) {
     sign: (body: Record<string, unknown>) => JSON.stringify(body),
     decode: () => ({ exp: 1 }),
   } as unknown as JwtService;
-  const controller = new BrowserExtensionController(gateway, jwt, access);
+  const bridle = { notifyBrowserStateImported: jest.fn() };
+  const controller = new BrowserExtensionController(
+    gateway,
+    jwt,
+    access,
+    bridle as never,
+  );
   const importAs = (sub: string, agentId = 'agent-a') => {
     claims = { sub, agentId, userId: 'admin', scope: 'browser:cookies' };
     return controller.importState(
@@ -50,7 +56,7 @@ function harness(accounts: IAccount[]) {
       'Bearer extension-token',
     );
   };
-  return { lists, importAs, importStorageState, accounts, controller };
+  return { lists, importAs, importStorageState, accounts, controller, bridle };
 }
 
 const admin = (): IAccount => ({
@@ -68,6 +74,15 @@ describe('BrowserExtensionController.importState', () => {
       cookies: 2,
     });
     expect(importStorageState).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the running agent to pull the file it just got (CLEAN-243)', async () => {
+    const { importAs, bridle } = harness([admin()]);
+    await importAs('user-admin');
+    expect(bridle.notifyBrowserStateImported).toHaveBeenCalledWith(
+      'agent-a',
+      'agents/agent-a/state.json',
+    );
   });
 
   it('404 once the agent is taken away from the account that minted the token', async () => {
@@ -140,6 +155,7 @@ describe('BrowserExtensionController.importState', () => {
         verify: () => ({ sub: 'user-admin', agentId: 'agent-a', userId: 'x' }),
       } as unknown as JwtService,
       access,
+      { notifyBrowserStateImported: jest.fn() } as never,
     );
     await expect(
       controller.importState({} as never, 'Bearer console-token'),

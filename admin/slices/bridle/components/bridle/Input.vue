@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Textarea } from '#theme/components/ui/textarea'
 import { Button } from '#theme/components/ui/button'
 import { AlertCircle, Paperclip, Send } from 'lucide-vue-next'
@@ -15,6 +16,12 @@ import {
   FILE_PICKER_ACCEPT,
   MAX_ATTACHMENTS_PER_MESSAGE,
 } from '../../utils/attachment'
+import {
+  sharedSessionDraft,
+  sharedSessionFromQuery,
+  withLinkDraft,
+  withoutSharedSession,
+} from '../../utils/draftLink'
 
 const props = withDefaults(defineProps<{
   apiUrl: string
@@ -109,6 +116,26 @@ const onPickTemplate = (template: string) => {
     target.setSelectionRange(insertion.selectionStart, insertion.selectionEnd)
   })
 }
+
+// A link may say a session was just shared with this agent (CLEAN-243): the
+// Ranch Cookies extension opens the chat that way after handing it a site's
+// cookies. The message is this console's own, from the checked profile and
+// site; it goes in the box, caret at the end, and never sends itself. The
+// address loses the two so a reload does not put it back.
+const route = useRoute()
+const router = useRouter()
+onMounted(() => {
+  const shared = sharedSessionFromQuery(route.query)
+  if (shared === null) return
+  input.value = withLinkDraft(input.value, sharedSessionDraft(shared))
+  void router.replace({ query: withoutSharedSession(route.query) })
+  void nextTick(() => {
+    const el = textareaEl()
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  })
+})
 
 // A «…» left in the draft is allowed — the agent will ask — but it is shown,
 // so nobody sends "Restart the agent «name»" by accident.

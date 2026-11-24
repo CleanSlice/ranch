@@ -7,6 +7,11 @@ import type { IBridleConversation } from '#bridle/stores/bridle';
 import type { ILimitCountdown } from '#bridle/composables/useLimitCountdown';
 import { restoredDraft as mergeRestoredDraft } from '#bridle/utils/limit';
 import { noticeParams } from '#bridle/utils/noticeParams';
+import {
+  sharedSessionFromQuery,
+  withLinkDraft,
+  withoutSharedSession,
+} from '#bridle/utils/draftLink';
 import { useFormat } from '#common/composables/useFormat';
 
 const props = defineProps<{
@@ -53,6 +58,28 @@ watch(
   },
   { immediate: true },
 );
+
+// A link may say a session was just shared with this agent (CLEAN-243): the
+// Ranch Cookies extension opens the chat that way after handing it a site's
+// cookies. The message is this console's own, in the person's language, from
+// the checked profile and site; it goes in the box, caret at the end, and
+// never sends itself. The address loses the two so a reload does not put it
+// back.
+const route = useRoute();
+const router = useRouter();
+const { t } = useI18n();
+onMounted(() => {
+  const shared = sharedSessionFromQuery(route.query);
+  if (shared === null) return;
+  draft.value = withLinkDraft(draft.value, t('chat.shared_session_draft', { ...shared }));
+  void router.replace({ query: withoutSharedSession(route.query) });
+  void nextTick(() => {
+    const el = textareaRef.value;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  });
+});
 
 // ── Request limit (CLEAN-224) ──────────────────────────────────
 // The limit turns sending off and nothing else: the field is never disabled,

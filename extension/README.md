@@ -76,7 +76,9 @@ last label per site.
      writes into another person's browser state.
 5. **Send**. For one agent, its chat opens in the console you sent from, with
    a message ready in the box — the site, the profile, and a «what to do there»
-   for you to finish; nothing is sent until you press Enter. For several, a
+   for you to finish; nothing is sent until you press Enter. The link carries
+   only the profile and the site (`?shared=…&site=…`); the console writes the
+   message itself, so no link can put free text in front of an agent. For several, a
    button per agent opens each chat. The running agent pulls the session
    straight away, and `session_list` shows it as a shared, connected profile
    (runtime 0.38).

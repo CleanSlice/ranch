@@ -72,7 +72,8 @@
     "source_helpful": "Этот источник помог",
     "source_not_helpful": "Этот источник не помог",
     "source_rating_failed": "Не удалось сохранить вашу оценку",
-    "source_open_failed": "Не удалось открыть этот документ"
+    "source_open_failed": "Не удалось открыть этот документ",
+    "shared_session_draft": "Я поделился с тобой своей сессией {site} в виде профиля браузера «{profile}». Открой {site} через browser_play(profile: \"{profile}\") — там ты авторизован под моим аккаунтом — и «что там сделать»."
   },
   "bridle": {
     "limit": {

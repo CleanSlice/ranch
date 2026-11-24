@@ -7,7 +7,11 @@ import type { IBridleConversation } from '#bridle/stores/bridle';
 import type { ILimitCountdown } from '#bridle/composables/useLimitCountdown';
 import { restoredDraft as mergeRestoredDraft } from '#bridle/utils/limit';
 import { noticeParams } from '#bridle/utils/noticeParams';
-import { draftFromQuery, withLinkDraft, withoutDraft } from '#bridle/utils/draftLink';
+import {
+  sharedSessionFromQuery,
+  withLinkDraft,
+  withoutSharedSession,
+} from '#bridle/utils/draftLink';
 import { useFormat } from '#common/composables/useFormat';
 
 const props = defineProps<{
@@ -55,18 +59,20 @@ watch(
   { immediate: true },
 );
 
-// A link may open the chat with a message to start from (CLEAN-243): the
-// Ranch Cookies extension does, after handing the agent a session. It goes
-// in the box, caret at the end, and never sends itself; the address loses
-// it so a reload does not put it back. The text is the link's, shown as
-// received.
+// A link may say a session was just shared with this agent (CLEAN-243): the
+// Ranch Cookies extension opens the chat that way after handing it a site's
+// cookies. The message is this console's own, in the person's language, from
+// the checked profile and site; it goes in the box, caret at the end, and
+// never sends itself. The address loses the two so a reload does not put it
+// back.
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 onMounted(() => {
-  const linked = draftFromQuery(route.query);
-  if (linked === null) return;
-  draft.value = withLinkDraft(draft.value, linked);
-  void router.replace({ query: withoutDraft(route.query) });
+  const shared = sharedSessionFromQuery(route.query);
+  if (shared === null) return;
+  draft.value = withLinkDraft(draft.value, t('chat.shared_session_draft', { ...shared }));
+  void router.replace({ query: withoutSharedSession(route.query) });
   void nextTick(() => {
     const el = textareaRef.value;
     if (!el) return;

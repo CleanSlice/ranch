@@ -919,23 +919,18 @@ async function sendToIntegrations(ctx, label) {
 // "Specific agents": each agent's own browser store, filed under the
 // person's chat identity by the API.
 /**
- * What to tell an agent that was just handed a session (CLEAN-243): the
- * site, the profile to open it with, and a «…» for the task — the person
- * finishes it in the chat and presses Enter. Nothing is sent by itself.
+ * The agent's chat in the console the cookies were sent from, naming the
+ * session just shared (CLEAN-243). The console writes the message from
+ * these two — the site, the profile, and a «…» for the task — and puts it in
+ * the box; the person finishes it and presses Enter. A link carries no free
+ * text, so nobody's link can put instructions in front of an agent.
  */
-function chatDraft(host, profile) {
-  return (
-    `I've shared my ${host} session with you as the browser profile "${profile}". ` +
-    `Open ${host} with browser_play(profile: "${profile}") — you're signed in as me there — and «what to do there».`
-  );
-}
-
-/** The agent's chat in the console the cookies were sent from, message in the box. */
-function chatUrl(state, agentId, draft) {
+function chatUrl(state, agentId, profile, site) {
   const consoleUrl = state.consoles?.[session?.console ?? state.console];
   if (!consoleUrl) return null;
   const url = new URL(`/agents/${encodeURIComponent(agentId)}`, consoleUrl);
-  url.searchParams.set('draft', draft);
+  url.searchParams.set('shared', profile);
+  url.searchParams.set('site', site);
   return url.href;
 }
 
@@ -950,7 +945,6 @@ function openChat(url) {
 async function sendToAgents(ctx, label) {
   const { state, host, service, cookies } = ctx;
   const profile = service ? `${service.service}:${label}` : label;
-  const draft = chatDraft(service?.title ?? host, profile);
   const ok = [];
   const failed = [];
   for (const agentId of selectedAgentIds()) {
@@ -975,7 +969,7 @@ async function sendToAgents(ctx, label) {
   const site = service?.title ?? host;
   const chatButtons = ok.map(({ agentId, name }) => {
     const btn = h('button', { type: 'button', class: 'btn sm' }, ok.length === 1 ? 'Open the chat again' : `Open chat with ${name}`);
-    btn.onclick = () => openChat(chatUrl(state, agentId, draft));
+    btn.onclick = () => openChat(chatUrl(state, agentId, profile, host));
     return btn;
   });
   setStatus(
@@ -992,7 +986,7 @@ async function sendToAgents(ctx, label) {
     h('div', { class: 'status-actions' }, chatButtons),
   );
   // One agent: go there now. Several: the person picks.
-  if (ok.length === 1) openChat(chatUrl(state, ok[0].agentId, draft));
+  if (ok.length === 1) openChat(chatUrl(state, ok[0].agentId, profile, host));
 }
 
 // ── console tabs ─────────────────────────────────────────────────────

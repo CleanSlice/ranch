@@ -16,7 +16,12 @@ import {
   FILE_PICKER_ACCEPT,
   MAX_ATTACHMENTS_PER_MESSAGE,
 } from '../../utils/attachment'
-import { draftFromQuery, withLinkDraft, withoutDraft } from '../../utils/draftLink'
+import {
+  sharedSessionDraft,
+  sharedSessionFromQuery,
+  withLinkDraft,
+  withoutSharedSession,
+} from '../../utils/draftLink'
 
 const props = withDefaults(defineProps<{
   apiUrl: string
@@ -112,17 +117,18 @@ const onPickTemplate = (template: string) => {
   })
 }
 
-// A link may open the chat with a message to start from (CLEAN-243): the
-// Ranch Cookies extension does, after handing the agent a session. It goes
-// in the box, caret at the end, and never sends itself; the address loses
-// it so a reload does not put it back.
+// A link may say a session was just shared with this agent (CLEAN-243): the
+// Ranch Cookies extension opens the chat that way after handing it a site's
+// cookies. The message is this console's own, from the checked profile and
+// site; it goes in the box, caret at the end, and never sends itself. The
+// address loses the two so a reload does not put it back.
 const route = useRoute()
 const router = useRouter()
 onMounted(() => {
-  const linked = draftFromQuery(route.query)
-  if (linked === null) return
-  input.value = withLinkDraft(input.value, linked)
-  void router.replace({ query: withoutDraft(route.query) })
+  const shared = sharedSessionFromQuery(route.query)
+  if (shared === null) return
+  input.value = withLinkDraft(input.value, sharedSessionDraft(shared))
+  void router.replace({ query: withoutSharedSession(route.query) })
   void nextTick(() => {
     const el = textareaEl()
     if (!el) return

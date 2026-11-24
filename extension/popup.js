@@ -330,12 +330,15 @@ function toStorageStateCookie(c) {
 }
 
 /**
- * Whether the browser sends cookie `c` to `host`, on some path: a host-only
- * cookie to its own host, a domain cookie to that domain and everything
- * under it. The path is left out on purpose — a sign-in cookie often lives
- * on `/api/auth` alone and is still what the site's session stands on.
+ * Whether the browser sends cookie `c` to `url`'s host, on some path: a
+ * host-only cookie to its own host, a domain cookie to that domain and
+ * everything under it, a secure one over https only. The path is left out
+ * on purpose — a sign-in cookie often lives on `/api/auth` alone and is
+ * still what the site's session stands on.
  */
-function sentToHost(c, host) {
+function sentToHost(c, url) {
+  if (c.secure && url.protocol !== 'https:') return false;
+  const host = url.hostname.toLowerCase();
   const domain = c.domain.replace(/^\./, '').toLowerCase();
   if (c.hostOnly) return host === domain;
   return host === domain || host.endsWith(`.${domain}`);
@@ -344,13 +347,16 @@ function sentToHost(c, host) {
 /**
  * Every cookie the site's session may stand on: every one the browser sends
  * to this host on any path — parent domains included, where sign-ins like
- * `.google.com` live — and the ones of the site's other subdomains.
+ * `.google.com` live — and the ones of the site's own subdomains.
  *
- * Read from the whole jar and filtered here (CLEAN-243): asking Chrome by
- * the page's URL leaves out a cookie scoped to another path, and asking by
- * domain leaves out the parent domains, so a `.example.com` cookie on
- * `/api/auth` — the sign-in of a site whose API shares its host — was in
- * neither.
+ * Asked of Chrome per domain the host is under, then matched here
+ * (CLEAN-243): asking by the page's URL leaves out a cookie scoped to
+ * another path, and asking by the host's domain leaves out the parent
+ * domains, so a `.example.com` cookie on `/api/auth` — the sign-in of a site
+ * whose API shares its host — was in neither. Chrome never stores a cookie
+ * on a public suffix, so walking up to the last two labels finds nothing
+ * foreign; whatever a parent-domain query returns about sibling hosts is
+ * dropped by `sentToHost`.
  */
 async function readSite(tab) {
   if (!tab?.url) return { host: null, cookies: [] };
@@ -363,13 +369,18 @@ async function readSite(tab) {
   if (!/^https?:$/.test(url.protocol)) return { host: null, cookies: [] };
   const host = url.hostname.toLowerCase();
   const family = host.replace(/^www\./, '');
-  const jar = await chrome.cookies.getAll({});
-  const cookies = jar.filter((c) => {
-    if (sentToHost(c, host)) return true;
+  const labels = host.split('.');
+  const domains = isLocal(host)
+    ? [host]
+    : labels.slice(0, -1).map((_, i) => labels.slice(i).join('.'));
+  const found = (await Promise.all(domains.map((domain) => chrome.cookies.getAll({ domain })))).flat();
+  const seen = new Map();
+  for (const c of found) {
     const domain = c.domain.replace(/^\./, '').toLowerCase();
-    return domain.endsWith(`.${family}`);
-  });
-  return { host: url.hostname, cookies: cookies.map(toStorageStateCookie) };
+    const ownSubdomain = domain.endsWith(`.${family}`) && (!c.secure || url.protocol === 'https:');
+    if (sentToHost(c, url) || ownSubdomain) seen.set(`${c.domain}|${c.path}|${c.name}`, c);
+  }
+  return { host: url.hostname, cookies: [...seen.values()].map(toStorageStateCookie) };
 }
 
 // Catalogue entries claim domains; a page belongs to the one whose domain

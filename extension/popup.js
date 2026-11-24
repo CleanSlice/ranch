@@ -441,7 +441,12 @@ function setMessage(el, kind, ...content) {
     return;
   }
   el.className = `${el.id === 'notice' ? 'notice' : 'status'} ${kind}`.trim();
-  el.replaceChildren(...content.flat().map((c) => (c instanceof Node ? c : document.createTextNode(String(c)))));
+  el.replaceChildren(
+    ...content
+      .flat()
+      .filter((c) => c != null && c !== false)
+      .map((c) => (c instanceof Node ? c : document.createTextNode(String(c)))),
+  );
   el.hidden = false;
 }
 

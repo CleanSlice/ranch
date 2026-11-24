@@ -87,9 +87,11 @@ so a User's import would be the session any agent signs in with.
 - **localStorage** — the runtime restores cookies only.
 - Ranch's own cookies: on a Ranch console tab the popup says so instead of
   offering to send.
-- Cookies of other sites. The popup reads the cookies sent to the open page
-  (parent domains included, where sign-ins like `.google.com` live) and those
-  of the site's other subdomains.
+- Cookies of other sites. The popup sends every cookie the browser would send
+  to the open site's host on any path — parent domains included, where
+  sign-ins like `.google.com` live, and cookies scoped to a path such as
+  `/api/auth` — and those of the site's other subdomains. Hover the cookie
+  count to see their names.
 
 ## Look
 

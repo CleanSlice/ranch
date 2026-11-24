@@ -13,8 +13,11 @@
 export const SHARED_PROFILE_KEY = 'shared'
 export const SHARED_SITE_KEY = 'site'
 
-/** A browser profile name, as the extension and the runtime write them. */
-const PROFILE_RE = /^[a-zA-Z0-9_:.-]{1,60}$/
+/**
+ * A browser profile name, as the extension and the runtime write them —
+ * never starting or ending with a dot, so never `.` or `..`.
+ */
+const PROFILE_RE = /^(?!\.)[a-zA-Z0-9_:.-]{1,60}(?<!\.)$/
 /** A host name: labels of letters, digits and dashes, dot-separated. */
 const SITE_RE = /^(?=.{1,253}$)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})*$/i
 

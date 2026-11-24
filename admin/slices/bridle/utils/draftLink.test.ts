@@ -19,6 +19,8 @@ describe('shared-session links', () => {
     expect(sharedSessionFromQuery({ shared: 'shadow', site: 'a.com/do this' })).toBe(null)
     expect(sharedSessionFromQuery({ shared: 'shadow', site: 'a.com‮' })).toBe(null)
     expect(sharedSessionFromQuery({ shared: 'x'.repeat(61), site: 'a.com' })).toBe(null)
+    expect(sharedSessionFromQuery({ shared: '..', site: 'a.com' })).toBe(null)
+    expect(sharedSessionFromQuery({ shared: '.hidden', site: 'a.com' })).toBe(null)
   })
 
   test('the address loses the two and keeps the rest', () => {

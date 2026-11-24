@@ -6,11 +6,14 @@ import BridleSources from '#bridle/components/bridle/Sources.vue';
 import { formatBytes } from '#bridle/utils/attachment';
 import { FileText, Paperclip, ThumbsUp, ThumbsDown } from 'lucide-vue-next';
 import type { IChatMessage } from '#chat/stores/chat';
+import type { IThinkingBlock } from '#bridle/stores/bridle';
 import { formatMessageTime, type IToolEvent } from '#chat/utils/transcript';
 
-// Read-only transcript message in the redesigned feed. Tool events arrive
-// pre-grouped (see groupTranscript) and render as collapsible rows attached
-// above the assistant reply they belong to.
+// Read-only transcript message in the redesigned feed. Tool events and the
+// narration before the reply arrive pre-grouped (see groupTranscript) and
+// render above the assistant reply they belong to — as the thinking block the
+// live chat showed when there was narration (CLEAN-242), as collapsible tool
+// rows otherwise.
 //
 // The avatar, the bubble and the markdown are Bridle's own components
 // (CLEAN-137): a message in the history is the same message the live chat
@@ -20,6 +23,7 @@ import { formatMessageTime, type IToolEvent } from '#chat/utils/transcript';
 const props = defineProps<{
   message: IChatMessage;
   tools?: IToolEvent[];
+  thinking?: IThinkingBlock | null;
   rating?: number | null;
 }>();
 const emit = defineEmits<{
@@ -114,7 +118,11 @@ function onCopy() {
   <div v-else class="mr-auto flex max-w-[85%] gap-3">
     <BridleAvatar />
     <div class="flex min-w-0 flex-col items-start gap-1">
-      <ChatMessageToolEvents v-if="tools?.length" :tools="tools" />
+      <ChatMessageSteps
+        v-if="tools?.length || thinking"
+        :tools="tools ?? []"
+        :thinking="thinking ?? null"
+      />
 
       <BridleBubble markdown>
         <BridleMarkdown :text="message.text" citations="numbered" @cite="onCite" />

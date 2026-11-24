@@ -72,6 +72,12 @@ export interface IChatMessage {
    * chat shows under the bubble. Absent when the answer cited nothing.
    */
   sources?: IBridleSource[];
+  /**
+   * Assistant turns only (CLEAN-189): narration the agent wrote before calling
+   * a tool, not a reply. The history folds it into a thinking block, the way
+   * the live chat showed it (CLEAN-242).
+   */
+  interim?: true;
 }
 
 export interface IChatListResult {

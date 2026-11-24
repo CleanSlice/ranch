@@ -2,6 +2,7 @@
 import BridleChatSources from '#bridle/components/bridle/chat/Sources.vue';
 import { citationNumberOf } from '#bridle/utils/citations';
 import { renderMarkdown } from '#bridle/utils/markdown';
+import type { IBridleThinkingBlock } from '#bridle/stores/bridle';
 import type { IChatMessage } from '#chat/stores/chat';
 import { formatMessageTime } from '#chat/utils/transcript';
 import { useFormat } from '#common/composables/useFormat';
@@ -13,8 +14,14 @@ import { useFormat } from '#common/composables/useFormat';
 // Read-only transcript message. Renders one persisted event by role: user /
 // assistant bubbles, plus a collapsible marker for `summary` events (where
 // compaction folded older turns into a gist). Tool events never reach the app.
+// `thinking` is the narration before an assistant reply, folded by
+// `foldThinking` into the block the live chat showed above it (CLEAN-242).
 // `rating` is the current user's 👍/👎 on this assistant message (1 | -1 | null).
-const props = defineProps<{ message: IChatMessage; rating?: number | null }>();
+const props = defineProps<{
+  message: IChatMessage;
+  thinking?: IBridleThinkingBlock | null;
+  rating?: number | null;
+}>();
 const emit = defineEmits<{
   rate: [rating: 1 | -1];
   /** A cited knowledge document the reader may open (CLEAN-138). */
@@ -129,6 +136,12 @@ function onCopy() {
   <div v-else class="flex items-start justify-start gap-2">
     <BridleChatAvatar />
     <div class="flex min-w-0 max-w-[85%] flex-col items-start gap-1 sm:max-w-[75%]">
+      <BridleChatThinking
+        v-if="thinking"
+        :block="thinking"
+        :agent-name="$t('chat.agent')"
+        class="max-w-full! sm:max-w-full!"
+      />
       <BridleChatBubble>
         <div @click="onBubbleClick" @keydown="onBubbleKeydown" v-html="html" />
       </BridleChatBubble>

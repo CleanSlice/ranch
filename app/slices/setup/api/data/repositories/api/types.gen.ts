@@ -1840,6 +1840,10 @@ export type ChatMessageDto = {
    */
   agentText?: string;
   /**
+   * Assistant messages only (CLEAN-189): the model went on to call tools in the same response, so this is narration between steps, not the answer. The history shows it inside a thinking block, the way the live chat did (CLEAN-242).
+   */
+  interim?: boolean;
+  /**
    * Assistant messages that cited sources (CLEAN-138): the list under the bubble, in citation order. Absent when the answer drew on nothing.
    */
   sources?: Array<SourceEntryDto>;

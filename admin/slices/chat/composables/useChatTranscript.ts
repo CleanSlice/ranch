@@ -5,7 +5,9 @@ const PAGE = 50;
 /**
  * Paged transcript of one chat session: newest page first, "load older"
  * prepends while keeping the viewport anchored, and the tool-events toggle
- * re-fetches from the latest page. Loads on mount.
+ * re-fetches from the latest page. The thinking toggle (CLEAN-242) only
+ * changes how the page groups what it already has, so it fetches nothing.
+ * Loads on mount.
  */
 export function useChatTranscript(chatId: string) {
   const store = useChatStore();
@@ -15,6 +17,7 @@ export function useChatTranscript(chatId: string) {
   const hasMore = ref(false);
   const loading = ref(false);
   const showTools = ref(false);
+  const showThinking = ref(true);
   const scroller = ref<HTMLElement | null>(null);
 
   const types = computed(() =>
@@ -63,5 +66,14 @@ export function useChatTranscript(chatId: string) {
   onMounted(() => void loadLatest());
   watch(showTools, loadLatest); // re-fetch from latest when toggling tool events
 
-  return { messages, hasMore, loading, showTools, scroller, loadLatest, loadOlder };
+  return {
+    messages,
+    hasMore,
+    loading,
+    showTools,
+    showThinking,
+    scroller,
+    loadLatest,
+    loadOlder,
+  };
 }

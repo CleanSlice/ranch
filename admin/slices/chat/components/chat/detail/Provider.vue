@@ -15,19 +15,29 @@ const { data: session } = await useAsyncData(`chat-detail-${props.id}`, () =>
   store.getById(props.id),
 );
 
-const { messages, hasMore, loading, showTools, scroller, loadLatest, loadOlder } =
-  useChatTranscript(props.id);
+const {
+  messages,
+  hasMore,
+  loading,
+  showTools,
+  showThinking,
+  scroller,
+  loadLatest,
+  loadOlder,
+} = useChatTranscript(props.id);
 const { feedbackByMsg, rate } = useChatFeedback(props.id);
 
 const who = computed(
   () => session.value?.title || session.value?.externalUserId || '—',
 );
 
-const grouped = computed(() => groupTranscript(messages.value));
+const grouped = computed(() =>
+  groupTranscript(messages.value, { thinking: showThinking.value }),
+);
 
 const navItems = computed<INavMapItem[]>(() =>
   messages.value
-    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .filter((m) => m.role === 'user' || (m.role === 'assistant' && !m.interim))
     .map((m) => ({ id: m.id, isUser: m.role === 'user', snippet: snippet(m.text) }))
     .filter((mi) => mi.snippet.length > 0),
 );
@@ -128,14 +138,19 @@ async function onRateSource(messageId: string, n: number, rating: 1 | -1 | null)
         </p>
 
         <template v-for="item in grouped" :key="item.key">
-          <!-- Standalone tool events (no assistant reply after them) -->
+          <!-- Tools or thinking with no assistant reply after them -->
           <div v-if="item.message === null" class="pl-9">
-            <ChatMessageToolEvents :tools="item.tools" class="max-w-[82%]" />
+            <ChatMessageSteps
+              :tools="item.tools"
+              :thinking="item.thinking"
+              class="max-w-[82%]"
+            />
           </div>
           <div v-else :data-msg-id="item.message.id" class="scroll-mt-2">
             <ChatMessageBubble
               :message="item.message"
               :tools="item.tools"
+              :thinking="item.thinking"
               :rating="feedbackByMsg[item.message.id] ?? null"
               @rate="(r: 1 | -1) => rate(item.message!.id, r)"
               @open-source="onOpenSource"
@@ -153,6 +168,7 @@ async function onRateSource(messageId: string, n: number, rating: 1 | -1 | null)
           v-if="session"
           :session="session"
           v-model:show-tools="showTools"
+          v-model:show-thinking="showThinking"
         />
         <ChatDetailSummaryCard
           v-if="session"

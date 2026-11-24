@@ -4041,6 +4041,12 @@ export const ChatMessageDtoSchema = {
       description:
         "Admin debug views only (present when `types` includes tool events): the full text the model received for a user message with attachments.",
     },
+    interim: {
+      type: "boolean",
+      example: true,
+      description:
+        "Assistant messages only (CLEAN-189): the model went on to call tools in the same response, so this is narration between steps, not the answer. The history shows it inside a thinking block, the way the live chat did (CLEAN-242).",
+    },
     sources: {
       description:
         "Assistant messages that cited sources (CLEAN-138): the list under the bubble, in citation order. Absent when the answer drew on nothing.",

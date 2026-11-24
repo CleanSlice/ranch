@@ -111,7 +111,8 @@ export abstract class IBrowserGateway {
 
   /**
    * Drop a Playwright-shaped storageState into the target agent's S3
-   * prefix so the runtime sees `<agentDir>/browser-state/<userId>-<profile>.json`
+   * prefix so the runtime sees `<agentDir>/browser-state/<userId>/<profile>.json`
+   * (CLEAN-244; the old flat name too, for runtimes before 0.39)
    * on its next sync tick. Called by the Chrome extension import flow:
    * the user logs in to a site in their normal browser, the extension
    * reads cookies via the chrome.cookies API, and posts them here.

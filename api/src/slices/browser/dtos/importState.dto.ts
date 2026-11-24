@@ -103,7 +103,7 @@ export class ImportStateResponseDto {
   @ApiProperty({
     description:
       'Relative path under the agent S3 prefix where the storageState was saved. The runtime sees this as `<agentDir>/<path>` after the next S3 sync tick.',
-    example: 'browser-state/55212224-instagram_miybot.json',
+    example: 'browser-state/55212224/instagram_miybot.json',
   })
   path: string;
 

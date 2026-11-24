@@ -16,6 +16,10 @@ import { BrowserMapper } from './browser.mapper';
 import { BrowserlessClient } from './browserless.client';
 import { BrowserWarmerService } from './browser-warmer.service';
 import { IFileGateway } from '#/agent/file/domain';
+import {
+  browserStatePath,
+  legacyBrowserStatePath,
+} from '../domain/browserStatePath';
 
 @Injectable()
 export class BrowserGateway extends IBrowserGateway {
@@ -215,15 +219,13 @@ export class BrowserGateway extends IBrowserGateway {
     origins: unknown[] = [],
     userAgent?: string,
   ) {
-    // Runtime composes the same path as BrowserGateway here in
-    // playwright.repository.localStatePath / browserLogin.repository.
-    // Keep the sanitization regex AND the lowercase step in sync —
-    // diverging means the file would land at a path the agent never
-    // looks at, or split into case variants the way the legacy
-    // admin-instagram.json / admin-Instagram.json files did.
+    // The runtime reads the same path (browserStatePath, CLEAN-244): one
+    // folder per chat identity. Keep the lowercase step and the whitelist of
+    // canonicalAccountKey in sync with it — diverging means the file lands
+    // where the agent never looks, or splits into case variants the way the
+    // old admin-instagram.json / admin-Instagram.json files did.
     profile = BrowserGateway.canonicalAccountKey(profile);
-    const safeUser = userId.replace(/[^a-zA-Z0-9_\-.]/g, '_');
-    const path = `browser-state/${safeUser}-${profile}.json`;
+    const path = browserStatePath(userId, profile);
     // Wrap format when userAgent is supplied so the runtime can replay
     // the SAME browser fingerprint that issued the cookies (Instagram
     // and friends invalidate sessions whose UA shifts between Mac Chrome
@@ -232,7 +234,11 @@ export class BrowserGateway extends IBrowserGateway {
     const payload = userAgent
       ? { userAgent, storageState: { cookies, origins } }
       : { cookies, origins };
-    await this.files.save(agentId, path, JSON.stringify(payload, null, 2));
+    const body = JSON.stringify(payload, null, 2);
+    await this.files.save(agentId, path, body);
+    // Agents still on a runtime before 0.39 look only at the old flat name.
+    const legacy = legacyBrowserStatePath(userId, profile);
+    if (legacy) await this.files.save(agentId, legacy, body);
     // Mirror the import as a BrowserSession row so the admin UI shows
     // "you have cookies for X profile" in the same place pool sessions
     // appear. Same (userId, accountKey) upsert convention used by

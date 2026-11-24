@@ -2,16 +2,21 @@
   "manifest_version": 3,
   "name": "Ranch Cookies",
   "short_name": "Ranch",
-  "version": "0.4.0",
-  "description": "Send cookies for the current site to a Ranch integration (per-user) or directly to a specific agent. Skip VNC by reusing the logged-in session in your normal browser.",
+  "version": "0.5.0",
+  "description": "Hand your signed-in browser session to your Ranch agents — all of them through your integrations, or the ones you pick. No VNC, no passwords.",
   "icons": {
     "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Send cookies to Ranch"
+    "default_title": "Send cookies to Ranch",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
   },
   "permissions": ["cookies", "storage", "activeTab", "tabs", "scripting"],
   "host_permissions": ["<all_urls>"],

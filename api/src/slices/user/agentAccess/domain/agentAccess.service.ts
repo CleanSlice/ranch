@@ -471,15 +471,22 @@ export class AgentAccessService implements IAgentReach {
    * from the database now. For a credential that outlives a session (the
    * browser extension's token): an account that is gone or disabled
    * reaches nothing, an Admin or User what their lists reach today.
+   *
+   * Returns the account as it is now when it reaches the agent, null when it
+   * does not — so the caller acts on today's role too, not the token's
+   * (CLEAN-243).
    */
-  async accountReachesExisting(
+  async accountReachingExisting(
     userId: string,
     agentId: string,
-  ): Promise<boolean> {
+  ): Promise<{ id: string; role: UserRoleTypes } | null> {
     const user = userId ? await this.users.findById(userId) : null;
-    if (!user || user.status === 'disabled') return false;
-    if (!agentId || !(await this.gateway.agentExists(agentId))) return false;
-    return this.reaches({ userId: user.id, role: user.role }, agentId);
+    if (!user || user.status === 'disabled') return null;
+    if (!agentId || !(await this.gateway.agentExists(agentId))) return null;
+    const account = { id: user.id, role: user.role };
+    return (await this.reaches({ userId: account.id, role: account.role }, agentId))
+      ? account
+      : null;
   }
 
   /**

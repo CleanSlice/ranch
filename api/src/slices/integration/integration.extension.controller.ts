@@ -23,7 +23,8 @@ import { JwtService } from '@nestjs/jwt';
 import * as archiver from 'archiver';
 import { Request, Response } from 'express';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
-import { JwtAuthGuard, Public } from '#/user/auth/guards';
+import { JwtAuthGuard, Public, Roles } from '#/user/auth/guards';
+import { UserRoleTypes } from '#/user/user/domain/user.types';
 import { IntegrationService } from './domain/integration.service';
 import {
   ExtensionImportStateDto,
@@ -66,6 +67,9 @@ export class IntegrationExtensionController {
   })
   @ApiOkResponse({ type: IssueIntegrationExtensionTokenResponseDto })
   @UseGuards(JwtAuthGuard)
+  // Any signed-in person: the token writes into the caller's own
+  // integration store and nobody else's (CLEAN-243).
+  @Roles(UserRoleTypes.User)
   async issueToken(
     @Body() dto: IssueIntegrationExtensionTokenDto,
     @Req() req: Request & { user: IAuthTokenPayload },

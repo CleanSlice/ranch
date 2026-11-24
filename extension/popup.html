@@ -1,323 +1,115 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
     <title>Ranch Cookies</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-        --fg: #0a0a0a;
-        --fg-muted: #71717a;
-        --bg: #ffffff;
-        --bg-soft: #f4f4f5;
-        --border: #e4e4e7;
-        --accent: #18181b;
-        --accent-fg: #fafafa;
-        --danger: #dc2626;
-        --success: #059669;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --fg: #fafafa;
-          --fg-muted: #a1a1aa;
-          --bg: #0a0a0a;
-          --bg-soft: #18181b;
-          --border: #27272a;
-          --accent: #fafafa;
-          --accent-fg: #0a0a0a;
-          --danger: #f87171;
-          --success: #34d399;
-        }
-      }
-      *, *::before, *::after { box-sizing: border-box; }
-      html, body { margin: 0; padding: 0; width: 380px; }
-      body {
-        font: 13px/1.5 system-ui, -apple-system, sans-serif;
-        color: var(--fg);
-        background: var(--bg);
-      }
-      section { padding: 16px; }
-
-      /* ── header ───────────────────────────────────────────────── */
-      .head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-      .head img { width: 28px; height: 28px; border-radius: 6px; }
-      .head .title { font-size: 14px; font-weight: 600; line-height: 1.2; }
-      .head .meta {
-        font-size: 11px; color: var(--fg-muted);
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      }
-
-      /* ── typography ───────────────────────────────────────────── */
-      h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
-      p.hint { color: var(--fg-muted); font-size: 12px; margin: 4px 0 0; }
-      label.field-label {
-        display: block; font-size: 11px; font-weight: 600;
-        color: var(--fg-muted); margin: 14px 0 6px;
-        text-transform: uppercase; letter-spacing: 0.05em;
-      }
-
-      /* ── inputs ───────────────────────────────────────────────── */
-      input[type="url"], input[type="text"] {
-        width: 100%; padding: 9px 11px;
-        border: 1px solid var(--border); border-radius: 8px;
-        background: var(--bg); color: var(--fg); font: inherit;
-      }
-      input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-
-      /* ── buttons ──────────────────────────────────────────────── */
-      button.primary {
-        display: block; width: 100%; margin-top: 14px;
-        padding: 10px 14px; border: 0; border-radius: 8px;
-        background: var(--accent); color: var(--accent-fg);
-        font: inherit; font-weight: 600; cursor: pointer;
-      }
-      button.primary:disabled { opacity: 0.4; cursor: not-allowed; }
-      button.secondary {
-        display: block; width: 100%; margin-top: 8px;
-        padding: 9px 14px; border: 1px solid var(--border); border-radius: 8px;
-        background: transparent; color: var(--fg); font: inherit;
-        font-weight: 500; cursor: pointer;
-      }
-      button.link {
-        background: transparent; border: 0; padding: 0;
-        color: var(--fg-muted); font: inherit; font-size: 12px;
-        text-decoration: underline; cursor: pointer;
-      }
-
-      /* ── site card ────────────────────────────────────────────── */
-      .site {
-        display: flex; align-items: center; gap: 9px;
-        padding: 10px 12px; background: var(--bg-soft);
-        border-radius: 8px;
-      }
-      .site .dot {
-        width: 8px; height: 8px; border-radius: 50%;
-        background: var(--fg-muted); flex: none;
-      }
-      .site .dot.on { background: var(--success); }
-      .site .host {
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 12px; font-weight: 600; flex: 1;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      }
-      .site .count { font-size: 11px; color: var(--fg-muted); flex: none; }
-
-      /* ── banner ───────────────────────────────────────────────── */
-      .banner {
-        margin-top: 10px; padding: 9px 11px; border-radius: 8px;
-        font-size: 12px; line-height: 1.45;
-      }
-      .banner.ok {
-        background: color-mix(in srgb, var(--success) 12%, transparent);
-        border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
-      }
-      .banner.ok strong { color: var(--success); }
-      .banner.warn {
-        background: color-mix(in srgb, var(--danger) 9%, transparent);
-        border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
-      }
-      .banner.warn strong { color: var(--danger); }
-
-      /* ── setup screen ─────────────────────────────────────────── */
-      .setup-hero { text-align: center; padding: 10px 0 2px; }
-      .setup-hero img { width: 56px; height: 56px; border-radius: 13px; }
-      .setup-hero h1 { margin: 12px 0 2px; }
-      .setup-checking {
-        text-align: center; color: var(--fg-muted); font-size: 12px;
-        padding: 22px 0;
-      }
-      .detect-card {
-        margin: 14px 0; padding: 13px 12px; text-align: center;
-        background: color-mix(in srgb, var(--success) 10%, transparent);
-        border: 1px solid color-mix(in srgb, var(--success) 32%, transparent);
-        border-radius: 10px;
-      }
-      .detect-card .detect-host {
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 13px; font-weight: 600; color: var(--success);
-      }
-      .detect-card .detect-status {
-        margin-top: 4px; color: var(--fg-muted); font-size: 11px;
-      }
-      .tip {
-        margin-bottom: 4px; padding: 10px 12px;
-        background: var(--bg-soft); border-radius: 9px;
-        font-size: 12px; line-height: 1.5; color: var(--fg-muted);
-      }
-      button.link.center { display: block; margin: 12px auto 0; }
-
-      /* ── segmented control (share scope) ──────────────────────── */
-      .seg {
-        display: flex; gap: 2px; padding: 3px;
-        background: var(--bg-soft); border-radius: 9px;
-      }
-      .seg label {
-        flex: 1; text-align: center; cursor: pointer;
-        padding: 7px 8px; border-radius: 6px;
-        font-size: 12px; font-weight: 600; color: var(--fg-muted);
-      }
-      .seg label:has(input:checked) {
-        background: var(--bg); color: var(--fg);
-        box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
-      }
-      .seg input { position: absolute; opacity: 0; pointer-events: none; }
-
-      /* ── agent checklist ──────────────────────────────────────── */
-      .agents {
-        margin-top: 8px; border: 1px solid var(--border);
-        border-radius: 8px; overflow: hidden;
-        max-height: 168px; overflow-y: auto;
-      }
-      .agent {
-        display: flex; align-items: center; gap: 9px;
-        padding: 8px 11px; cursor: pointer;
-        border-top: 1px solid var(--border);
-      }
-      .agent:first-child { border-top: 0; }
-      .agent:hover { background: var(--bg-soft); }
-      .agent input { width: 15px; height: 15px; accent-color: var(--accent); flex: none; }
-      .agent .name { flex: 1; font-weight: 500; }
-      .agent .badge {
-        font-size: 10px; font-weight: 600; color: var(--fg-muted);
-        background: var(--bg-soft); border: 1px solid var(--border);
-        padding: 1px 6px; border-radius: 5px;
-      }
-      .agents-msg { padding: 14px 12px; text-align: center; color: var(--fg-muted); font-size: 12px; }
-
-      /* ── status ───────────────────────────────────────────────── */
-      .status { margin-top: 12px; padding: 9px 11px; border-radius: 8px; font-size: 12px; line-height: 1.45; }
-      .status.ok { background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--success); }
-      .status.err { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
-
-      /* ── footer ───────────────────────────────────────────────── */
-      .foot {
-        display: flex; justify-content: space-between; align-items: center;
-        margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);
-        font-size: 11px; color: var(--fg-muted);
-      }
-
-      .spinner {
-        display: inline-block; width: 13px; height: 13px;
-        border: 2px solid currentColor; border-top-color: transparent;
-        border-radius: 50%; animation: spin 0.7s linear infinite;
-        vertical-align: -2px; margin-right: 6px;
-      }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      [hidden] { display: none !important; }
-    </style>
+    <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <!-- ========== STATE: unconfigured ========== -->
-    <section id="screen-setup" hidden>
-      <div class="setup-hero">
-        <img src="icons/icon-128.png" alt="Ranch" />
-        <h1>Connect Ranch</h1>
+    <header class="top">
+      <img class="top-mark" src="brand/mark.webp" alt="" width="26" height="23" />
+      <img class="top-word" src="brand/wordmark.webp" alt="Ranch" height="11" />
+      <span class="top-spacer"></span>
+      <span id="top-who" class="pill" hidden></span>
+      <button id="menu-btn" class="icon-btn" type="button" aria-label="Connection settings" aria-haspopup="menu" aria-expanded="false" hidden>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" /></svg>
+      </button>
+      <div id="menu" class="menu" role="menu" hidden>
+        <div id="menu-host" class="menu-host"></div>
+        <button id="menu-change" type="button" role="menuitem">Change Ranch address</button>
+        <button id="menu-disconnect" type="button" role="menuitem" class="danger">Disconnect</button>
       </div>
+    </header>
 
-      <!-- detection in progress -->
-      <div id="setup-checking" class="setup-checking">
-        <span class="spinner"></span> Checking this tab…
-      </div>
+    <!-- Loading: while the popup works out where it stands -->
+    <main id="screen-loading" class="screen center">
+      <span class="spinner lg" aria-hidden="true"></span>
+      <p class="muted">Connecting to Ranch…</p>
+    </main>
 
-      <!-- A: opened on a Ranch admin tab — one click, no fields -->
-      <div id="detect-block" hidden>
-        <div class="detect-card">
-          <div class="detect-host" id="detect-host">—</div>
-          <div class="detect-status" id="detect-status"></div>
+    <!-- Setup: which Ranch to talk to -->
+    <main id="screen-setup" class="screen" hidden>
+      <h1>Connect to Ranch</h1>
+      <p class="muted">Hand your signed-in browser session to your agents — no VNC, no passwords.</p>
+
+      <div id="detect-card" class="card detect" hidden>
+        <img src="brand/mark.webp" alt="" width="22" height="19" />
+        <div class="grow">
+          <div class="strong" id="detect-host"></div>
+          <div class="muted small" id="detect-note"></div>
         </div>
-        <button id="detect-use" class="primary">Use this site</button>
-        <button id="detect-manual" type="button" class="link center">
-          Enter URLs manually
-        </button>
+        <button id="detect-use" class="btn primary sm" type="button">Connect</button>
       </div>
 
-      <!-- B: opened on any other page — manual entry + tip -->
-      <div id="manual-block" hidden>
-        <div class="tip" id="setup-tip">
-          Tip: open your Ranch admin in a tab and click the extension
-          there — it connects in one click, no URLs to type.
-        </div>
-        <label class="field-label" for="setup-url">Ranch admin URL</label>
-        <input id="setup-url" type="url" placeholder="https://admin.ranch.cleanslice.org" autocomplete="off" />
-        <label class="field-label" for="setup-api">Ranch API URL</label>
-        <input id="setup-api" type="url" placeholder="https://api.ranch.cleanslice.org" autocomplete="off" />
-        <p class="hint">
-          Auto-filled from the admin URL. Edit it for local dev — admin
-          and API run on different ports (e.g. <code>localhost:3000</code>).
-        </p>
-        <button id="setup-continue" class="primary">Continue</button>
-      </div>
-    </section>
+      <form id="setup-form" class="stack" novalidate>
+        <label class="field">
+          <span class="label">Ranch address</span>
+          <input id="setup-url" type="url" placeholder="https://ranch.cleanslice.org" autocomplete="url" spellcheck="false" />
+          <span class="hint">The console you sign in to — the app or the admin console.</span>
+        </label>
+        <details id="setup-advanced" class="advanced">
+          <summary>API address</summary>
+          <label class="field">
+            <input id="setup-api" type="url" aria-label="API address" placeholder="https://api.ranch.cleanslice.org" spellcheck="false" />
+            <span class="hint">Filled in for you. Change it for a local stack, where the API has its own port.</span>
+          </label>
+        </details>
+        <p id="setup-error" class="inline-error" role="alert" hidden></p>
+        <button id="setup-continue" class="btn primary" type="submit">Continue</button>
+      </form>
+      <p class="tip">Tip: open your Ranch console in this tab and click the icon again — it connects in one click.</p>
+    </main>
 
-    <!-- ========== STATE: needs-login ========== -->
-    <section id="screen-login" hidden>
+    <!-- Login: connected, but no console session to renew -->
+    <main id="screen-login" class="screen" hidden>
       <h1>Sign in to Ranch</h1>
-      <p class="hint">
-        No login cookie found at <strong id="login-host"></strong>.
-        Sign in there, then come back and click below.
-      </p>
-      <button id="login-open" class="primary">Open Ranch login</button>
-      <button id="login-retry" class="secondary">I've signed in — check again</button>
-      <div class="foot">
-        <span></span>
-        <button id="login-reset" class="link">Use a different URL</button>
+      <p class="muted">The extension uses your console sign-in on <span class="mono" id="login-host"></span>. Sign in there, then come back.</p>
+      <p id="login-error" class="inline-error" role="alert" hidden></p>
+      <div class="stack">
+        <button id="login-open" class="btn primary" type="button">Open sign-in</button>
+        <button id="login-retry" class="btn" type="button">I've signed in — check again</button>
       </div>
-    </section>
+    </main>
 
-    <!-- ========== STATE: ready ========== -->
-    <section id="screen-main" hidden>
-      <div class="head">
-        <img src="icons/icon-48.png" alt="" />
-        <div style="min-width:0;flex:1;">
-          <div class="title">Send cookies → Ranch</div>
-          <div class="meta" id="head-host">—</div>
+    <!-- Main: send this site's cookies -->
+    <main id="screen-main" class="screen" hidden>
+      <div class="card site">
+        <img id="site-icon" class="site-icon" alt="" width="20" height="20" hidden />
+        <span id="site-icon-fallback" class="site-icon fallback" aria-hidden="true"></span>
+        <div class="grow min0">
+          <div class="strong truncate" id="site-host"></div>
+          <div class="muted small" id="site-count"></div>
         </div>
+        <span id="site-service" class="badge" hidden></span>
       </div>
 
-      <!-- current site -->
-      <div class="site">
-        <span class="dot" id="site-dot"></span>
-        <span class="host" id="site-host">—</span>
-        <span class="count" id="site-count">no cookies</span>
-      </div>
+      <div id="notice" class="notice" hidden></div>
 
-      <!-- service detection banner -->
-      <div id="detected" class="banner" hidden></div>
-
-      <!-- account label -->
-      <label class="field-label" for="account-key">Account label</label>
-      <input id="account-key" type="text" placeholder="miybot, default, …" autocomplete="off" />
-      <p class="hint" id="account-hint">A friendly name for this account.</p>
-
-      <!-- share scope -->
-      <label class="field-label">Share with</label>
-      <div class="seg" role="radiogroup">
-        <label>
-          <input type="radio" name="scope" value="all" checked />
-          <span>All my agents</span>
+      <div id="send-form" class="stack">
+        <label class="field">
+          <span class="label">Account label</span>
+          <input id="account-key" type="text" maxlength="60" spellcheck="false" autocomplete="off" />
+          <span class="hint" id="account-hint"></span>
         </label>
-        <label>
-          <input type="radio" name="scope" value="some" />
-          <span>Specific agents</span>
-        </label>
+
+        <div class="field">
+          <span class="label" id="scope-label">Who gets the cookies</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="scope-label">
+            <button type="button" role="radio" data-scope="all" aria-checked="true">All my agents</button>
+            <button type="button" role="radio" data-scope="some" aria-checked="false">Specific agents</button>
+          </div>
+          <span class="hint" id="scope-hint"></span>
+        </div>
+
+        <div id="agents" class="agents" hidden></div>
+
+        <button id="send-btn" class="btn primary" type="button" disabled>Send cookies</button>
+        <p id="send-why" class="hint center-text" hidden></p>
       </div>
-      <p class="hint" id="scope-hint">
-        Cookies go to your per-user store — every agent you run can use them.
-      </p>
 
-      <!-- agent checklist (only when scope = some) -->
-      <div id="agents" class="agents" hidden></div>
-
-      <button id="send-btn" class="primary" disabled>Send cookies</button>
-
-      <div id="status" class="status" hidden></div>
-
-      <div class="foot">
-        <button id="edit-urls" class="link">Edit URLs</button>
-        <button id="disconnect" class="link">Disconnect</button>
-      </div>
-    </section>
+      <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+    </main>
 
     <script src="popup.js" type="module"></script>
   </body>

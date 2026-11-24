@@ -3079,9 +3079,10 @@ export type IssueExtensionTokenDto = {
    */
   agentId: string;
   /**
-   * User ID (within the agent context — typically the Telegram user ID for chat-driven agents, or "admin" for the admin agent). Used as the filename prefix so multiple humans can keep separate cookies inside one agent.
+   * Ignored (CLEAN-243). The cookies are filed under the caller's own chat identity — `admin` for the Owner, the account id for anyone else — so nobody writes into another person's browser state. Accepted so an older extension still gets its token.
+   * @deprecated
    */
-  userId: string;
+  userId?: string;
   /**
    * Token lifetime in days. Defaults to 30; max 365.
    */

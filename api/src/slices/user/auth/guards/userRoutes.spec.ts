@@ -76,6 +76,14 @@ const EXPECTED_USER_ROUTES = [
   'DELETE /mcp/mcp',
   'GET /mcp/sse',
   'POST /mcp/messages',
+  // The Ranch Cookies extension (CLEAN-243), signed in through the user
+  // console's session. The catalogue is the static list of services. The
+  // integration token writes only into the caller's own integration store;
+  // the browser token only for an agent the caller reaches (@AgentScoped),
+  // and the import files the cookies under the caller's chat identity.
+  'GET /integrations/catalogue',
+  'POST /integrations/extension/token',
+  'POST /browser/extension/token',
 ].sort();
 
 describe('routes a User may call', () => {

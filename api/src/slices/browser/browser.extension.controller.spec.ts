@@ -1,4 +1,8 @@
-import { NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { JwtService } from '@nestjs/jwt';
 import type { IUserGateway } from '#/user/user/domain/user.gateway';
 import { UserRoleTypes } from '#/user/user/domain/user.types';
@@ -33,7 +37,11 @@ function harness(accounts: IAccount[]) {
   const gateway = { importStorageState } as unknown as IBrowserGateway;
   // The token's claims, as `jwt.verify` hands them back.
   let claims: Record<string, unknown> = {};
-  const jwt = { verify: () => claims } as unknown as JwtService;
+  const jwt = {
+    verify: () => claims,
+    sign: (body: Record<string, unknown>) => JSON.stringify(body),
+    decode: () => ({ exp: 1 }),
+  } as unknown as JwtService;
   const controller = new BrowserExtensionController(gateway, jwt, access);
   const importAs = (sub: string, agentId = 'agent-a') => {
     claims = { sub, agentId, userId: 'admin', scope: 'browser:cookies' };
@@ -42,7 +50,7 @@ function harness(accounts: IAccount[]) {
       'Bearer extension-token',
     );
   };
-  return { lists, importAs, importStorageState, accounts };
+  return { lists, importAs, importStorageState, accounts, controller };
 }
 
 const admin = (): IAccount => ({
@@ -136,5 +144,50 @@ describe('BrowserExtensionController.importState', () => {
     await expect(
       controller.importState({} as never, 'Bearer console-token'),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+});
+
+// Whose browser state the cookies land in (CLEAN-243). The runtime files a
+// person's state under their chat identity — `admin` for the Owner, the
+// account id for anyone else (CLEAN-236) — and the extension used to send
+// `admin` for everybody, into the Owner's file.
+describe('BrowserExtensionController — whose cookies', () => {
+  const owner = (): IAccount => ({
+    id: 'user-owner',
+    role: UserRoleTypes.Owner,
+    status: 'active',
+  });
+
+  it('an import an Admin makes lands in their own file, whatever the old token says', async () => {
+    const { importAs, importStorageState } = harness([admin()]);
+    // `importAs` signs the claims the old extension minted: userId `admin`.
+    await importAs('user-admin');
+    expect(importStorageState.mock.calls[0][2]).toBe('user-admin');
+  });
+
+  it("the Owner's import lands in the Owner's file, `admin`", async () => {
+    const { importAs, importStorageState } = harness([owner()]);
+    await importAs('user-owner');
+    expect(importStorageState.mock.calls[0][2]).toBe('admin');
+  });
+
+  it('a minted token names the caller, not what the body says', async () => {
+    const { controller } = harness([admin()]);
+    const mint = (user: Record<string, unknown>) =>
+      controller
+        .issueToken({ agentId: 'agent-a', userId: 'admin' } as never, {
+          user,
+        } as never)
+        .then((r) => JSON.parse(r.token) as Record<string, unknown>);
+    await expect(
+      mint({ sub: 'user-admin', roles: [UserRoleTypes.Admin] }),
+    ).resolves.toMatchObject({ sub: 'user-admin', userId: 'user-admin' });
+    await expect(
+      mint({ sub: 'user-owner', roles: [UserRoleTypes.Owner] }),
+    ).resolves.toMatchObject({ userId: 'admin' });
+    // A token that proves no person mints nothing.
+    await expect(mint({ roles: [UserRoleTypes.User] })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 });

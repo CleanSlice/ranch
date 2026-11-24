@@ -36,18 +36,28 @@ the API has its own port, e.g. `http://localhost:3000`.
 Since CLEAN-236 each console keeps its own HttpOnly session cookie on the API
 host — `ranch_session_app` and `ranch_session_admin` — and holds its access
 token in memory only. The extension borrows that sign-in the way the console
-renews it: `POST /auth/refresh` with `X-Ranch-Console`, the app's session
-first, then the admin's. Chrome sends the API host's cookies with the
-extension's request because the extension has host permission for it. A
-refresh does not rotate the session secret, so the console tab stays signed
-in, and signing out of the console signs the extension out too.
+renews it: `POST /auth/refresh` with `X-Ranch-Console`. Chrome sends the API
+host's cookies with the extension's request because the extension has host
+permission for it. A refresh does not rotate the session secret, so the
+console tab stays signed in, and signing out of the console signs the
+extension out too.
+
+**App / Admin tabs.** The two consoles may be two different people on one
+browser — a User in the app, the Owner in the admin console. The tabs say
+which sign-in the cookies are sent as; a dot marks each console that holds a
+session here, and the header shows the account's email. The extension never
+falls over to the other console on its own: a tab whose console is signed out
+offers that console's sign-in, and says when the other one is signed in.
+Before the first pick it opens on the console that is signed in, the app
+first. The addresses of both consoles come from the API's (`api.<domain>` →
+`<domain>` and `admin.<domain>`); on a local stack each is learnt from its
+tab.
 
 The access token lives in the popup's memory only. Stored in
-`chrome.storage.local`: the Ranch and API addresses, the long-lived
-`integration:cookies` token for "All my agents", the integration catalogue
-(refreshed daily) and the last label per site.
-
-If neither console is signed in, the popup offers **Open sign-in**.
+`chrome.storage.local`: the API and console addresses, the chosen console,
+the long-lived `integration:cookies` token for "All my agents" with the
+account it belongs to, the integration catalogue (refreshed daily) and the
+last label per site.
 
 ## Use
 
@@ -75,6 +85,8 @@ so a User's import would be the session any agent signs in with.
 ## What's not sent
 
 - **localStorage** — the runtime restores cookies only.
+- Ranch's own cookies: on a Ranch console tab the popup says so instead of
+  offering to send.
 - Cookies of other sites. The popup reads the cookies sent to the open page
   (parent domains included, where sign-ins like `.google.com` live) and those
   of the site's other subdomains.

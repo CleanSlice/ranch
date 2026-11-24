@@ -22,6 +22,18 @@
       </div>
     </header>
 
+    <!-- Which console's sign-in the extension acts under (CLEAN-243). Each
+         console has a session of its own; the person picks, nothing falls
+         over to the other one behind their back. -->
+    <nav id="console-tabs" class="console-tabs" role="tablist" aria-label="Sign in as" hidden>
+      <button type="button" role="tab" data-console="app" aria-selected="true">
+        <span class="dot" aria-hidden="true"></span>App
+      </button>
+      <button type="button" role="tab" data-console="admin" aria-selected="false">
+        <span class="dot" aria-hidden="true"></span>Admin
+      </button>
+    </nav>
+
     <!-- Loading: while the popup works out where it stands -->
     <main id="screen-loading" class="screen center">
       <span class="spinner lg" aria-hidden="true"></span>
@@ -63,8 +75,8 @@
 
     <!-- Login: connected, but no console session to renew -->
     <main id="screen-login" class="screen" hidden>
-      <h1>Sign in to Ranch</h1>
-      <p class="muted">The extension uses your console sign-in on <span class="mono" id="login-host"></span>. Sign in there, then come back.</p>
+      <h1 id="login-title">Sign in to Ranch</h1>
+      <p class="muted" id="login-text"></p>
       <p id="login-error" class="inline-error" role="alert" hidden></p>
       <div class="stack">
         <button id="login-open" class="btn primary" type="button">Open sign-in</button>
@@ -74,6 +86,10 @@
 
     <!-- Main: send this site's cookies -->
     <main id="screen-main" class="screen" hidden>
+      <div id="ranch-self" class="notice" hidden>
+        <strong>This is Ranch itself.</strong> Open the site your agents should sign in to — Instagram, a supplier portal, anything — and click the icon there.
+      </div>
+
       <div class="card site">
         <img id="site-icon" class="site-icon" alt="" width="20" height="20" hidden />
         <span id="site-icon-fallback" class="site-icon fallback" aria-hidden="true"></span>

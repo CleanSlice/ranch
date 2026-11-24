@@ -2,7 +2,7 @@
 import type { ChatExportFormat, IChatMessage } from '#chat/stores/chat';
 import type { BridleService } from '#bridle/domain';
 import { openDocument } from '#bridle/stores/bridle';
-import { snippet, type INavMapItem } from '#chat/utils/transcript';
+import { foldThinking, snippet, type INavMapItem } from '#chat/utils/transcript';
 import { useFormat } from '#common/composables/useFormat';
 
 const props = defineProps<{ id: string }>();
@@ -134,9 +134,12 @@ function fmt(iso?: string | null): string {
   return format.dateTime(iso) || '—';
 }
 
+// Narration goes into a thinking block above its reply, as it did live (CLEAN-242).
+const items = computed(() => foldThinking(messages.value));
+
 const navItems = computed<INavMapItem[]>(() =>
   messages.value
-    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .filter((m) => m.role === 'user' || (m.role === 'assistant' && !m.interim))
     .map((m) => ({ id: m.id, isUser: m.role === 'user', snippet: snippet(m.text) }))
     .filter((mi) => mi.snippet.length > 0),
 );
@@ -238,20 +241,22 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
             </button>
           </div>
 
-          <div
-            v-for="m in messages"
-            :key="m.id"
-            :data-msg-id="m.id"
-            class="scroll-mt-2"
-          >
-            <ChatMessageBubble
-              :message="m"
-              :rating="feedbackByMsg[m.id] ?? null"
-              @rate="(r: 1 | -1) => onRate(m.id, r)"
-              @open-source="(n: number) => onOpenSource(m.id, n)"
-              @rate-source="(n: number, r: 1 | -1 | null) => onRateSource(m.id, n, r)"
-            />
-          </div>
+          <template v-for="item in items" :key="item.key">
+            <!-- Narration with no reply after it -->
+            <div v-if="item.message === null" class="pl-11">
+              <BridleChatThinking :block="item.thinking!" :agent-name="$t('chat.agent')" />
+            </div>
+            <div v-else :data-msg-id="item.message.id" class="scroll-mt-2">
+              <ChatMessageBubble
+                :message="item.message"
+                :thinking="item.thinking"
+                :rating="feedbackByMsg[item.message.id] ?? null"
+                @rate="(r: 1 | -1) => onRate(item.message!.id, r)"
+                @open-source="(n: number) => onOpenSource(item.message!.id, n)"
+                @rate-source="(n: number, r: 1 | -1 | null) => onRateSource(item.message!.id, n, r)"
+              />
+            </div>
+          </template>
         </div>
 
         <!-- Right rail -->

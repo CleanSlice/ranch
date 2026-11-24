@@ -135,6 +135,7 @@ export class ChatMapper {
           }
         : {}),
       ...(sources.length ? { sources } : {}),
+      ...(dto.interim === true ? { interim: true as const } : {}),
     };
   }
 

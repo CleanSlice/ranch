@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, toRefs, watch, onMounted, onUnmounted, type HTMLAttributes } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBridleStore, type IBridleThinkingStep, type IThinkingBlock } from '../../stores/bridle'
+import { useBridleStore } from '../../stores/bridle'
 import { buildChatFlow, type IChatFlowDayItem } from '../../utils/chatFlow'
 import Message from './Message.vue'
+import Thinking from './Thinking.vue'
 import Input from './Input.vue'
 import DropZone from './DropZone.vue'
 import Toggles from './Toggles.vue'
@@ -12,12 +13,11 @@ import DebugPanel from './DebugPanel.vue'
 import { Card, CardContent, CardFooter, CardHeader } from '#theme/components/ui/card'
 import { ScrollArea } from '#theme/components/ui/scroll-area'
 import { Button } from '#theme/components/ui/button'
-import { Bot, ChevronDown, Circle, MessageSquarePlus, RotateCw } from 'lucide-vue-next'
+import { Bot, Circle, MessageSquarePlus, RotateCw } from 'lucide-vue-next'
 import { cn } from '#theme/utils/cn'
 import { authedFetch } from '#auth/utils/authedFetch'
 import { useAuthStore } from '#auth/stores/auth'
 import { ownChannel } from '../../utils/ownChannel'
-import { renderMarkdown } from '../../utils/markdown'
 import { shouldShowOfflineHint } from '../../utils/offlineHint'
 
 // No `token` prop: every request and the socket read the current bearer from
@@ -126,26 +126,6 @@ function dayLabel(item: IChatFlowDayItem): string {
   if (item.relative === 'today') return 'Today'
   if (item.relative === 'yesterday') return 'Yesterday'
   return item.label
-}
-
-// A turn may span several segments (blocks) — turnId + seg identifies one.
-function blockKey(b: IThinkingBlock): string {
-  return `${b.turnId}#${b.seg}`
-}
-
-// segment key → collapsed override; unset = open while thinking, collapsed when done.
-const collapsedBlocks = ref<Record<string, boolean>>({})
-// stepId → detail expanded; steps arrive collapsed.
-const expandedSteps = ref<Record<string, boolean>>({})
-
-function isBlockCollapsed(b: IThinkingBlock): boolean {
-  return collapsedBlocks.value[blockKey(b)] ?? b.status === 'done'
-}
-function toggleBlock(b: IThinkingBlock): void {
-  collapsedBlocks.value[blockKey(b)] = !isBlockCollapsed(b)
-}
-function toggleStep(s: IBridleThinkingStep): void {
-  expandedSteps.value[s.id] = !expandedSteps.value[s.id]
 }
 
 function onMarkdownChange(v: boolean | 'indeterminate') {
@@ -662,70 +642,11 @@ async function onConfirmReset() {
             >
               {{ dayLabel(item) }}
             </div>
-            <div
+            <Thinking
               v-else-if="item.kind === 'block'"
-              class="mr-auto flex max-w-full flex-col gap-1.5 px-1"
-              :role="item.block.status === 'thinking' ? 'status' : undefined"
-              :aria-label="item.block.status === 'thinking' ? thinkingLabel : undefined"
-            >
-              <div class="flex items-center gap-1.5">
-                <span
-                  :class="['text-sm font-medium text-muted-foreground', item.block.status === 'thinking' && 'shimmer shimmer-duration-1600']"
-                >{{ item.block.status === 'thinking' ? thinkingLabel : 'Thought for a moment' }}</span>
-                <button
-                  v-if="item.block.steps.length"
-                  type="button"
-                  class="p-0.5 text-muted-foreground"
-                  :aria-expanded="!isBlockCollapsed(item.block)"
-                  aria-label="Toggle thinking details"
-                  @click="toggleBlock(item.block)"
-                >
-                  <ChevronDown :class="cn('h-3.5 w-3.5 transition-transform', isBlockCollapsed(item.block) && '-rotate-90')" />
-                </button>
-              </div>
-              <div
-                v-if="item.block.steps.length && !isBlockCollapsed(item.block)"
-                class="ml-1 flex flex-col gap-0.5 border-l border-border pl-3"
-              >
-                <div
-                  v-for="s in item.block.steps"
-                  :key="s.id"
-                  class="flex flex-col items-start"
-                >
-                  <!-- A delegation is a step like any other on the wire, so
-                       every surface still shows it. Here it gets the layout
-                       it earns: who was asked, what their card promised,
-                       why they were picked, and a clock while we wait. -->
-                  <BridleDelegationStep
-                    v-if="s.kind === 'delegation' && s.delegation"
-                    :step="s"
-                  />
-                  <button
-                    v-else-if="s.detail"
-                    type="button"
-                    class="flex items-center gap-1.5 py-0.5 text-[13px] text-muted-foreground"
-                    :aria-expanded="!!expandedSteps[s.id]"
-                    :aria-controls="`bridle-admin-step-${s.id}`"
-                    @click="toggleStep(s)"
-                  >
-                    <span :class="s.state === 'active' ? 'shimmer shimmer-duration-1600 text-foreground' : ''">{{ s.label }}</span>
-                    <ChevronDown :class="cn('h-3 w-3 shrink-0 transition-transform', !expandedSteps[s.id] && '-rotate-90')" />
-                  </button>
-                  <div v-else class="py-0.5 text-[13px] text-muted-foreground">
-                    <span :class="s.state === 'active' ? 'shimmer shimmer-duration-1600 text-foreground' : ''">{{ s.label }}</span>
-                  </div>
-                  <!-- Not for a delegation: its own layout already shows
-                       everything the markdown detail repeats for surfaces
-                       that have no layout of their own. -->
-                  <div
-                    v-if="s.kind !== 'delegation' && s.detail && expandedSteps[s.id]"
-                    :id="`bridle-admin-step-${s.id}`"
-                    class="chat-md mb-1.5 max-w-full border-l-2 border-border pl-2 text-[13px] leading-relaxed text-muted-foreground wrap-anywhere"
-                    v-html="renderMarkdown(s.detail)"
-                  />
-                </div>
-              </div>
-            </div>
+              :block="item.block"
+              :label="thinkingLabel"
+            />
           </template>
 
           <div

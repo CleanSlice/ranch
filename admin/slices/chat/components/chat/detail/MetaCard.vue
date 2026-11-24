@@ -3,6 +3,7 @@ import type { IChatSession } from '#chat/stores/chat';
 
 defineProps<{ session: IChatSession }>();
 const showTools = defineModel<boolean>('showTools', { required: true });
+const showThinking = defineModel<boolean>('showThinking', { required: true });
 </script>
 
 <template>
@@ -43,6 +44,22 @@ const showTools = defineModel<boolean>('showTools', { required: true });
         />
       </button>
       Tool events
+    </label>
+    <label class="flex cursor-pointer items-center gap-2 text-[12.5px] text-foreground/80">
+      <button
+        type="button"
+        role="switch"
+        :aria-checked="showThinking"
+        class="relative h-[18px] w-8 shrink-0 rounded-full transition-colors"
+        :class="showThinking ? 'bg-primary' : 'bg-muted-foreground/25'"
+        @click="showThinking = !showThinking"
+      >
+        <span
+          class="absolute top-0.5 size-3.5 rounded-full bg-white shadow-sm transition-[left]"
+          :class="showThinking ? 'left-[15px]' : 'left-0.5'"
+        />
+      </button>
+      Thinking
     </label>
   </div>
 </template>

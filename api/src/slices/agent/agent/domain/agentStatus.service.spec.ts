@@ -74,6 +74,8 @@ interface ITestBed {
   };
   deployTracker: { mark: jest.Mock; clear: jest.Mock; isStale: jest.Mock };
   apiInstances: { liveCount: jest.Mock };
+  toolSummaries: Map<string, 'connecting' | 'limited'>;
+  toolChanges: Subject<string>;
 }
 
 function createTestBed(
@@ -109,6 +111,13 @@ function createTestBed(
   };
   const agentDeployService = { deploy: jest.fn() };
   const apiInstances = { liveCount: jest.fn().mockResolvedValue(1) };
+  const toolSummaries = new Map<string, 'connecting' | 'limited'>();
+  const toolChanges = new Subject<string>();
+  const toolState = {
+    summary: jest.fn((id: string) => toolSummaries.get(id) ?? null),
+    changes$: jest.fn().mockReturnValue(toolChanges),
+    clear: jest.fn(),
+  };
 
   const service = new AgentStatusService(
     agentGateway as never,
@@ -117,6 +126,7 @@ function createTestBed(
     deployTracker as never,
     bridleGateway as never,
     apiInstances as never,
+    toolState as never,
   );
   return {
     service,
@@ -125,6 +135,8 @@ function createTestBed(
     bridleGateway,
     deployTracker,
     apiInstances,
+    toolSummaries,
+    toolChanges,
   };
 }
 
@@ -367,5 +379,40 @@ describe('AgentStatusService bridle connectivity', () => {
     expect(snapshot.find((s) => s.agent.id === 'a2')?.bridleConnected).toBe(
       false,
     );
+  });
+});
+
+describe('AgentStatusService — the tool summary travels with the status (CLEAN-245)', () => {
+  test('a snapshot says it for each agent', async () => {
+    const bed = createTestBed(
+      [makeAgent(), makeAgent({ id: 'a2' })],
+      [makePod()],
+    );
+    bed.toolSummaries.set('a1', 'limited');
+
+    const snapshot = await bed.service.snapshot();
+
+    expect(snapshot.map((s) => [s.agent.id, s.tools])).toEqual([
+      ['a1', 'limited'],
+      ['a2', null],
+    ]);
+  });
+
+  test('a change of the summary is an event on the stream, with no pod or hub event behind it', async () => {
+    const bed = createTestBed([makeAgent()], [makePod()]);
+    await bed.service.onModuleInit();
+    const events: Array<'connecting' | 'limited' | null | undefined> = [];
+    const sub = bed.service.stream$().subscribe((msg) => {
+      if (msg.type === 'event') events.push(msg.payload.status.tools);
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    bed.toolSummaries.set('a1', 'connecting');
+    bed.toolChanges.next('a1');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(events).toEqual(['connecting']);
+    sub.unsubscribe();
+    bed.service.onModuleDestroy();
   });
 });

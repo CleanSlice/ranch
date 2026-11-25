@@ -1,5 +1,10 @@
 import { randomUUID } from 'crypto';
-import { AgentStatusChanges, IAgentGateway } from '#/agent/agent/domain';
+import { Subject } from 'rxjs';
+import {
+  AgentStatusChanges,
+  IAgentGateway,
+  IToolAlert,
+} from '#/agent/agent/domain';
 import { IInfraConfigGateway } from '#/setting/domain/infraConfig.gateway';
 import {
   ApiKeyScopeTypes,
@@ -572,12 +577,14 @@ function harness() {
   // by hand so that every send happens at a moment the test chose.
   const kick = jest.spyOn(worker, 'kick').mockImplementation(() => undefined);
   const statusChanges = new AgentStatusChanges();
+  const toolAlerts = new Subject<IToolAlert>();
   const service = new AgentEventService(
     gateway,
     incidents,
     agentGateway,
     statusChanges,
     worker,
+    { alerts$: () => toolAlerts } as never,
   );
   return {
     gateway,
@@ -585,6 +592,7 @@ function harness() {
     worker,
     service,
     statusChanges,
+    toolAlerts,
     addAgent,
     setStatus,
     removeAgent,
@@ -1238,6 +1246,92 @@ describe('AgentEventService — a failure Ranch noticed itself', () => {
 
     expect(create).toHaveBeenCalledTimes(2);
     expect(h.gateway.events).toHaveLength(1);
+    h.service.onModuleDestroy();
+  });
+});
+
+describe('AgentEventService — an agent without some of its tools (CLEAN-245)', () => {
+  const flush = async () => {
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  };
+  const limited = (at: Date): IToolAlert => ({
+    kind: 'limited',
+    agentId: 'a1',
+    reason: 'Documents not connected for 5 min',
+    at,
+  });
+
+  it('opens an incident with Ranch as the witness, the names as the cause', async () => {
+    const h = harness();
+    h.addAgent('a1', 'running', 'Support Bot');
+    h.service.onModuleInit();
+
+    h.toolAlerts.next(limited(T0));
+    await flush();
+
+    expect(h.gateway.events).toHaveLength(1);
+    expect(h.gateway.events[0]).toMatchObject({
+      witness: 'ranch',
+      senderName: 'Ranch',
+      status: 'limited',
+      reason: 'Documents not connected for 5 min',
+      ranchStatus: 'running',
+      outcome: 'opened',
+    });
+    expect(h.gateway.incidents[0]).toMatchObject({ status: 'limited' });
+    expect(h.gateway.statusOf('opened')).toEqual(['pending']);
+    h.service.onModuleDestroy();
+  });
+
+  it('a repeat joins the open incident: no second opening', async () => {
+    const h = harness();
+    h.addAgent('a1', 'running');
+    h.service.onModuleInit();
+
+    h.toolAlerts.next(limited(T0));
+    await flush();
+    h.toolAlerts.next(limited(new Date(T0.getTime() + 5 * 60_000)));
+    await flush();
+
+    expect(h.gateway.incidents).toHaveLength(1);
+    expect(h.gateway.events.map((e) => e.outcome)).toEqual([
+      'opened',
+      'joined',
+    ]);
+    expect(h.gateway.statusOf('opened')).toHaveLength(1);
+    h.service.onModuleDestroy();
+  });
+
+  it('the servers coming back counts as running again', async () => {
+    const h = harness();
+    h.addAgent('a1', 'running');
+    h.service.onModuleInit();
+    h.toolAlerts.next(limited(T0));
+    await flush();
+
+    const back = new Date(T0.getTime() + 7 * 60_000);
+    h.toolAlerts.next({
+      kind: 'recovered',
+      agentId: 'a1',
+      reason: null,
+      at: back,
+    });
+    await flush();
+
+    expect(h.gateway.incidents[0].upSince).toEqual(back);
+    expect(h.gateway.events).toHaveLength(1);
+    h.service.onModuleDestroy();
+  });
+
+  it('nothing for an agent that is gone', async () => {
+    const h = harness();
+    h.service.onModuleInit();
+
+    h.toolAlerts.next(limited(T0));
+    await flush();
+
+    expect(h.gateway.events).toHaveLength(0);
+    expect(h.gateway.incidents).toHaveLength(0);
     h.service.onModuleDestroy();
   });
 });

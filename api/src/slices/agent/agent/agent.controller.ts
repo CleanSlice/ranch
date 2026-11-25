@@ -42,12 +42,14 @@ import { AgentPermissionService } from './domain/agentPermission.service';
 import { toReaderView } from './domain/agentReaderView';
 import { toStatusFrameMessage } from './domain/agentStatusFrame';
 import { AgentDeployService } from './domain/agentDeploy.service';
+import { AgentToolStateService } from './domain/agentToolState.service';
 import { detectMcpConfigDrift } from './domain/mcpConfigDrift';
 import {
   AgentCreatorDto,
   AgentDto,
   AgentMcpDto,
   AgentMcpStatusDto,
+  AgentToolStateDto,
   AgentEnvVarDto,
   AgentMetricsDto,
   AgentStatusDto,
@@ -151,6 +153,7 @@ export class AgentController {
     private permission: AgentPermissionService,
     private access: AgentAccessService,
     private pins: IAgentPinGateway,
+    private toolState: AgentToolStateService,
   ) {}
 
   /** The agents of a list this caller reaches, in the order given (CLEAN-231). */
@@ -221,6 +224,8 @@ export class AgentController {
     const visible = await this.withPins(await this.asReadBy(agents, req), req);
     return visible.map((agent) => ({
       ...withoutCreatorId(agent),
+      // One word, safe for any reader — the detail has its own route.
+      toolState: this.toolState.summary(agent.id),
       createdBy: agent.createdById
         ? (creators.get(agent.createdById) ?? null)
         : null,
@@ -432,6 +437,23 @@ export class AgentController {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
     return this.podGateway.getMetrics(id);
+  }
+
+  @Get(':id/tool-state')
+  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ManagesAgent('id')
+  @ApiOperation({
+    operationId: 'getAgentToolState',
+    summary:
+      "What the agent's running runtime says about its tool servers: which are connected, which it keeps trying, which refused its credentials, since when, and the last error of each. Null while no runtime is on the hub, or when the runtime predates this report. Held in memory: an API restart empties it until the runtime reconnects.",
+  })
+  @ApiOkResponse({ type: AgentToolStateDto })
+  async getAgentToolState(
+    @Param('id') id: string,
+  ): Promise<AgentToolStateDto | null> {
+    const agent = await this.agentGateway.findById(id);
+    if (!agent) throw new NotFoundException('Agent not found');
+    return this.toolState.detail(id);
   }
 
   @Get(':id/env')

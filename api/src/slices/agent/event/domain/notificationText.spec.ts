@@ -133,6 +133,47 @@ describe('renderOpened', () => {
   });
 });
 
+describe('an agent without some of its tools (CLEAN-245)', () => {
+  const limited = (over: Partial<IOpenedNotificationPayload> = {}) =>
+    opened({
+      status: 'limited',
+      reason: 'Documents not connected for 5 min',
+      witness: 'ranch',
+      senderName: 'Ranch',
+      tool: null,
+      ranchStatus: 'running',
+      ...over,
+    });
+
+  it('says it in one sentence and pages nobody', () => {
+    const message = renderOpened(limited(), CONSOLE);
+    const body = bodyOf(message);
+
+    expect(message.text).toBe(
+      '«Support Bot» is running without some of its tools: Documents not connected for 5 min.',
+    );
+    expect(body.split('\n')[0]).toBe(
+      '🟠 *«Support Bot» is running without some of its tools*: Documents not connected for 5 min.',
+    );
+    expect(body).not.toContain('<!channel>');
+    expect(body).not.toContain('Agent limited');
+    expect(body).toContain(
+      `<${CONSOLE}/agents/agent-1?tab=events|Open in Ranch>`,
+    );
+  });
+
+  it('carries the environment label like every other message', () => {
+    const message = renderOpened(limited(), CONSOLE, 'staging');
+    expect(message.text.startsWith('[staging] «Support Bot»')).toBe(true);
+  });
+
+  it('the thread says the same thing, not "Failed"', () => {
+    const first = bodyOf(renderReply(limited()));
+    expect(first).toContain('🟠 *Running without some of its tools*');
+    expect(first).not.toContain('Failed');
+  });
+});
+
 describe('renderClosed', () => {
   const closed = (
     over: Partial<IClosedNotificationPayload> = {},

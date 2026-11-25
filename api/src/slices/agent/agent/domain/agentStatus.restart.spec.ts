@@ -72,6 +72,11 @@ function makeBed() {
     deployTracker,
     bridleGateway as never,
     { liveCount: jest.fn().mockResolvedValue(1) } as never,
+    {
+      summary: jest.fn().mockReturnValue(null),
+      changes$: jest.fn().mockReturnValue(new Subject()),
+      clear: jest.fn(),
+    } as never,
   );
   const internals = service as unknown as {
     detectDrift(reason: 'periodic'): Promise<string[]>;

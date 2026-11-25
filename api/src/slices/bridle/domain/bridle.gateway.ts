@@ -135,6 +135,18 @@ export abstract class IBridleGateway {
   abstract health(): IBridleHealthData;
   /** Health status for a specific agent */
   abstract agentHealth(agentId: string): IBridleAgentHealthData;
+  /**
+   * The one word on the agent's tool servers that every client of the agent
+   * may read (CLEAN-245), re-broadcast as `agent_status` when it changes.
+   * Ignored unless `socketId` owns the current registration.
+   */
+  abstract setAgentTools(
+    agentId: string,
+    socketId: string,
+    tools: 'connecting' | 'limited' | null,
+  ): void;
+  /** That word, or null: nothing said, or no runtime on the hub. */
+  abstract agentTools(agentId: string): 'connecting' | 'limited' | null;
   /** Whether an agent runtime is currently registered for this agentId. */
   abstract isAgentConnected(agentId: string): boolean;
   /**

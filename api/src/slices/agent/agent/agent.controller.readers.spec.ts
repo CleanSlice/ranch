@@ -150,6 +150,7 @@ function build(
     permissionOver(agentGateway),
     opts.access ?? openAccess(),
     pins as unknown as IAgentPinGateway,
+    { summary: () => null, detail: () => null } as never,
   );
   return { controller, agentGateway, deploy, mcpResolver, pins };
 }

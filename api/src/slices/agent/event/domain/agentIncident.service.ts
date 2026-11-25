@@ -8,13 +8,14 @@ import {
   IOpenedNotificationPayload,
   JOINED_REPLY_GAP_MS,
   QUIET_MS,
+  AgentTroubleStatusTypes,
 } from './agentEvent.types';
 import { NotificationDestinationService } from './notificationDestination.service';
 
 export interface IAttachFailureInput {
   agentId: string;
   agentName: string;
-  status: 'failed' | 'unreachable';
+  status: AgentTroubleStatusTypes;
   reason: string | null;
   witness: AgentEventWitnessTypes;
   senderName: string;
@@ -252,6 +253,7 @@ export class AgentIncidentService {
       closedAt: closedAt.toISOString(),
       firstSenderName,
       eventCount: incident.eventCount,
+      status: incident.status,
     };
   }
 }

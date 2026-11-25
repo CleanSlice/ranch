@@ -17,6 +17,7 @@ import {
   type IBridleThinkingEvent,
 } from '../domain';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
+import { AgentToolStateService } from '#/agent/agent/domain/agentToolState.service';
 import {
   ChatSourceService,
   IChatGateway,
@@ -42,6 +43,7 @@ import {
  *   "typing"      { clientId, ts }
  *   "thinking"    { clientId, turnId, step?, done?, ts }
  *   "sources"     { clientId, messageId, text, sources[], ts }   (CLEAN-138)
+ *   "tool_state"  { phase, since, startedAt, servers[] }   (CLEAN-245; the runtime's own tool servers)
  *   "sync_done"   { requestId, pushed, error? }
  *   "ping"        {}
  *
@@ -66,6 +68,8 @@ export class BridleAgentWsHandler
     private readonly chats: IChatGateway,
     @Inject(forwardRef(() => ChatSourceService))
     private readonly chatSources: ChatSourceService,
+    @Inject(forwardRef(() => AgentToolStateService))
+    private readonly toolState: AgentToolStateService,
   ) {}
 
   handleConnection(client: Socket) {
@@ -297,6 +301,25 @@ export class BridleAgentWsHandler
     if (agentId) {
       this.hub.handleDebugEvent(agentId, { ...data, type: 'debug' });
     }
+  }
+
+  /**
+   * What the runtime knows about its tool servers (CLEAN-245). Kept for the
+   * people who manage the agent; every client of the agent hears one word of
+   * it. An invalid report is dropped by the service and changes nothing.
+   */
+  @SubscribeMessage('tool_state')
+  handleToolState(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    this.ensureRegistered(client);
+    const agentId = client.data?.agentId as string | undefined;
+    // A late report from the socket a restart replaced says nothing about
+    // the runtime that is on the hub now.
+    if (!agentId || !this.hub.isAgentSocket(agentId, client.id)) return;
+    const tools = this.toolState.accept(agentId, data);
+    this.hub.setAgentTools(agentId, client.id, tools);
   }
 
   @SubscribeMessage('ping')

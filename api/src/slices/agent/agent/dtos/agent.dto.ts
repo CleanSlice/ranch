@@ -55,6 +55,14 @@ export class AgentDto {
   })
   statusReason: string | null;
 
+  @ApiProperty({
+    nullable: true,
+    enum: ['connecting', 'limited'],
+    description:
+      "One word on the agent's tool servers, from its running runtime: `connecting` — it has just started and is still reaching some of them; `limited` — it runs without some of them; null — nothing to say (all connected, no runtime on the hub, or a runtime that does not report). Never which server or why: a person who manages the agent reads that from GET /agents/:id/tool-state.",
+  })
+  toolState?: 'connecting' | 'limited' | null;
+
   @ApiProperty({ nullable: true })
   workflowId: string | null;
 

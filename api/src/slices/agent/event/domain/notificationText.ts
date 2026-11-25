@@ -85,6 +85,9 @@ export function renderOpened(
   environment: string | null = null,
 ): INotificationMessage {
   const name = escapeSlack(payload.agentName);
+  if (payload.status === 'limited') {
+    return renderLimitedOpened(payload, consoleUrl, environment);
+  }
   const headline = `${envLabel(environment)}Agent ${payload.status}: ${name}`;
   // An agent going down is the one message that should reach people who are
   // not looking: it mentions the whole channel. The mention is ours and sits
@@ -139,7 +142,7 @@ export function renderClosed(
     const headline = `${label}Agent back: ${name}`;
     return message(headline, [
       `🟢 *${headline}*`,
-      `Down for ${down} (${slackDate(payload.openedAt)} → ${slackDate(payload.upAt)}), up and stable for ${stable}.`,
+      `${stretchWord(payload.status)} for ${down} (${slackDate(payload.openedAt)} → ${slackDate(payload.upAt)}), up and stable for ${stable}.`,
     ]);
   }
 
@@ -163,6 +166,43 @@ export interface IRootState {
 }
 
 /**
+ * An agent that runs without some of its tool servers (CLEAN-245). It is up
+ * and answering, so the channel is not mentioned: this is for whoever looks,
+ * not a page. The cause names the servers and never carries an error text.
+ */
+function renderLimitedOpened(
+  payload: IOpenedNotificationPayload,
+  consoleUrl: string | null,
+  environment: string | null,
+): INotificationMessage {
+  const name = escapeSlack(payload.agentName);
+  const what = `«${name}» is running without some of its tools`;
+  const headline = `${envLabel(environment)}${what}`;
+  const cause = payload.reason
+    ? `: ${escapeSlack(cut(payload.reason, REASON_SHOWN_MAX))}.`
+    : '.';
+  const lines = [
+    `🟠 *${headline}*${cause}`,
+    `*When:* ${slackDate(payload.occurredAt)}`,
+    '*Reported by:* Ranch (its own watch)',
+  ];
+  if (consoleUrl && payload.agentId) {
+    lines.push(
+      `<${agentEventsLink(consoleUrl, payload.agentId)}|Open in Ranch>`,
+    );
+  }
+  return message(
+    `${headline}${payload.reason ? `: ${payload.reason}.` : '.'}`,
+    lines,
+  );
+}
+
+/** How a closed incident's stretch reads: an agent without tools was never down. */
+function stretchWord(status: string | undefined): string {
+  return status === 'limited' ? 'Without some of its tools' : 'Down';
+}
+
+/**
  * Which state the root shows, from the incident row as it is right now —
  * never from the previous text, so two deliveries landing out of order
  * cannot leave a stale line (research D6).
@@ -177,11 +217,17 @@ export function rootStateOf(incident: IAgentIncidentData): IRootState {
           reaction: 'large_green_circle',
           clause: `up, watching since ${iso(incident.upSince!)}`,
         }
-      : {
-          emoji: '🔴',
-          reaction: 'red_circle',
-          clause: `down since ${iso(incident.openedAt)}`,
-        };
+      : incident.status === 'limited'
+        ? {
+            emoji: '🟠',
+            reaction: 'red_circle',
+            clause: `without some of its tools since ${iso(incident.openedAt)}`,
+          }
+        : {
+            emoji: '🔴',
+            reaction: 'red_circle',
+            clause: `down since ${iso(incident.openedAt)}`,
+          };
   }
   const closedAt = incident.closedAt ?? incident.lastFailureAt;
   switch (incident.resolution) {
@@ -276,17 +322,30 @@ export function renderReply(
   const name = escapeSlack(payload.agentName);
   switch (payload.kind) {
     case 'opened': {
-      const lines = [`🔴 *Failed* — ${slackDate(payload.occurredAt)}`];
+      const limited = payload.status === 'limited';
+      const lines = [
+        limited
+          ? `🟠 *Running without some of its tools* — ${slackDate(payload.occurredAt)}`
+          : `🔴 *Failed* — ${slackDate(payload.occurredAt)}`,
+      ];
       if (payload.reason) {
         lines.push(
           `*Cause:* ${escapeSlack(cut(payload.reason, REASON_SHOWN_MAX))}`,
         );
       }
       lines.push(...reportedBy(payload));
-      return message(`Failed: ${name}`, lines);
+      return message(
+        limited ? `Without some tools: ${name}` : `Failed: ${name}`,
+        lines,
+      );
     }
     case 'joined': {
-      const lines = [`🔴 *Failed again* — ${slackDate(payload.occurredAt)}`];
+      const limited = payload.status === 'limited';
+      const lines = [
+        limited
+          ? `🟠 *Still without some of its tools* — ${slackDate(payload.occurredAt)}`
+          : `🔴 *Failed again* — ${slackDate(payload.occurredAt)}`,
+      ];
       if (payload.reason) {
         lines.push(
           `*Cause:* ${escapeSlack(cut(payload.reason, REASON_SHOWN_MAX))}`,
@@ -294,7 +353,10 @@ export function renderReply(
       }
       const [by, ...rest] = reportedBy(payload);
       lines.push(`${by} · ${payload.eventCount} reports so far`, ...rest);
-      return message(`Failed again: ${name}`, lines);
+      return message(
+        limited ? `Still without some tools: ${name}` : `Failed again: ${name}`,
+        lines,
+      );
     }
     case 'running':
       return message(`Running again: ${name}`, [
@@ -311,7 +373,7 @@ export function renderReply(
           );
           return message(`Resolved: ${name}`, [
             `✅ *Resolved* — ${at}`,
-            `Down for ${down} (${slackDate(payload.openedAt)} → ${slackDate(payload.upAt)}), up and stable for ${formatSpan(QUIET_MS)}.`,
+            `${stretchWord(payload.status)} for ${down} (${slackDate(payload.openedAt)} → ${slackDate(payload.upAt)}), up and stable for ${formatSpan(QUIET_MS)}.`,
           ]);
         }
         case 'stopped':

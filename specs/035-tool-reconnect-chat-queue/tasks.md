@@ -24,8 +24,8 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Create the runtime worktree from `origin/main` (fetch first; the tag is `v0.39.0`): `git -C /Users/maksymtmk/my-knowledge/runtime worktree add -b feat/CLEAN-245-tool-reconnect ../runtime-CLEAN-245 origin/main`; run `bun install` and `bun test` there and record the baseline result
-- [ ] T002 In `/Users/maksymtmk/my-knowledge/ranch-CLEAN-245`: `bun install`, `cd api && npx prisma generate && bun run build`, then `bun run typecheck` and `cd api && bun run test` for a baseline; note any failure that exists before this work (the date-format tests are known)
+- [X] T001 Create the runtime worktree from `origin/main` (fetch first; the tag is `v0.39.0`): `git -C /Users/maksymtmk/my-knowledge/runtime worktree add -b feat/CLEAN-245-tool-reconnect ../runtime-CLEAN-245 origin/main`; run `bun install` and `bun test` there and record the baseline result
+- [X] T002 In `/Users/maksymtmk/my-knowledge/ranch-CLEAN-245`: `bun install`, `cd api && npx prisma generate && bun run build`, then `bun run typecheck` and `cd api && bun run test` for a baseline; note any failure that exists before this work (the date-format tests are known)
 - [ ] T003 [P] Create `specs/035-tool-reconnect-chat-queue/evidence/README.md` listing the screenshot names from T033, T051, T063 and T071 and how they are produced (Playwright, local stack, viewport 1440×900 and 400×800)
 - [ ] T004 [P] Write `specs/035-tool-reconnect-chat-queue/evidence/shots.mjs`: a Playwright script (uses the Playwright MCP browser when free, otherwise `playwright-core` with the cached Chromium, as in CLEAN-240) with helpers `login(console, role)`, `openChat(agentId)`, `shot(name)`, reading URLs and test accounts from the local `.env.project`; never prints a value
 
@@ -35,11 +35,11 @@
 
 **Purpose**: the shared vocabulary — the tool-state shape on both sides of the socket, and the places it travels.
 
-- [ ] T005 [P] Runtime: add `runtime/src/slices/setup/mcp/domain/retryPolicy.ts` — `nextDelayMs(attempt, rand)` (5, 10, 20, 40 s then `MCP_RETRY_MAX_MS`, ±20 %), `isBrokenConnection(err)`, `isRefused(err)`, re-export `isLostSession`; and `retryPolicy.spec.ts` covering the table and each classifier (research R2, R4)
-- [ ] T006 [P] Runtime: add `runtime/src/slices/setup/mcp/domain/toolState.ts` — types `IToolServerState`, `IToolState`, `phaseOf(servers, startedAt, now, graceMs)` with the 15 s rule for a later drop, `redactError(message)`; and `toolState.spec.ts` (research R6, data-model)
-- [ ] T007 [P] API: add `api/src/slices/agent/agent/domain/toolState.types.ts` and `domain/toolState.ts` — `parseReport(raw)` (known sets, ≤ 20 servers, lengths cut, invalid → null), `summaryOf(state)`, `reasonOf(state)`, `detailOf(state)` with redaction; and `toolState.spec.ts` (contracts/api.md)
-- [ ] T008 API: add `api/src/slices/agent/agent/domain/agentToolState.service.ts` — in-memory map, `accept(agentId, report)`, `clear(agentId)`, `summary(agentId)`, `detail(agentId)`, `changes$()`; register it in the agent module; `agentToolState.service.spec.ts` for accept/clear/changes (depends on T007)
-- [ ] T009 API: hub — handle `tool_state` in `api/src/slices/bridle/handlers/bridleAgentWs.handler.ts` (calls `ensureRegistered`, then `AgentToolStateService.accept`), clear in `unregisterAgent` in `api/src/slices/bridle/data/bridle.gateway.ts`, add the event types to `api/src/slices/bridle/domain/bridle.types.ts`; spec: a valid report is stored, an invalid one changes nothing, a disconnect clears (depends on T008)
+- [X] T005 [P] Runtime: add `runtime/src/slices/setup/mcp/domain/retryPolicy.ts` — `nextDelayMs(attempt, rand)` (5, 10, 20, 40 s then `MCP_RETRY_MAX_MS`, ±20 %), `isBrokenConnection(err)`, `isRefused(err)`, re-export `isLostSession`; and `retryPolicy.spec.ts` covering the table and each classifier (research R2, R4)
+- [X] T006 [P] Runtime: add `runtime/src/slices/setup/mcp/domain/toolState.ts` — types `IToolServerState`, `IToolState`, `phaseOf(servers, startedAt, now, graceMs)` with the 15 s rule for a later drop, `redactError(message)`; and `toolState.spec.ts` (research R6, data-model)
+- [X] T007 [P] API: add `api/src/slices/agent/agent/domain/toolState.types.ts` and `domain/toolState.ts` — `parseReport(raw)` (known sets, ≤ 20 servers, lengths cut, invalid → null), `summaryOf(state)`, `reasonOf(state)`, `detailOf(state)` with redaction; and `toolState.spec.ts` (contracts/api.md)
+- [X] T008 API: add `api/src/slices/agent/agent/domain/agentToolState.service.ts` — in-memory map, `accept(agentId, report)`, `clear(agentId)`, `summary(agentId)`, `detail(agentId)`, `changes$()`; register it in the agent module; `agentToolState.service.spec.ts` for accept/clear/changes (depends on T007)
+- [X] T009 API: hub — handle `tool_state` in `api/src/slices/bridle/handlers/bridleAgentWs.handler.ts` (calls `ensureRegistered`, then `AgentToolStateService.accept`), clear in `unregisterAgent` in `api/src/slices/bridle/data/bridle.gateway.ts`, add the event types to `api/src/slices/bridle/domain/bridle.types.ts`; spec: a valid report is stored, an invalid one changes nothing, a disconnect clears (depends on T008)
 
 **Checkpoint**: a report sent by hand over the agent socket is held by the API and gone on disconnect.
 
@@ -53,17 +53,17 @@
 
 ### Tests for User Story 1
 
-- [ ] T010 [P] [US1] Extend `runtime/src/slices/setup/mcp/data/mcp.gateway.reconnect.spec.ts`: boot failure keeps the server as `retrying`; a later open lists tools; a read is repeated once on a broken connection; a write is not and returns the "outcome unknown" error; 401/403 → `refused` and no further open; concurrent callers share one attempt
-- [ ] T011 [P] [US1] Extend `runtime/src/slices/setup/mcp/domain/mcp.service.spec.ts`: the retry timer swaps tools into the registry on success; `settle(budget)` returns within its budget; a server removed from config stops its timer; tools that arrive late are still scoped per actor
+- [X] T010 [P] [US1] Extend `runtime/src/slices/setup/mcp/data/mcp.gateway.reconnect.spec.ts`: boot failure keeps the server as `retrying`; a later open lists tools; a read is repeated once on a broken connection; a write is not and returns the "outcome unknown" error; 401/403 → `refused` and no further open; concurrent callers share one attempt
+- [X] T011 [P] [US1] Extend `runtime/src/slices/setup/mcp/domain/mcp.service.spec.ts`: the retry timer swaps tools into the registry on success; `settle(budget)` returns within its budget; a server removed from config stops its timer; tools that arrive late are still scoped per actor
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] `runtime/src/slices/setup/mcp/data/mcp.gateway.ts`: register the server in `statics` before `open()`; on failure keep it with `state: 'retrying'`, no client; add `MCP_CONNECT_TIMEOUT_MS` around `open()`; add `attempt(name)` (shared in-flight promise), `status()` and `onChange(cb)`; export `McpUnavailableError`
-- [ ] T013 [US1] `runtime/src/slices/setup/mcp/data/mcp.gateway.ts`: widen `withSession` — lost session as today; broken connection → `reopen`, repeat once only when the tool's `effect === 'read'`, else the "outcome unknown" error and the server marked `retrying`; refusal → `refused`; update `staticTool.execute` error texts per contracts/runtime.md (depends on T012, T005)
-- [ ] T014 [US1] `runtime/src/slices/setup/mcp/domain/mcp.gateway.ts` + `domain/mcp.service.ts` + `mcp.module.ts`: extend `IMcpGateway` with `status/attempt/onChange`; `McpService` owns one backoff timer per `retrying` server (`nextDelayMs`), calls `swapServerTools(registry, name, tools)` on success, stops on `refused`/removal/shutdown; add `settle(budgetMs)` (depends on T012)
-- [ ] T015 [US1] `runtime/src/index.ts`: pass the live `tools` registry to the MCP module so late servers can be swapped in; keep the first `loadAll` awaited; log one line per state change in the existing `mcp` log style (depends on T014)
-- [ ] T016 [US1] `runtime/src/slices/runtime/runtime/domain/runtime.service.ts`: in `visibleToolsFor`, call `mcp.settle(3000)` before `scopeTools` when any server is `retrying` (research R3); spec that a turn waits at most the budget (depends on T014)
-- [ ] T017 [US1] Run `bun test` in the runtime worktree; then quickstart Scenario 1 on the local cluster with an image built from this branch: stop the API, delete the agent pod, start the API after 90 s, ask a document question — save the runtime log excerpt (no tokens) to `specs/035-tool-reconnect-chat-queue/evidence/us1-replay.log.txt`
+- [X] T012 [US1] `runtime/src/slices/setup/mcp/data/mcp.gateway.ts`: register the server in `statics` before `open()`; on failure keep it with `state: 'retrying'`, no client; add `MCP_CONNECT_TIMEOUT_MS` around `open()`; add `attempt(name)` (shared in-flight promise), `status()` and `onChange(cb)`; export `McpUnavailableError`
+- [X] T013 [US1] `runtime/src/slices/setup/mcp/data/mcp.gateway.ts`: widen `withSession` — lost session as today; broken connection → `reopen`, repeat once only when the tool's `effect === 'read'`, else the "outcome unknown" error and the server marked `retrying`; refusal → `refused`; update `staticTool.execute` error texts per contracts/runtime.md (depends on T012, T005)
+- [X] T014 [US1] `runtime/src/slices/setup/mcp/domain/mcp.gateway.ts` + `domain/mcp.service.ts` + `mcp.module.ts`: extend `IMcpGateway` with `status/attempt/onChange`; `McpService` owns one backoff timer per `retrying` server (`nextDelayMs`), calls `swapServerTools(registry, name, tools)` on success, stops on `refused`/removal/shutdown; add `settle(budgetMs)` (depends on T012)
+- [X] T015 [US1] `runtime/src/index.ts`: pass the live `tools` registry to the MCP module so late servers can be swapped in; keep the first `loadAll` awaited; log one line per state change in the existing `mcp` log style (depends on T014)
+- [X] T016 [US1] `runtime/src/slices/runtime/runtime/domain/runtime.service.ts`: in `visibleToolsFor`, call `mcp.settle(3000)` before `scopeTools` when any server is `retrying` (research R3); spec that a turn waits at most the budget (depends on T014)
+- [X] T017 [US1] Run `bun test` in the runtime worktree; then quickstart Scenario 1 on the local cluster with an image built from this branch: stop the API, delete the agent pod, start the API after 90 s, ask a document question — save the runtime log excerpt (no tokens) to `specs/035-tool-reconnect-chat-queue/evidence/us1-replay.log.txt`
 
 **Checkpoint**: the incident no longer needs a restart. Nothing is visible in a console yet.
 
@@ -77,24 +77,24 @@
 
 ### Tests for User Story 2
 
-- [ ] T018 [P] [US2] `runtime/src/slices/agent/agent/domain/toolServersPrompt.spec.ts`: absent when all connected; "still trying to reconnect" for `retrying`; "needs an administrator" for `refused`
-- [ ] T019 [P] [US2] `api/src/slices/agent/agent/domain/agentToolState.service.spec.ts`: alert once after `TOOLS_LIMITED_ALERT_MS`; not while `stopped`/`pending`/`deploying`; quiet with two replicas; `noteRunning` on recovery
-- [ ] T020 [P] [US2] API route and tool specs: `GET /agents/:id/tool-state` is 404 for a User and for an Admin outside reach, returns the detail to a manager; add the route to `api/src/slices/user/…/userRoutes.spec.ts` and `routeRoles.spec.ts`; `agentAdmin.tool.spec.ts` returns `tools`; a frame and an `agent_status` event never contain a server name
+- [X] T018 [P] [US2] `runtime/src/slices/agent/agent/domain/toolServersPrompt.spec.ts`: absent when all connected; "still trying to reconnect" for `retrying`; "needs an administrator" for `refused`
+- [X] T019 [P] [US2] `api/src/slices/agent/agent/domain/agentToolState.service.spec.ts`: alert once after `TOOLS_LIMITED_ALERT_MS`; not while `stopped`/`pending`/`deploying`; quiet with two replicas; `noteRunning` on recovery
+- [X] T020 [P] [US2] API route and tool specs: `GET /agents/:id/tool-state` is 404 for a User and for an Admin outside reach, returns the detail to a manager; add the route to `api/src/slices/user/…/userRoutes.spec.ts` and `routeRoles.spec.ts`; `agentAdmin.tool.spec.ts` returns `tools`; a frame and an `agent_status` event never contain a server name
 - [ ] T021 [P] [US2] `admin/slices/agent/agent/utils/toolState.spec.ts` and `app/slices/agent/utils/toolState.spec.ts`: wording per state and audience; a non-manager never gets a name
 
 ### Implementation for User Story 2 — runtime
 
-- [ ] T022 [US2] `runtime/src/slices/setup/channel/data/repositories/bridle/bridle.repository.ts` (+ `channel.gateway.ts`, `channel.module.ts` pass-through): `reportToolState(state)` emitting `tool_state`, best effort, debounced 500 ms; send the current state after every `register`; wire `mcp.onChange` → report in `runtime/src/index.ts` (depends on T014, T006)
-- [ ] T023 [US2] `runtime/src/slices/agent/agent/domain/prompts/toolServers.prompt.ts` + `agent.service.ts` (`BuildPromptOpts`, the inline opts of `buildPrompt`, the section pushed beside `hint`) + `agent.types.ts` (`PromptSectionName`) + `runtime.service.ts` (feeds it from `mcp.status()`); text per research R14
-- [ ] T024 [US2] Runtime: bump `runtime/package.json` to `0.40.0`; `bun test`; open the pull request in `CleanSlice/runtime` titled with CLEAN-245; merge when green as the DREAM account; tag `v0.40.0`, push the tag, watch `Release` and `Publish Runtime Image` and note their conclusions on the ticket
+- [X] T022 [US2] `runtime/src/slices/setup/channel/data/repositories/bridle/bridle.repository.ts` (+ `channel.gateway.ts`, `channel.module.ts` pass-through): `reportToolState(state)` emitting `tool_state`, best effort, debounced 500 ms; send the current state after every `register`; wire `mcp.onChange` → report in `runtime/src/index.ts` (depends on T014, T006)
+- [X] T023 [US2] `runtime/src/slices/agent/agent/domain/prompts/toolServers.prompt.ts` + `agent.service.ts` (`BuildPromptOpts`, the inline opts of `buildPrompt`, the section pushed beside `hint`) + `agent.types.ts` (`PromptSectionName`) + `runtime.service.ts` (feeds it from `mcp.status()`); text per research R14
+- [X] T024 [US2] Runtime: bump `runtime/package.json` to `0.40.0`; `bun test`; open the pull request in `CleanSlice/runtime` titled with CLEAN-245; merge when green as the DREAM account; tag `v0.40.0`, push the tag, watch `Release` and `Publish Runtime Image` and note their conclusions on the ticket
 
 ### Implementation for User Story 2 — API
 
-- [ ] T025 [US2] `api/src/slices/bridle/data/bridle.gateway.ts` + `handlers/bridleClientWs.handler.ts`: `agent_status` carries `tools` (summary) on handshake and is re-broadcast on `AgentToolStateService.changes$()`
-- [ ] T026 [US2] `api/src/slices/agent/agent/domain/agentStatusFrame.ts` + `agentStatusService.ts`: frame gains `tools`; `stream$()` merges tool-state changes so a change emits a frame
-- [ ] T027 [US2] `api/src/slices/agent/agent/agent.controller.ts` + `dtos/agentToolState.dto.ts` + the agent DTO/mapper: `AgentDto.toolState`; `GET /agents/:id/tool-state` with `@ManagesAgent`; then `cd api && bun run generate:swagger`, `cd admin && bun run build:api`, `cd app && bun run build:api`
-- [ ] T028 [US2] `api/src/slices/agent/event/domain/agentEvent.types.ts` (`'limited'`), `agentEvent.service.ts` (`recordLimited`, reuse `attachFailure`; recovery through `noteRunning`), `notificationText.ts` (wording per contracts/api.md); the 30 s sweep and `TOOLS_LIMITED_ALERT_MS` in `agentToolState.service.ts` (depends on T008)
-- [ ] T029 [US2] `api/src/slices/agent/agent/agentAdmin.tool.ts`: `get_agent_status` returns `tools` and its description explains `connecting` / `limited` / `refused`; check the entry against the checklist in `docs/agent-tools.md`
+- [X] T025 [US2] `api/src/slices/bridle/data/bridle.gateway.ts` + `handlers/bridleClientWs.handler.ts`: `agent_status` carries `tools` (summary) on handshake and is re-broadcast on `AgentToolStateService.changes$()`
+- [X] T026 [US2] `api/src/slices/agent/agent/domain/agentStatusFrame.ts` + `agentStatusService.ts`: frame gains `tools`; `stream$()` merges tool-state changes so a change emits a frame
+- [X] T027 [US2] `api/src/slices/agent/agent/agent.controller.ts` + `dtos/agentToolState.dto.ts` + the agent DTO/mapper: `AgentDto.toolState`; `GET /agents/:id/tool-state` with `@ManagesAgent`; then `cd api && bun run generate:swagger`, `cd admin && bun run build:api`, `cd app && bun run build:api`
+- [X] T028 [US2] `api/src/slices/agent/event/domain/agentEvent.types.ts` (`'limited'`), `agentEvent.service.ts` (`recordLimited`, reuse `attachFailure`; recovery through `noteRunning`), `notificationText.ts` (wording per contracts/api.md); the 30 s sweep and `TOOLS_LIMITED_ALERT_MS` in `agentToolState.service.ts` (depends on T008)
+- [X] T029 [US2] `api/src/slices/agent/agent/agentAdmin.tool.ts`: `get_agent_status` returns `tools` and its description explains `connecting` / `limited` / `refused`; check the entry against the checklist in `docs/agent-tools.md`
 
 ### Implementation for User Story 2 — consoles
 

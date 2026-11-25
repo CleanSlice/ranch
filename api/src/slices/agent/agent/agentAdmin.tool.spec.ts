@@ -100,6 +100,7 @@ interface Harness {
   files: { wipe: jest.Mock };
   mcps: { resolveForAgent: jest.Mock };
   pins: { pin: jest.Mock; unpin: jest.Mock };
+  toolState: { detail: jest.Mock };
 }
 
 // The access lists hide nothing unless a test hands in its own.
@@ -155,6 +156,8 @@ function harness(access: AgentAccessService = openAccess()): Harness {
   const files = { wipe: jest.fn().mockResolvedValue(7) };
   const mcps = { resolveForAgent: jest.fn().mockResolvedValue([server()]) };
 
+  const toolState = { detail: jest.fn().mockReturnValue(null) };
+
   const tool = new AgentAdminTool(
     agents as unknown as IAgentGateway,
     deploy as unknown as AgentDeployService,
@@ -166,8 +169,20 @@ function harness(access: AgentAccessService = openAccess()): Harness {
     permissionOver(agents),
     access,
     pins as unknown as IAgentPinGateway,
+    toolState as never,
   );
-  return { tool, agents, deploy, status, pods, workflows, files, mcps, pins };
+  return {
+    tool,
+    agents,
+    deploy,
+    status,
+    pods,
+    workflows,
+    files,
+    mcps,
+    pins,
+    toolState,
+  };
 }
 
 const textOf = (result: { content: { text: string }[] }) =>
@@ -498,6 +513,40 @@ describe('AgentAdminTool — get_agent_status', () => {
     expect(text).toContain('"pod": null');
     expect(text).toContain('"metrics": null');
     expect(text).toContain('"statusReason": "stopped by operator"');
+  });
+
+  it('says how the tool servers stand, to who manages the agent (CLEAN-245)', async () => {
+    const { tool, toolState } = harness();
+    toolState.detail.mockReturnValue({
+      phase: 'limited',
+      since: '2026-11-20T09:10:52.000Z',
+      servers: [
+        {
+          id: 'mcp-documents',
+          name: 'Documents',
+          state: 'retrying',
+          since: '2026-11-20T09:09:53.000Z',
+          attempts: 7,
+          lastError: 'HTTP 503',
+        },
+      ],
+    });
+    const text = textOf(
+      await tool.getAgentStatus({ id: 'agent-a' }, null, operator()),
+    );
+    expect(toolState.detail).toHaveBeenCalledWith('agent-a');
+    expect(text).toContain('"phase": "limited"');
+    expect(text).toContain('"name": "Documents"');
+    expect(text).toContain('"state": "retrying"');
+    expect(text).toContain('"lastError": "HTTP 503"');
+  });
+
+  it('tools is null while no runtime has reported', async () => {
+    const { tool } = harness();
+    const text = textOf(
+      await tool.getAgentStatus({ id: 'agent-a' }, null, operator()),
+    );
+    expect(text).toContain('"tools": null');
   });
 
   it('names the next move when the agent does not exist', async () => {

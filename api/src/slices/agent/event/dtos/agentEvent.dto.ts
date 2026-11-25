@@ -81,7 +81,11 @@ export class AgentEventDto {
   @ApiProperty({ nullable: true, type: String })
   agentName: string | null;
 
-  @ApiProperty({ enum: ['failed', 'unreachable', 'recovered'] })
+  @ApiProperty({
+    enum: ['failed', 'unreachable', 'limited', 'recovered'],
+    description:
+      "`limited` is Ranch's own word, like `unreachable`: the agent runs without some of its tool servers.",
+  })
   status: AgentEventStatusTypes;
 
   @ApiProperty({
@@ -179,8 +183,8 @@ export class AgentIncidentDto {
   @ApiProperty({ enum: ['open', 'closed'] })
   state: 'open' | 'closed';
 
-  @ApiProperty({ enum: ['failed', 'unreachable'] })
-  status: 'failed' | 'unreachable';
+  @ApiProperty({ enum: ['failed', 'unreachable', 'limited'] })
+  status: 'failed' | 'unreachable' | 'limited';
 
   @ApiProperty({ nullable: true, type: String })
   reason: string | null;

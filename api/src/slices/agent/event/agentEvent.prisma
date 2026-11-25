@@ -13,7 +13,7 @@ model AgentEvent {
   agentRef    String
   // The agent's name when the event arrived; survives the agent's deletion.
   agentName   String?
-  // 'failed' | 'unreachable' | 'recovered'. Outside senders may send
+  // 'failed' | 'unreachable' | 'limited' | 'recovered'. Outside senders may send
   // 'failed' and 'recovered'; 'unreachable' is Ranch's own.
   status      String
   // The cause in the sender's words, shown as received.

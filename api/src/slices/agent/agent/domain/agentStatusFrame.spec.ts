@@ -57,6 +57,7 @@ describe('toStatusFrame: what the public status stream says of an agent', () => 
       'agent',
       'bridleConnected',
       'pod',
+      'tools',
     ]);
     expect(Object.keys(frame.agent).sort()).toEqual([
       'id',
@@ -81,6 +82,7 @@ describe('toStatusFrame: what the public status stream says of an agent', () => 
         containerWaitingReason: 'ImagePullBackOff',
       },
       bridleConnected: true,
+      tools: null,
     });
   });
 
@@ -99,6 +101,19 @@ describe('toStatusFrame: what the public status stream says of an agent', () => 
     expect(text).not.toContain('operator-only');
     expect(text).not.toContain('registry.internal');
     expect(text).not.toContain('Private agent');
+  });
+
+  it('says in one word how the tools stand, and never which server (CLEAN-245)', () => {
+    expect(toStatusFrame({ ...status(), tools: 'connecting' }).tools).toBe(
+      'connecting',
+    );
+    expect(toStatusFrame({ ...status(), tools: 'limited' }).tools).toBe(
+      'limited',
+    );
+    expect(toStatusFrame(status()).tools).toBeNull();
+    // Anything else a caller hands in is not passed on.
+    const odd = { ...status(), tools: 'Documents' } as unknown as IAgentStatus;
+    expect(toStatusFrame(odd).tools).toBeNull();
   });
 
   it('has no pod when there is none', () => {

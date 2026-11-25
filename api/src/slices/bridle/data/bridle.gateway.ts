@@ -94,7 +94,13 @@ export class BridleGateway extends IBridleGateway {
    * runtime invisible ("Agent reconnecting…") until its next restart. */
   private agents = new Map<
     string,
-    { socketId: string; send: (data: unknown) => void; connectedAt: number }
+    {
+      socketId: string;
+      send: (data: unknown) => void;
+      connectedAt: number;
+      /** What this runtime last said about its tool servers (CLEAN-245). */
+      tools: 'connecting' | 'limited' | null;
+    }
   >();
 
   /**
@@ -256,7 +262,15 @@ export class BridleGateway extends IBridleGateway {
     socketId: string,
     send: (data: unknown) => void,
   ): void {
-    this.agents.set(agentId, { socketId, send, connectedAt: Date.now() });
+    // A new registration starts with nothing said about its tools: the
+    // runtime reports right after it registers, and one that predates the
+    // report never does.
+    this.agents.set(agentId, {
+      socketId,
+      send,
+      connectedAt: Date.now(),
+      tools: null,
+    });
     this.logger.log(
       `Agent registered: agentId=${agentId} socket=${socketId} (total agents: ${this.agents.size})`,
     );
@@ -305,10 +319,27 @@ export class BridleGateway extends IBridleGateway {
    * agent connected) vs orange (one side down) without polling.
    */
   private broadcastAgentStatus(agentId: string, connected: boolean): void {
+    const tools = this.agentTools(agentId);
     for (const client of this.sockets()) {
       if (client.agentId !== agentId) continue;
-      client.send({ type: 'agent_status', agentId, connected });
+      client.send({ type: 'agent_status', agentId, connected, tools });
     }
+  }
+
+  setAgentTools(
+    agentId: string,
+    socketId: string,
+    tools: 'connecting' | 'limited' | null,
+  ): void {
+    const current = this.agents.get(agentId);
+    if (!current || current.socketId !== socketId) return;
+    if (current.tools === tools) return;
+    current.tools = tools;
+    this.broadcastAgentStatus(agentId, true);
+  }
+
+  agentTools(agentId: string): 'connecting' | 'limited' | null {
+    return this.agents.get(agentId)?.tools ?? null;
   }
 
   isAgentConnected(agentId: string): boolean {

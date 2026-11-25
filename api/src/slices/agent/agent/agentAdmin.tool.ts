@@ -21,6 +21,7 @@ import { IAgentGateway } from './domain';
 import { AgentPermissionService } from './domain/agentPermission.service';
 import { AgentDeployService } from './domain/agentDeploy.service';
 import { AgentStatusService } from './domain/agentStatus.service';
+import { AgentToolStateService } from './domain/agentToolState.service';
 import { detectMcpConfigDrift } from './domain/mcpConfigDrift';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
 import { IPodGateway } from '#/agent/pod/domain';
@@ -80,6 +81,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     private readonly permission: AgentPermissionService,
     private readonly access: AgentAccessService,
     private readonly pins: IAgentPinGateway,
+    private readonly toolState: AgentToolStateService,
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
@@ -330,7 +332,13 @@ export class AgentAdminTool implements IConditionallyListedTool {
       'ready, startedAt, restarts, last termination reason) when one exists, ' +
       'and resource usage — pod CPU/memory against limits, free disk on the ' +
       'node. pod and metrics are null while the agent has no pod (stopped, ' +
-      'still pending). Takes the agent id — resolve a name with list_agents.',
+      'still pending). tools is what its runtime says about its tool ' +
+      'servers, or null when it says nothing: phase "connecting" means it ' +
+      'has just started and is still reaching some of them, "limited" that ' +
+      'it runs without some; a server in state "retrying" is being tried ' +
+      'again on its own, one in state "refused" was turned down for its ' +
+      'credentials and needs them fixed, not a wait. Takes the agent id — ' +
+      'resolve a name with list_agents.',
     parameters: z.object({
       id: z.string().describe('Agent id — pick from list_agents'),
     }),
@@ -367,6 +375,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
           }
         : null,
       metrics,
+      tools: this.toolState.detail(id),
     });
   }
 

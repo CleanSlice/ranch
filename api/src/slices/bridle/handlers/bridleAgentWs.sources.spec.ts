@@ -38,6 +38,7 @@ function makeHandler(entries: IChatSourceEntry[] = []) {
     {} as never,
     {} as never,
     chatSources as never,
+    {} as never,
   );
   const client = {
     data: { agentId: 'agent-1', send: () => undefined },

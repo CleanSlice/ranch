@@ -127,7 +127,7 @@ export class BridleClientWsHandler
     private readonly shareLinks: ShareLinkService,
     private readonly actingParty: ActingPartyService,
     private readonly reach: ConsoleReachService,
-      // What the assistant offers the sender, for the wording of the turn
+    // What the assistant offers the sender, for the wording of the turn
     // (CLEAN-240). Optional: a hub built without it says nothing.
     @Optional() private readonly assistant?: IActingAssistant,
   ) {}
@@ -475,6 +475,8 @@ export class BridleClientWsHandler
       type: 'agent_status',
       agentId,
       connected: this.hub.isAgentConnected(agentId),
+      // One word on its tool servers, never a server's name (CLEAN-245).
+      tools: this.hub.agentTools(agentId),
     });
     // An hour or day limit that is already full is said now, so nobody writes
     // a long message only to be refused (CLEAN-224). Every socket gets it: a

@@ -268,6 +268,7 @@ const agentAdmin = new AgentAdminTool(
   permission,
   access,
   never('pins'),
+  never('toolState'),
 );
 const channels = new AgentChannelTool(never('channels'), agents, permission);
 const eventTool = new AgentEventTool(

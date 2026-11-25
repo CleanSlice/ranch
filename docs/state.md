@@ -135,14 +135,20 @@ second from being shown anything of the first (CLEAN-231).
    `agent:lastOpened:<userId>` in `app`; `bridle:debug:<userId>:<agentId>`,
    `bridle:outbox:<userId>:<agentId>:<channel>` and the restart marks
    `agent:pendingRestart:<userId>`, `agent:restartInFlight:<userId>` and
-   `agentFile:pendingRestart:<userId>` in `admin`. With no
+   `agentFile:pendingRestart:<userId>` in `admin`; in both,
+   `bridle:queue:<userId>:<key>`, the messages a conversation still has to
+   send (CLEAN-245: at most three, each with the time it was written). With no
    signed-in id there is no key: nothing is read and nothing is written. A
    share-link conversation has no account and keeps its `share:…` key. View
    preferences that name no agent (`agent:view`, the theme) stay as they
    are. A new key of this kind goes through that module, and the old shape is
    added to its one-time sweep as a new step with the next number in the
    flag: browsers that already ran the earlier steps hold the earlier number
-   and still get the new one, once.
+   and still get the new one, once. The queue's key carried the account from
+   its first day, so the sweep has no step for it and leaves it alone; a
+   share-link conversation's queue is `bridle:queue:share:…`, the visitor's own.
+   Two tabs of one person read the same key: the tab that holds the Web Lock
+   `bridle-queue:<storage key>` sends, the others follow the `storage` event.
 
 ## Review checklist
 

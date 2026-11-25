@@ -293,6 +293,14 @@ watch(
   { immediate: true },
 );
 
+// The panel sits between the transcript and the composer: a row more takes
+// its height from the transcript. A reader at the bottom stays there.
+watch([() => queue.value.length, heldReason], async () => {
+  const follow = isNearBottom();
+  await nextTick();
+  if (follow) scrollToBottom();
+});
+
 const inputRef = ref<{ requestEdit: (id: string) => void } | null>(null);
 
 function onSubmit(text: string) {

@@ -434,6 +434,17 @@ watch(
   { immediate: true },
 )
 
+// The panel sits between the transcript and the composer: a row more takes
+// its height from the transcript. A reader at the bottom stays there.
+watch([() => queue.value.length, heldReason], async () => {
+  const viewport = getViewport()
+  const nearBottom =
+    !viewport ||
+    viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80
+  await nextTick()
+  if (nearBottom) scrollToBottom()
+})
+
 const inputRef = ref<InstanceType<typeof Input> | null>(null)
 
 const handleSend = async (text: string) => {

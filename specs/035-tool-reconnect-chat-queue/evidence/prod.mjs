@@ -28,6 +28,9 @@ const API = need("PROD_API");
 const BASES = { admin: need("PROD_ADMIN"), app: need("PROD_APP") };
 const AGENT = need("AGENT_FOR_TEST");
 const ACCOUNTS = {
+  // Both consoles are driven by the test Owner, one after the other: the
+  // test agent limits the messages of whoever only talks to it, and a run is
+  // three of them. The User is only asked what a User may read.
   owner: [need("RANCH_OWNER_LG"), need("RANCH_OWNER_PASS")],
   user: [need("RANCH_USER_LG"), need("RANCH_USER_PASS")],
 };
@@ -159,54 +162,64 @@ try {
   ).data?.accessToken;
   check("owner signs in", Boolean(owner));
 
-  const tag = `CLEAN-245 ${new Date().toISOString().slice(11, 19)}`;
-  const admin = await login(browser, "admin", "owner");
-  const app = await login(browser, "app", "user");
+  const stamp = new Date().toISOString().slice(11, 19);
+  for (const consoleName of ["admin", "app"]) {
+    const tag = `CLEAN-245 ${stamp} ${consoleName}`;
+    const page = await login(browser, consoleName, "owner");
 
-  const restart = await api("POST", `/agents/${AGENT}/restart`, owner);
-  check("restart accepted", restart.status < 300, String(restart.status));
-  for (let i = 0; i < 30; i += 1) {
-    const status = (await api("GET", `/agents/${AGENT}`, owner)).data?.status;
-    if (status && status !== "running") break;
-    await sleep(1000);
+    const restart = await api("POST", `/agents/${AGENT}/restart`, owner);
+    check(
+      `${consoleName}: restart accepted`,
+      restart.status < 300,
+      String(restart.status),
+    );
+    for (let i = 0; i < 30; i += 1) {
+      const status = (await api("GET", `/agents/${AGENT}`, owner)).data?.status;
+      if (status && status !== "running") break;
+      await sleep(1000);
+    }
+    await sleep(1500);
+
+    await queueThree(page, tag);
+    const waiting = await rows(page).count();
+    check(
+      `${consoleName}: the composer took three while the agent restarts`,
+      waiting >= 2,
+      String(waiting),
+    );
+    const firstRow = waiting ? await rows(page).first().boundingBox() : null;
+    if (consoleName === "admin") {
+      // The transcript is under the start overlay, the queue must not be.
+      const shown = await page.locator("[data-chat-overlay]").count();
+      const overlay = shown
+        ? await page.locator("[data-chat-overlay]").boundingBox()
+        : null;
+      check(
+        "admin: the start overlay ends above the queue",
+        !overlay || (firstRow && overlay.y + overlay.height <= firstRow.y),
+        overlay ? "overlay shown" : "no overlay at that moment",
+      );
+      await shot(page, consoleName, "prod-admin-queue", 56);
+    } else {
+      // The older conversation is in view here: the picture starts at the queue.
+      await shot(
+        page,
+        consoleName,
+        "prod-app-queue",
+        Math.floor((firstRow?.y ?? 700) - 60),
+      );
+    }
+
+    await answeredInOrder(page, tag, consoleName);
+    await sleep(500);
+    await shot(
+      page,
+      consoleName,
+      `prod-${consoleName}-drained`,
+      await topOf(page, tag),
+    );
+    await page.context().close();
   }
-  await sleep(1500);
-
-  await queueThree(admin, `${tag} admin`);
-  await queueThree(app, `${tag} app`);
-  check(
-    "admin: the composer took three while the agent restarts",
-    (await rows(admin).count()) >= 2,
-    String(await rows(admin).count()),
-  );
-  check(
-    "app: the composer took three while the agent restarts",
-    (await rows(app).count()) >= 2,
-    String(await rows(app).count()),
-  );
-  // Admin's transcript is under the start overlay; in app the older
-  // conversation is in view, so the picture starts at the queue.
-  await shot(admin, "admin", "prod-admin-queue", 56);
-  const panel = await rows(app).first().boundingBox();
-  await shot(app, "app", "prod-app-queue", Math.floor((panel?.y ?? 700) - 60));
-  const overlay = await admin.locator("[data-chat-overlay]").boundingBox();
-  const firstRow = await rows(admin).first().boundingBox();
-  check(
-    "admin: the start overlay ends above the queue",
-    !overlay || (firstRow && overlay.y + overlay.height <= firstRow.y),
-    overlay ? "overlay shown" : "no overlay at that moment",
-  );
-
-  await answeredInOrder(admin, `${tag} admin`, "admin");
-  await answeredInOrder(app, `${tag} app`, "app");
-  await sleep(500);
-  await shot(
-    admin,
-    "admin",
-    "prod-admin-drained",
-    await topOf(admin, `${tag} admin`),
-  );
-  await shot(app, "app", "prod-app-drained", await topOf(app, `${tag} app`));
 
   const state = await api("GET", `/agents/${AGENT}/tool-state`, owner);
   check("tool state for the Owner", state.status === 200, String(state.status));

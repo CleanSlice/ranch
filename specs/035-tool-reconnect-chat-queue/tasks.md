@@ -164,10 +164,10 @@
 - [X] T054 Run and record: `bun run typecheck`, `bun run locale:check`, `bun run i18n:check`, `bun run test:scripts`, `cd api && bun run test`, `bun test slices` in `admin` and in `app`, `bun test` in the runtime; fix what this work broke
 - [X] T055 Quickstart Scenario 6 (old runtime 0.39.0 against the new API and consoles) with one screenshot `compat-old-runtime.png`: today's status line, no tool state, the queue works
 - [X] T056 Review `specs/035-tool-reconnect-chat-queue/evidence/`: every PNG named in T033, T045, T051, T055 exists, none shows a secret, an e-mail other than the test accounts, or a DSN; commit the folder
-- [ ] T057 Bump the root `package.json` version above the highest `v*` tag; commit; push; open the pull request into `main` titled with CLEAN-245, with the twin paragraphs from T032 and T044, the commands from T054 and the screenshots linked; put the link on the ticket
-- [ ] T058 When CI is green: `gh api user` (DREAM account), `gh pr merge <n> --merge`; watch `Release Platform`, then the tag's `Build, push & deploy`; report both conclusions
-- [ ] T059 Production: restart the assistant so it runs runtime 0.40.0; as the test Owner call `GET /agents/:id/tool-state`; with Playwright queue three messages during the restart and save `prod-admin-queue.png` and `prod-app-queue.png` (test accounts only); confirm they are answered in order, once
-- [ ] T060 Close out: tick this file, comment on CLEAN-245 with what shipped and what was and was not verified, move it to In Testing, leave CLEAN-246 in the backlog with a link to the released behaviour, remove both worktrees, update the memory note
+- [X] T057 Bump the root `package.json` version above the highest `v*` tag; commit; push; open the pull request into `main` titled with CLEAN-245, with the twin paragraphs from T032 and T044, the commands from T054 and the screenshots linked; put the link on the ticket
+- [X] T058 When CI is green: `gh api user` (DREAM account), `gh pr merge <n> --merge`; watch `Release Platform`, then the tag's `Build, push & deploy`; report both conclusions
+- [X] T059 Production: restart the assistant so it runs runtime 0.40.0; as the test Owner call `GET /agents/:id/tool-state`; with Playwright queue three messages during the restart and save `prod-admin-queue.png` and `prod-app-queue.png` (test accounts only); confirm they are answered in order, once
+- [X] T060 Close out: tick this file, comment on CLEAN-245 with what shipped and what was and was not verified, move it to In Testing, leave CLEAN-246 in the backlog with a link to the released behaviour, remove both worktrees, update the memory note
 
 ---
 

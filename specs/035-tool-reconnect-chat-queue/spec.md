@@ -91,7 +91,7 @@ Before a queued message goes out the person can move it up or down, take it out,
 1. **Given** two or more queued messages, **When** the person moves one, **Then** the new order is the order they are sent in.
 2. **Given** a queued message, **When** the person removes it, **Then** it is never sent and its attachments are discarded.
 3. **Given** a queued message, **When** the person chooses to edit it, **Then** it leaves the queue and its text and attachments are back in the input.
-4. **Given** a queued message, **When** the person chooses to send it now, **Then** [NEEDS CLARIFICATION: what "Now" does while the agent is answering — see Question 1].
+4. **Given** a queued message the person wants answered first, **When** they move it to the top, **Then** it is the next one sent; there is no separate "send now" action, and the answer in progress is never cut short by the queue.
 5. **Given** the queue, **When** the person folds it, **Then** only the header with the count remains, and unfolding restores the list.
 6. **Given** a person using only the keyboard or a screen reader, **When** they reorder, remove or edit a queued message, **Then** each action is reachable and announced.
 
@@ -143,6 +143,7 @@ Before a queued message goes out the person can move it up or down, take it out,
 - **FR-018**: Queued messages MUST be sent one at a time, in queue order, each after the agent has finished with the one before.
 - **FR-019**: The person MUST be able to reorder queued messages, remove one, and return one to the input for editing.
 - **FR-020**: The person MUST be able to fold the queue to its header and unfold it.
+- **FR-020a**: The queue MUST NOT offer a way to send a message ahead of the answer in progress; moving a message to the top is how it is made next.
 - **FR-021**: The queue MUST survive a page reload and a dropped connection on the same device, and MUST belong to one conversation of one person: it is never shown to, or sent on behalf of, anyone else.
 - **FR-022**: A queued message MUST be sent exactly once, including when the chat is open in several tabs.
 - **FR-023**: Queued messages MUST NOT be sent when the agent fails to start, and MUST NOT be sent unprompted when they are more than a day old.
@@ -177,6 +178,7 @@ Before a queued message goes out the person can move it up or down, take it out,
 - "Limited" is a mark on a running agent, not a new failure state: a limited agent takes messages, counts as running for capacity and billing, and is not restarted automatically.
 - Which tools only read is already declared for the Ranch's own tools (CLEAN-240). For third-party tool servers nothing is declared, so their calls are treated as changing something and are not repeated automatically.
 - The queue lives on the person's device. A queue started on a laptop is not waiting on a phone. Three messages and a day's lifetime make that acceptable.
-- The embedded widget shipped from the separate Bridle SDK repository is out of scope here; it keeps its current input behaviour until a follow-up.
+- The embedded widget shipped from the separate Bridle SDK repository gets the same queue as a sub-task of this ticket, [CLEAN-246](https://dreamvention.atlassian.net/browse/CLEAN-246): same rules as User Stories 3 and 4, its own release. This feature is complete for the consoles and the share page without it; until CLEAN-246 ships the widget keeps its current input behaviour.
+- Stopping an answer in progress to send another message (the reference's "Now") is left out on purpose and would be its own ticket.
 - Agents get the reconnecting behaviour when they run a runtime version that has it. Agents pinned to an older version (Mazda is on 0.34.1) keep today's behaviour until their template is moved; the status and the queue degrade to today's single "Starting…" for them rather than showing something untrue.
 - Why the pods were recreated on 20 November, and making the API start before agents, belong to the cluster's operators and are not part of this feature.

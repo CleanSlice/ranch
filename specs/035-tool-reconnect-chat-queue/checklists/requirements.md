@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,5 +31,6 @@
 
 ## Notes
 
-- One marker remains: User Story 4, scenario 4 — what "Now" does while the agent is answering. Waiting for the answer to Question 1.
+- Question 1 answered 2026-11-25: option A — no "send now" action; a message is made next by moving it to the top (User Story 4 scenario 4, FR-020a).
+- The Bridle SDK widget is sub-task CLEAN-246.
 - The Assumptions section names a runtime version and a ticket number as facts about the present state, not as design.

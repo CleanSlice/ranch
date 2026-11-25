@@ -123,10 +123,22 @@ function measureOverlayBox() {
   };
 }
 
-onMounted(measureOverlayBox);
 // The column's width changes with the rail, the window and the Settings
 // round trip; a box measured once at mount would drift.
 useResizeObserver(chatWrapRef, measureOverlayBox);
+// The footer grows without the column changing size: a queued message adds a
+// row, and the overlay must give that height back (CLEAN-245).
+const messageAreaRef = ref<HTMLElement | null>(null);
+watch(
+  chatWrapRef,
+  (wrap) => {
+    messageAreaRef.value =
+      wrap?.querySelector<HTMLElement>('[data-slot="card-content"]') ?? null;
+    measureOverlayBox();
+  },
+  { immediate: true, flush: 'post' },
+);
+useResizeObserver(messageAreaRef, measureOverlayBox);
 watch(
   () => props.overlay,
   async (o) => {

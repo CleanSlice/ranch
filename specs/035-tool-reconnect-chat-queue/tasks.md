@@ -100,7 +100,7 @@
 
 - [X] T030 [P] [US2] `admin`: `slices/agent/agent/utils/toolState.ts` (one derivation: label, detail line, tone), `stores/agentStatus.ts` (+ `tools` from the frame), a gateway call for `tool-state` fetched only while the summary is set, `composables/useAgentLifecycle.ts` (overlay "Connecting tools…" with the detail), `components/agent/status/ToolState.vue` (badge **Limited tools**), and its use in `components/agent/chat/Tab.vue`, `status/Dot.vue` tooltip, `workspace/RailItem.vue`, `utils/agentSummary.ts`
 - [X] T031 [P] [US2] `app`: `slices/bridle/stores/bridle.ts` (`agentTools` map from `onAgentStatus`), `slices/agent/utils/toolState.ts` + `utils/agentStatus.ts`, `components/agent/chat/Provider.vue` (header line; manager wording for Admin/Owner with the detail fetch), `workspace/RailItem.vue`, `slices/share/utils/shareInfo.ts`; keys in `slices/agent/i18n/locales/en.json`, `slices/bridle/i18n/locales/en.json`, `slices/share/i18n/locales/en.json` including the missing `status.unreachable`; then `bun run i18n:sync`
-- [ ] T032 [US2] Twin check for T030/T031: grep `toolState` and `agent_status` in both trees, confirm both consoles show the same states, and write the paragraph for the pull request naming what each console needed
+- [X] T032 [US2] Twin check for T030/T031: grep `toolState` and `agent_status` in both trees, confirm both consoles show the same states, and write the paragraph for the pull request naming what each console needed
 - [ ] T033 [US2] Quickstart Scenarios 2 and 3 on the local stack with Playwright (`evidence/shots.mjs`), saving to `specs/035-tool-reconnect-chat-queue/evidence/`: `us2-admin-connecting.png`, `us2-admin-limited-chat.png`, `us2-admin-limited-list.png`, `us2-admin-refused.png`, `us2-app-user-starting.png`, `us2-app-user-limited.png`, `us2-share-limited.png`, `us2-admin-cleared.png`; also assert in the script that the User's page HTML and its network responses contain no server name; ask the Ranch agent "what is wrong with «agent»?" and save `us2-rancher-answer.png`; confirm one `limited` incident and its closing
 
 **Checkpoint**: the 20 November state would have been on screen within a minute and in the alert channel within six.
@@ -115,20 +115,20 @@
 
 ### Tests for User Story 3
 
-- [ ] T034 [P] [US3] `admin/slices/bridle/utils/queue.spec.ts` and `app/slices/bridle/utils/queue.spec.ts`: cap of three; `canTake` truth table (socket, hub, agent state, `tools: connecting`, open turn, limit); `limited` is ready; `nextToSend` skips blocked; held reasons; the 24-hour rule
-- [ ] T035 [P] [US3] Store specs in `admin/slices/bridle/stores/` and `app/slices/bridle/stores/`: a send while not ready queues and clears the draft; a fourth is refused and the draft kept; one message per turn; restored from storage; not sent when the lock is held elsewhere; cleared on account change
+- [X] T034 [P] [US3] `admin/slices/bridle/utils/queue.spec.ts` and `app/slices/bridle/utils/queue.spec.ts`: cap of three; `canTake` truth table (socket, hub, agent state, `tools: connecting`, open turn, limit); `limited` is ready; `nextToSend` skips blocked; held reasons; the 24-hour rule
+- [X] T035 [P] [US3] Store specs in `admin/slices/bridle/stores/` and `app/slices/bridle/stores/`: a send while not ready queues and clears the draft; a fourth is refused and the draft kept; one message per turn; restored from storage; not sent when the lock is held elsewhere; cleared on account change
 
 ### Implementation for User Story 3
 
-- [ ] T036 [P] [US3] `admin/slices/bridle/utils/queue.ts` and `app/slices/bridle/utils/queue.ts`: the pure rules of data-model.md (`canQueue`, `canTake`, `held`, `nextToSend`, `move`, `remove`) — same functions, each console's own state type
-- [ ] T037 [P] [US3] `admin/slices/bridle/utils/storageKeys.ts` and `app/slices/bridle/utils/storageKeys.ts`: `queueKey(userId, conversationKey)` and its place in the account sweep; in `app` the share visitor id is the user part
-- [ ] T038 [US3] `app/slices/bridle/stores/bridle.ts`: extract `isAnswering(key)` from `newChatBlock` and use it there, so "answering" has one derivation (research R9)
-- [ ] T039 [US3] `admin/slices/bridle/stores/bridle.ts`: `queue` on the conversation record; `enqueue`, `drain` (one per open turn, `clientMessageId` = entry id, Web Lock `bridle-queue:<key>` with `ifAvailable`, `storage` event to mirror other tabs), load/save through `queueKey`; `sendMessage` routes through `canTake`; reset in `resetForAccount` (depends on T036, T037)
-- [ ] T040 [US3] `app/slices/bridle/stores/bridle.ts`: the same on a `queues` map beside `drafts`; `drain` respects `isLimited`; reset in `resetForAccount` and listed where `accountScope.client.ts` expects it (depends on T036, T037, T038)
-- [ ] T041 [US3] `admin/slices/bridle/components/bridle/Provider.vue` + `Input.vue` + `admin/slices/agent/agent/components/agent/chat/Tab.vue`: remove agent state from `inputDisabled` (only "may not write" disables), keep the drop zone in step, the "three are waiting" line under the input
-- [ ] T042 [US3] `admin/slices/bridle/components/bridle/queue/Provider.vue` + `queue/Item.vue`: the panel above the composer — header "Queued · N", rows with text and attachment count, held line; mounted in `Provider.vue`
-- [ ] T043 [US3] `app/slices/bridle/components/bridle/chat/Queue.vue` + `QueueItem.vue` + `chat/Provider.vue` + `chat/Input.vue`: the same panel and the full-queue line, strings in `slices/bridle/i18n/locales/en.json`; `bun run i18n:sync`; confirm the share page shows it through the shared provider
-- [ ] T044 [US3] Twin check for T039–T043: grep `enqueue`, `drain`, `queueKey` in both trees; write the pull-request paragraph (what differs: state shape, "answering", limit wait)
+- [X] T036 [P] [US3] `admin/slices/bridle/utils/queue.ts` and `app/slices/bridle/utils/queue.ts`: the pure rules of data-model.md (`canQueue`, `canTake`, `held`, `nextToSend`, `move`, `remove`) — same functions, each console's own state type
+- [X] T037 [P] [US3] `admin/slices/bridle/utils/storageKeys.ts` and `app/slices/bridle/utils/storageKeys.ts`: `queueKey(userId, conversationKey)` and its place in the account sweep; in `app` the share visitor id is the user part
+- [X] T038 [US3] `app/slices/bridle/stores/bridle.ts`: extract `isAnswering(key)` from `newChatBlock` and use it there, so "answering" has one derivation (research R9)
+- [X] T039 [US3] `admin/slices/bridle/stores/bridle.ts`: `queue` on the conversation record; `enqueue`, `drain` (one per open turn, `clientMessageId` = entry id, Web Lock `bridle-queue:<key>` with `ifAvailable`, `storage` event to mirror other tabs), load/save through `queueKey`; `sendMessage` routes through `canTake`; reset in `resetForAccount` (depends on T036, T037)
+- [X] T040 [US3] `app/slices/bridle/stores/bridle.ts`: the same on a `queues` map beside `drafts`; `drain` respects `isLimited`; reset in `resetForAccount` and listed where `accountScope.client.ts` expects it (depends on T036, T037, T038)
+- [X] T041 [US3] `admin/slices/bridle/components/bridle/Provider.vue` + `Input.vue` + `admin/slices/agent/agent/components/agent/chat/Tab.vue`: remove agent state from `inputDisabled` (only "may not write" disables), keep the drop zone in step, the "three are waiting" line under the input
+- [X] T042 [US3] `admin/slices/bridle/components/bridle/queue/Provider.vue` + `queue/Item.vue`: the panel above the composer — header "Queued · N", rows with text and attachment count, held line; mounted in `Provider.vue`
+- [X] T043 [US3] `app/slices/bridle/components/bridle/chat/Queue.vue` + `QueueItem.vue` + `chat/Provider.vue` + `chat/Input.vue`: the same panel and the full-queue line, strings in `slices/bridle/i18n/locales/en.json`; `bun run i18n:sync`; confirm the share page shows it through the shared provider
+- [X] T044 [US3] Twin check for T039–T043: grep `enqueue`, `drain`, `queueKey` in both trees; write the pull-request paragraph (what differs: state shape, "answering", limit wait)
 - [ ] T045 [US3] Quickstart Scenario 5 steps 1, 2, 4, 5, 6 with Playwright in `admin`, `app` and on a share link (two contexts for the two-tab step), saving `us3-admin-queued-3.png`, `us3-admin-full.png`, `us3-admin-drained.png`, `us3-admin-during-answer.png`, `us3-app-queued.png`, `us3-app-drained.png`, `us3-share-queued.png`, `us3-app-queued-400w.png`; assert in the script, from the conversation, that each message appears exactly once and in order
 
 **Checkpoint**: nobody waits for an agent before typing.
@@ -143,14 +143,14 @@
 
 ### Tests for User Story 4
 
-- [ ] T046 [P] [US4] Extend both `queue.spec.ts`: move up/down at the edges; edit returns text and attachments and removes the entry; remove drops attachments; a blocked entry is skipped and the rest drains
-- [ ] T047 [P] [US4] `admin/slices/bridle/composables/useQueueOrder.spec.ts` and `app/slices/bridle/composables/useQueueOrder.spec.ts`: `Alt+↑/↓` moves and reports the new position; pointer drag yields `onMove(from, to)`
+- [X] T046 [P] [US4] Extend both `queue.spec.ts`: move up/down at the edges; edit returns text and attachments and removes the entry; remove drops attachments; a blocked entry is skipped and the rest drains
+- [X] T047 [P] [US4] `admin/slices/bridle/composables/useQueueOrder.spec.ts` and `app/slices/bridle/composables/useQueueOrder.spec.ts`: `Alt+↑/↓` moves and reports the new position; pointer drag yields `onMove(from, to)`
 
 ### Implementation for User Story 4
 
-- [ ] T048 [P] [US4] `admin/slices/bridle/composables/useQueueOrder.ts` and `app/slices/bridle/composables/useQueueOrder.ts`: handle drag (pointer events, modelled on `admin/slices/skill/composables/useSortableList.ts`) and keyboard move with an `aria-live` announcement (research R12)
-- [ ] T049 [US4] Store actions in `admin/slices/bridle/stores/bridle.ts` and `app/slices/bridle/stores/bridle.ts`: `moveQueued`, `removeQueued`, `editQueued` (back to the draft and staged attachments; replace-or-cancel when the composer is not empty), `clearQueue`, `resumeQueue` (the held "Send now"), marking an entry `blocked` with its reason
-- [ ] T050 [US4] Row controls and folding in `admin/slices/bridle/components/bridle/queue/{Provider.vue,Item.vue}` and `app/slices/bridle/components/bridle/chat/{Queue.vue,QueueItem.vue}`: handle, edit, remove, the `⋯` menu, the chevron (remembered per conversation for the session), held actions, blocked reason, list semantics and labels; `app` strings in `en.json` then `bun run i18n:sync`
+- [X] T048 [P] [US4] `admin/slices/bridle/composables/useQueueOrder.ts` and `app/slices/bridle/composables/useQueueOrder.ts`: handle drag (pointer events, modelled on `admin/slices/skill/composables/useSortableList.ts`) and keyboard move with an `aria-live` announcement (research R12)
+- [X] T049 [US4] Store actions in `admin/slices/bridle/stores/bridle.ts` and `app/slices/bridle/stores/bridle.ts`: `moveQueued`, `removeQueued`, `editQueued` (back to the draft and staged attachments; replace-or-cancel when the composer is not empty), `clearQueue`, `resumeQueue` (the held "Send now"), marking an entry `blocked` with its reason
+- [X] T050 [US4] Row controls and folding in `admin/slices/bridle/components/bridle/queue/{Provider.vue,Item.vue}` and `app/slices/bridle/components/bridle/chat/{Queue.vue,QueueItem.vue}`: handle, edit, remove, the `⋯` menu, the chevron (remembered per conversation for the session), held actions, blocked reason, list semantics and labels; `app` strings in `en.json` then `bun run i18n:sync`
 - [ ] T051 [US4] Quickstart Scenario 5 steps 3 and 7 with Playwright in both consoles, keyboard only for one pass, saving `us4-admin-reordered.png`, `us4-admin-menu.png`, `us4-admin-folded.png`, `us4-admin-edit-back.png`, `us4-admin-held-stopped.png`, `us4-app-reordered.png`, `us4-app-held-stale.png` (queue an entry, set its `queuedAt` back two days in storage, reload), `us4-app-blocked.png`; assert the order sent equals the order shown and the removed one never appears
 
 **Checkpoint**: the queue is something a person controls.

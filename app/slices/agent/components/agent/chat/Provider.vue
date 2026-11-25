@@ -75,6 +75,18 @@ const isTransitioning = computed(
     (agent.value ? TRANSITIONAL_STATUSES.has(agent.value.status) : false),
 );
 
+/**
+ * What the chat's queue is told about the agent (CLEAN-245): on its way up
+ * the messages wait and go out by themselves; failed or stopped they are
+ * kept and the person is asked. Null: running, as far as this page knows.
+ */
+const queueAgentState = computed(() => {
+  if (isTransitioning.value) return 'starting' as const;
+  if (agent.value?.status === 'failed') return 'failed' as const;
+  if (agent.value?.status === 'stopped') return 'stopped' as const;
+  return null;
+});
+
 async function onRestart() {
   if (!agent.value || restarting.value) return;
   restarting.value = true;
@@ -343,11 +355,13 @@ const initials = computed(() => {
         :subtitle="agent.templateId"
         :show-header="false"
         :tool-view="toolView"
-      />
-
-      <!-- Restart overlay — covers the chat while the pod is bouncing.
-           Shown both during the API call and while the status is in a
-           transitional state (deploying/pending). Slide in from below. -->
+        :agent-state="queueAgentState"
+      >
+      <!-- Restart overlay — covers the transcript while the pod is bouncing,
+           never the composer: what is written meanwhile waits in the queue
+           (CLEAN-245). Shown both during the API call and while the status
+           is in a transitional state (deploying/pending). -->
+      <template #overlay>
       <Transition
         enter-active-class="transition-all duration-300 ease-out"
         enter-from-class="opacity-0"
@@ -396,6 +410,8 @@ const initials = computed(() => {
           </div>
         </div>
       </Transition>
+      </template>
+      </BridleChatProvider>
     </div>
   </div>
 </template>

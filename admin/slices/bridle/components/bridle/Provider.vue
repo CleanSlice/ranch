@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, toRefs, watch, onMounted, onUnmounted, type HTMLAttributes } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBridleStore } from '../../stores/bridle'
+import { queueStateOf, useBridleStore } from '../../stores/bridle'
+import { canTake, held } from '../../utils/queue'
 import { buildChatFlow, type IChatFlowDayItem } from '../../utils/chatFlow'
 import Message from './Message.vue'
 import Thinking from './Thinking.vue'
 import Input from './Input.vue'
 import DropZone from './DropZone.vue'
+import Queue from './queue/Provider.vue'
 import Toggles from './Toggles.vue'
 import ToolCatalogButton from '#toolCatalog/components/toolCatalog/Button.vue'
 import DebugPanel from './DebugPanel.vue'
@@ -409,20 +411,40 @@ onUnmounted(() => {
   store.release(conversationKey)
 })
 
-/**
- * One answer for both the composer and the drop target: a chat that cannot
- * send a message must not accept a file either.
- */
-const inputDisabled = computed(
-  () => !isConnected.value || !isAgentConnected.value || props.agentState !== null,
+// ── Queue (CLEAN-245) ────────────────────────────────────────
+// The composer is never closed for what the agent is doing: starting,
+// answering, connecting its tools. What is written meanwhile waits in the
+// queue (at most three) and goes out by itself, one per turn. Nothing in the
+// admin console takes the right to write away, so nothing disables it here.
+
+const queue = computed(() => store.getQueue(conversationKey))
+const queueState = computed(() => queueStateOf(conversation, props.agentState))
+/** The agent can take a message now. */
+const takes = computed(() => canTake(queueState.value))
+/** Why the queue waits for the person rather than the agent, if it does. */
+const heldReason = computed(() => held(queue.value, queueState.value, nowMs.value))
+
+// The one place that sends from the queue: whenever the agent becomes free
+// (it came up, a turn closed), the hold is lifted, or the list changes.
+watch(
+  [takes, heldReason, () => queue.value.length],
+  ([free, reason, waiting]) => {
+    if (free && !reason && waiting > 0) void store.drain(conversationKey, props.agentState)
+  },
+  { immediate: true },
 )
 
+const inputRef = ref<InstanceType<typeof Input> | null>(null)
+
 const handleSend = async (text: string) => {
-  await store.sendMessage(conversationKey, text)
-  // Sending always lands on the new message, wherever the reader was — the
-  // near-bottom rule above is for INCOMING content only.
-  await nextTick()
-  scrollToBottom()
+  const result = await store.submit(conversationKey, text, props.agentState)
+  if (result === 'sent') {
+    // Sending always lands on the new message, wherever the reader was — the
+    // near-bottom rule above is for INCOMING content only.
+    await nextTick()
+    scrollToBottom()
+  }
+  return result
 }
 
 const onResend = (id: string) => {
@@ -463,7 +485,7 @@ function onDragOver(event: DragEvent) {
   // Without this the browser treats the drop as a navigation.
   event.preventDefault()
   if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = inputDisabled.value ? 'none' : 'copy'
+    event.dataTransfer.dropEffect = 'copy'
   }
 }
 
@@ -480,7 +502,6 @@ function onDrop(event: DragEvent) {
   // Reset unconditionally: a drop ends the drag however the counter got here.
   dragDepth.value = 0
   isDraggingFile.value = false
-  if (inputDisabled.value) return
 
   const files = event.dataTransfer?.files
   if (files?.length) {
@@ -734,19 +755,24 @@ async function onConfirmReset() {
       <!-- The composer is replaced, not covered: the dashed block takes its
            place while a file is overhead. The draft and staged files live in
            the component and the store, so the swap cannot lose them. -->
-      <DropZone v-if="isDraggingFile" :disabled="inputDisabled" />
-      <!-- Stays visible when the agent is down — a hidden input reads as a
-           broken layout; disabled communicates "chat exists, agent doesn't". -->
+      <Queue
+        :conversation-key="conversationKey"
+        :held="heldReason"
+        @edit="inputRef?.requestEdit($event)"
+      />
+      <DropZone v-if="isDraggingFile" />
+      <!-- Open whatever the agent is doing (CLEAN-245): what cannot be sent
+           yet waits in the queue above. -->
       <Input
         v-else
+        ref="inputRef"
         :api-url="apiUrl"
         :agent-id="agentId"
         :channel="channel"
         :placeholder="placeholder"
-        :disabled="inputDisabled"
         :boxed="frameless"
         :manageable="manageable"
-        @send="handleSend"
+        :submit="handleSend"
       >
         <!-- Frameless: the toggles sit inside the composer box, and the two
              things the header carried that still matter — New chat and the

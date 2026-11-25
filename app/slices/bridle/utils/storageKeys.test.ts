@@ -3,6 +3,7 @@ import {
   SWEEP_FLAG_KEY,
   conversationKey,
   lastAgentKey,
+  queueKey,
   seqKey,
   sweepUnscopedKeys,
   type IKeyStorage,
@@ -47,6 +48,22 @@ describe('account-scoped keys', () => {
     expect(conversationKey('u1', 'share:agent-a:v1')).toBe('bridle:conversation:share:agent-a:v1');
     expect(seqKey(null, 'share:agent-a:v1')).toBe('bridle:seq:share:agent-a:v1');
     expect(seqKey('u1', 'share:agent-a:v1')).toBe('bridle:seq:share:agent-a:v1');
+  });
+});
+
+describe('the queue of a conversation', () => {
+  test('belongs to the account, or to the visitor of a share link', () => {
+    expect(queueKey('u1', 'agent-a')).toBe('bridle:queue:u1:agent-a');
+    expect(queueKey('u1', 'agent-a') === queueKey('u2', 'agent-a')).toBe(false);
+    expect(queueKey(null, 'agent-a')).toBe(null);
+    expect(queueKey(null, 'share:agent-a:v1')).toBe('bridle:queue:share:agent-a:v1');
+    expect(queueKey('u1', 'share:agent-a:v1')).toBe('bridle:queue:share:agent-a:v1');
+  });
+
+  test('is never an old key: a browser that has not swept yet leaves it alone', () => {
+    const storage = storageOf({ [queueKey('u1', 'agent-a') as string]: '[]' });
+    expect(sweepUnscopedKeys(storage)).toEqual([]);
+    expect(storage.getItem('bridle:queue:u1:agent-a')).toBe('[]');
   });
 });
 

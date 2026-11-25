@@ -42,7 +42,7 @@ const authStore = useAuthStore();
 const { canManage } = useAgentAccess(() => props.agent);
 
 // One "restart is underway" signal for every surface (bridle header status,
-// disabled input, logs overlay) — covers both an explicit Restart click and
+// the queue that holds what is written meanwhile — CLEAN-245, logs overlay) — covers both an explicit Restart click and
 // a deploy in progress, so nothing lags behind the WS state.
 const restartUnderway = computed(
   () => props.restarting || props.overlay?.kind === 'starting',
@@ -102,7 +102,7 @@ const offlineHint = computed(() =>
 );
 
 // The failure overlay blurs only the MESSAGE AREA (the card-content box).
-// Footer (input, disabled by bridle while the agent is down) and the logs bar
+// Footer (the input, open whatever the agent is doing, and its queue) and the logs bar
 // stay visible — the user keeps the frame and the controls, only the
 // transcript is dimmed. The box is measured from the DOM because the footer
 // height is content-driven.

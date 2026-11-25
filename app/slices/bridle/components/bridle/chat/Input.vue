@@ -3,7 +3,11 @@ import {
   FILE_PICKER_ACCEPT,
   MAX_ATTACHMENTS_PER_MESSAGE,
 } from '#bridle/domain';
-import type { IBridleConversation } from '#bridle/stores/bridle';
+import type {
+  IBridleConversation,
+  QueueSubmitResults,
+} from '#bridle/stores/bridle';
+import { QUEUE_MAX } from '#bridle/utils/queue';
 import type { ILimitCountdown } from '#bridle/composables/useLimitCountdown';
 import { restoredDraft as mergeRestoredDraft } from '#bridle/utils/limit';
 import { noticeParams } from '#bridle/utils/noticeParams';
@@ -25,8 +29,14 @@ const props = defineProps<{
   limit?: ILimitCountdown | null;
   /** The notice's id — what the controls the limit turns off are described by. */
   limitNoticeId?: string;
+  /**
+   * What Send does with the text (CLEAN-245): the chat sends it, queues it,
+   * or — with three already waiting — refuses it, and says which. A prop and
+   * not an event, because the field is only emptied by a message that went
+   * somewhere.
+   */
+  submit: (text: string) => QueueSubmitResults;
 }>();
-const emit = defineEmits<{ send: [text: string] }>();
 
 const bridleStore = useBridleStore();
 const format = useFormat();
@@ -142,17 +152,71 @@ function autoResize() {
   el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
 }
 
-function submit() {
+// ── Queue (CLEAN-245) ──────────────────────────────────────────
+// The field is never locked on the agent's account: what cannot go out now
+// waits in the queue above. Only a fourth message has nowhere to go — it
+// stays here and a line says why.
+
+const queued = computed(() => bridleStore.queueFor(props.conversation.key));
+const refusedAsFull = ref(false);
+const queueFull = computed(
+  () => refusedAsFull.value && queued.value.length >= QUEUE_MAX,
+);
+watch(
+  () => queued.value.length,
+  (length) => {
+    if (length < QUEUE_MAX) refusedAsFull.value = false;
+  },
+);
+
+function onSubmit() {
   // Before anything is let go of: the text stays in the field.
   if (limitWaiting.value) {
     nudgeLimit();
     return;
   }
   if (!canSend.value) return;
-  emit('send', draft.value.trim());
+  const result = props.submit(draft.value.trim());
+  refusedAsFull.value = result === 'full';
+  if (result !== 'sent' && result !== 'queued') return;
   draft.value = '';
   nextTick(() => autoResize());
 }
+
+/** The queued message asked back while the field holds something else. */
+const pendingEdit = ref<string | null>(null);
+
+/** Put a queued message back in the field: its text here, its files staged. */
+function takeBack(id: string) {
+  pendingEdit.value = null;
+  const text = bridleStore.editQueued(props.conversation, id);
+  if (text === null) return;
+  draft.value = text;
+  void nextTick(() => {
+    const el = textareaRef.value;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  });
+}
+
+/**
+ * "Edit" on a queued row. What is being written is never overwritten without
+ * asking: with text or files here the person chooses, replace or cancel.
+ */
+function requestEdit(id: string) {
+  if (draft.value.trim() || staged.value.length) pendingEdit.value = id;
+  else takeBack(id);
+}
+
+// The row went away meanwhile (sent, or removed in another tab).
+watch(queued, (list) => {
+  if (pendingEdit.value && !list.some((e) => e.id === pendingEdit.value)) {
+    pendingEdit.value = null;
+  }
+});
+
+defineExpose({ requestEdit });
 
 function openPicker() {
   if (!canAttach.value) return;
@@ -186,7 +250,7 @@ watch(draft, () => nextTick(autoResize));
 <template>
   <form
     class="shrink-0 border-t bg-background"
-    @submit.prevent="submit"
+    @submit.prevent="onSubmit"
   >
     <div class="mx-auto w-full max-w-3xl px-4 py-3">
       <!-- On the top edge of the field, the same width: where the hand
@@ -197,6 +261,31 @@ watch(draft, () => nextTick(autoResize));
         :countdown="limit"
         :nudge="nudging"
       />
+      <!-- A queued message asked back while something is being written. -->
+      <div
+        v-if="pendingEdit"
+        class="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-muted/50 px-3 py-1.5 text-xs"
+        role="alert"
+        data-queue-replace
+      >
+        <span class="flex-1">{{ $t('chat.queue_replace') }}</span>
+        <button
+          type="button"
+          class="cursor-pointer font-medium underline underline-offset-2 hover:no-underline"
+          data-queue-replace-confirm
+          @click="takeBack(pendingEdit)"
+        >
+          {{ $t('chat.queue_replace_yes') }}
+        </button>
+        <button
+          type="button"
+          class="cursor-pointer font-medium underline underline-offset-2 hover:no-underline"
+          data-queue-replace-cancel
+          @click="pendingEdit = null"
+        >
+          {{ $t('chat.queue_replace_cancel') }}
+        </button>
+      </div>
       <div
         class="group flex flex-col gap-2 rounded-2xl border bg-card px-2 py-1.5 shadow-sm transition focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20"
         :class="[disabled && 'opacity-60', limit && limitNoticeId && 'rounded-t-none']"
@@ -246,14 +335,14 @@ watch(draft, () => nextTick(autoResize));
             rows="1"
             class="flex-1 resize-none bg-transparent py-2 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none disabled:cursor-not-allowed"
             :disabled="disabled"
-            @keydown.enter.exact.prevent="submit"
+            @keydown.enter.exact.prevent="onSubmit"
             @paste="onPaste"
           />
 
           <!-- While the limit is full the button is off for assistive
                technology and to the eye, but not `disabled`: it stays in the
                tab order and says why it is off (CLEAN-224). A press goes to
-               `submit`, which sends nothing and nudges the notice. -->
+               `onSubmit`, which sends nothing and nudges the notice. -->
           <button
             type="submit"
             :disabled="!limitWaiting && !canSend"
@@ -302,6 +391,17 @@ watch(draft, () => nextTick(autoResize));
         >
           {{ $t('chat.dismiss') }}
         </button>
+      </p>
+
+      <!-- A fourth message: nothing was queued and the text is still here. -->
+      <p
+        v-else-if="queueFull"
+        class="mt-1.5 px-1 text-[11px] text-muted-foreground"
+        role="status"
+        aria-live="polite"
+        data-queue-full
+      >
+        {{ $t('chat.queue_full') }}
       </p>
 
       <!-- i18n-t keeps the sentence one translatable string with the two key

@@ -2,6 +2,7 @@ import type {
   IAgentCreateInput,
   IAgentData,
   IAgentLinkData,
+  IAgentToolState,
   IAgentUpdateInput,
   IClusterCapacityData,
 } from './agent.types';
@@ -36,4 +37,9 @@ export abstract class IAgentGateway {
    * form live in the admin console. Null when the API gave no answer.
    */
   abstract getLimitsEnabled(id: string): Promise<boolean | null>;
+  /**
+   * Which tool servers the agent is missing (CLEAN-245). The API answers a
+   * manager of the agent only; null when it gave no answer.
+   */
+  abstract getToolState(id: string): Promise<IAgentToolState | null>;
 }

@@ -1,10 +1,14 @@
 import type { Ref } from 'vue';
 import type { IAgentData, AgentStatusTypes } from '#agent/domain';
+import { useAgentToolState } from '#agent/composables/useAgentToolState';
 
 export type ChatOverlay =
   | { kind: 'starting'; title: string; detail: string }
   | { kind: 'failed'; title: string; detail: string }
   | { kind: 'stopped'; title: string; detail: string }
+  // The agent is up and on the hub, still reaching its tool servers
+  // (CLEAN-245). Not a restart: nothing is being recreated.
+  | { kind: 'tools'; title: string; detail: string }
   | null;
 
 // Statuses that consume cluster resources (a pod is or will be running) — the
@@ -43,6 +47,9 @@ export function useAgentLifecycle(
   onBeforeUnmount(() => agentStatusStore.disconnect());
 
   const podStatus = computed(() => agentStatusStore.statuses[agentId] ?? null);
+  // The page's one reader of the tool-server detail; the header dot, the chat
+  // line and Overview render what it leaves in the status store.
+  const { toolView } = useAgentToolState(agentId, agent, { poll: true });
   const podLabel = computed(() => podPhaseLabel(podStatus.value));
 
   // ── Restart ──────────────────────────────────────────────────────────
@@ -226,7 +233,15 @@ export function useAgentLifecycle(
       bridleStore.isConnectedFor(agentId) &&
       bridleStore.isAgentConnectedFor(agentId);
 
-    if (chatLive) return null;
+    if (chatLive) {
+      // On the hub but not ready for work yet: say what the wait is for, so
+      // a start that takes a minute longer does not read as a hang.
+      const tools = toolView.value;
+      if (tools?.kind === 'connecting') {
+        return { kind: 'tools', title: tools.label, detail: tools.detail };
+      }
+      return null;
+    }
 
     if (s === 'failed') {
       return {
@@ -301,5 +316,6 @@ export function useAgentLifecycle(
     pendingRestart,
     dismissRestartBanner,
     chatOverlay,
+    toolView,
   };
 }

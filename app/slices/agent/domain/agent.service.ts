@@ -3,6 +3,7 @@ import type {
   IAgentCreateInput,
   IAgentData,
   IAgentLinkData,
+  IAgentToolState,
   IAgentUpdateInput,
   IClusterCapacityData,
 } from './agent.types';
@@ -64,5 +65,9 @@ export class AgentService {
 
   getLimitsEnabled(id: string): Promise<boolean | null> {
     return this.gateway.getLimitsEnabled(id);
+  }
+
+  getToolState(id: string): Promise<IAgentToolState | null> {
+    return this.gateway.getToolState(id);
   }
 }

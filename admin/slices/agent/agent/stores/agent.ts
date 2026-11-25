@@ -431,6 +431,10 @@ export const useAgentStore = defineStore('agent', () => {
     return getService().metrics(id);
   }
 
+  function fetchToolState(id: string) {
+    return getService().toolState(id);
+  }
+
   return {
     agents,
     byId,
@@ -459,6 +463,7 @@ export const useAgentStore = defineStore('agent', () => {
     fetchLogSummary,
     fetchEnv,
     fetchMetrics,
+    fetchToolState,
     isPendingRestart,
     markPendingRestart,
     clearPendingRestart,

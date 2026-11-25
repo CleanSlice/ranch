@@ -14,6 +14,7 @@ import type {
   ICreateAgentData,
   IUpdateAgentData,
 } from '../domain/agent.types';
+import type { IAgentToolState } from '../domain/agentStatus.types';
 import { AgentMapper } from './agent.mapper';
 
 interface HeyApiResult {
@@ -234,6 +235,13 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
     return this.execute(async () => {
       const res = await client.instance.get(`/agents/${id}/metrics`);
       return this.mapper.toMetrics(unwrapEnvelope(res.data));
+    });
+  }
+
+  toolState(id: string): Promise<IAgentToolState | null> {
+    return this.execute(async () => {
+      const res = await AgentsService.getAgentToolState({ path: { id } });
+      return this.mapper.toToolState(unwrapEnvelope(res.data));
     });
   }
 

@@ -21,7 +21,7 @@ export interface IOfflineHintInput {
   /** The hub says the agent runtime is registered right now. */
   agentConnected: boolean
   /** Host-reconciled agent state; `unreachable` is the server's verdict. */
-  agentState: 'restarting' | 'failed' | 'stopped' | 'unreachable' | null
+  agentState: 'restarting' | 'failed' | 'stopped' | 'unreachable' | 'connecting' | null
   /** How long the runtime has been continuously absent; null while it is present. */
   agentDownForMs: number | null
 }

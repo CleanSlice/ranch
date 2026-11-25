@@ -51,9 +51,10 @@ describe('outcomeTone', () => {
 });
 
 describe('statusTone', () => {
-  test('labels the three statuses and shows anything else raw', () => {
+  test('labels the statuses and shows anything else raw', () => {
     expect(statusTone('failed')).toEqual({ label: 'Failed', tone: 'danger' });
     expect(statusTone('unreachable')).toEqual({ label: 'Unreachable', tone: 'warning' });
+    expect(statusTone('limited')).toEqual({ label: 'Limited tools', tone: 'warning' });
     expect(statusTone('recovered')).toEqual({ label: 'Recovered', tone: 'success' });
     expect(statusTone('degraded').label).toBe('degraded');
   });
@@ -107,6 +108,7 @@ describe('incidentTone', () => {
   test('an open incident says what is wrong', () => {
     expect(incidentTone(incident())).toEqual({ label: 'Failed', tone: 'danger' });
     expect(incidentTone(incident({ status: 'unreachable' })).label).toBe('Unreachable');
+    expect(incidentTone(incident({ status: 'limited' })).label).toBe('Limited tools');
   });
 
   test('an open incident whose agent came up is recovering, not closed', () => {

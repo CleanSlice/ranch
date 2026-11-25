@@ -392,9 +392,11 @@ export interface IBridleChannelEvents {
   onReset(seq?: number): void;
   /**
    * Whether the agent runtime is on the hub. Sent on connect and on every
-   * change; state, not history, so it carries no `seq`.
+   * change; state, not history, so it carries no `seq`. `tools` is how its
+   * tool servers stand (CLEAN-245): null when all answer, and from a hub
+   * that does not send it.
    */
-  onAgentStatus(connected: boolean): void;
+  onAgentStatus(connected: boolean, tools: 'connecting' | 'limited' | null): void;
   /**
    * The agent's request limit filled, or room was made early (CLEAN-224).
    * State like `agent_status`: sent on connect and on change, no `seq`.

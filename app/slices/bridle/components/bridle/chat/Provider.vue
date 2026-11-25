@@ -6,6 +6,7 @@ import {
 import { useLimitCountdown } from '#bridle/composables/useLimitCountdown';
 import { buildChatFlow } from '#bridle/utils/chatFlow';
 import { noticeParams } from '#bridle/utils/noticeParams';
+import { toolNotice } from '#bridle/utils/toolNotice';
 import { useFormat } from '#common/composables/useFormat';
 
 const props = withDefaults(
@@ -21,8 +22,23 @@ const props = withDefaults(
     subtitle?: string;
     /** Hide the inner header — useful when the parent already shows agent identity. */
     showHeader?: boolean;
+    /**
+     * The host's own reading of the agent's tool servers (CLEAN-245), for a
+     * viewer who may manage the agent: it may name a server. As keys — this
+     * component renders them. Absent or null for everyone else, who gets the
+     * line this chat words itself from the hub's bare word.
+     */
+    toolView?: {
+      kind: 'connecting' | 'limited';
+      labelKey: string;
+      lines: {
+        key: string;
+        params: Record<string, string | number>;
+        wait?: { key: string; count: number };
+      }[];
+    } | null;
   }>(),
-  { showHeader: true },
+  { showHeader: true, toolView: null },
 );
 const bridleStore = useBridleStore();
 // The locale itself, handed to the pure `buildChatFlow` for the date on a day
@@ -98,6 +114,16 @@ const reconnecting = computed(() => {
     ? bridleStore.connectionFor(key) === BridleChannelStates.Offline &&
         messages.value.length > 0
     : false;
+});
+
+// ── Tool servers (CLEAN-245) ──────────────────────────────────
+// The agent is up and some of its tool servers are not: said in one line
+// above the composer, which stays usable either way. A share visitor and a
+// landing visitor get it too — this is the component they all render.
+const ownToolNotice = computed(() => {
+  if (props.toolView) return null;
+  const key = activeConversation.value?.key;
+  return key ? toolNotice(bridleStore.toolsFor(key)) : null;
 });
 
 // ── Chat flow ─────────────────────────────────────────────────
@@ -497,6 +523,40 @@ onBeforeUnmount(() => {
            in the store, so the swap cannot lose them. Neither is disabled
            while the agent answers: a follow-up mid-turn is a normal thing to
            send, and the store gates sending on uploads alone. -->
+      <div
+        v-if="toolView || ownToolNotice"
+        class="shrink-0 px-4 pt-2"
+      >
+        <p
+          class="mx-auto flex max-w-3xl items-start gap-2 rounded-md border px-3 py-2 text-xs"
+          :class="
+            toolView
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300'
+              : 'border-border bg-muted/50 text-muted-foreground'
+          "
+          role="status"
+          :data-tool-state="toolView?.kind ?? ownToolNotice?.kind"
+        >
+          <Icon
+            v-if="(toolView?.kind ?? ownToolNotice?.kind) === 'connecting'"
+            name="loader-2"
+            :size="12"
+            class="mt-0.5 shrink-0 animate-spin"
+          />
+          <span v-if="toolView">
+            <span class="font-medium">{{ $t(toolView.labelKey) }}</span>
+            <template v-for="line in toolView.lines" :key="line.key">
+              {{ ' ' }}{{
+                $t(line.key, {
+                  ...line.params,
+                  wait: line.wait ? $t(line.wait.key, { count: line.wait.count }) : '',
+                })
+              }}
+            </template>
+          </span>
+          <span v-else-if="ownToolNotice">{{ $t(ownToolNotice.key) }}</span>
+        </p>
+      </div>
       <BridleChatDropZone v-if="isDraggingFile" />
       <!-- Keyed on the conversation's epoch: after "New chat" the composer
            remounts, so text typed into the closed conversation does not

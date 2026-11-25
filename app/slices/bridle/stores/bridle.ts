@@ -407,6 +407,12 @@ export const useBridleStore = defineStore('bridle', () => {
   /** Whether the agent runtime is on the hub; absent until the hub says. */
   const agentOnline = ref<Record<string, boolean>>({});
   /**
+   * How the agent's tool servers stand, by conversation (CLEAN-245): the
+   * word the hub sends with `agent_status`. Absent when all answer and when
+   * the hub has not spoken — both read as "nothing to say".
+   */
+  const agentTools = ref<Record<string, 'connecting' | 'limited'>>({});
+  /**
    * Bumped by every reset of a conversation. The composer is keyed on it, so
    * typed text goes with the conversation it was typed into, and a request
    * that started before a reset can tell its answer is about the old one.
@@ -1568,8 +1574,11 @@ export const useBridleStore = defineStore('bridle', () => {
         if (!acceptSeq(key, seq)) return;
         applyReset(conv);
       },
-      onAgentStatus(connected) {
+      onAgentStatus(connected, tools) {
         agentOnline.value[key] = connected;
+        // An agent off the hub has no tool state to speak of.
+        if (connected && tools) agentTools.value[key] = tools;
+        else delete agentTools.value[key];
       },
       onAgentLimit: (event) => onAgentLimit(conv, event),
     };
@@ -1750,6 +1759,7 @@ export const useBridleStore = defineStore('bridle', () => {
       connection.value[key] = BridleChannelStates.Offline;
       // Without a channel nothing says whether the agent is reachable.
       delete agentOnline.value[key];
+      delete agentTools.value[key];
       pending.value[key] = false;
       closeAllTurns(key);
     }, RELEASE_GRACE_MS);
@@ -2080,6 +2090,7 @@ export const useBridleStore = defineStore('bridle', () => {
     delete hydrated.value[key];
     delete history.value[key];
     delete agentOnline.value[key];
+    delete agentTools.value[key];
     delete attachmentErrors.value[key];
     delete resetting.value[key];
     connection.value[key] = BridleChannelStates.Offline;
@@ -2132,6 +2143,7 @@ export const useBridleStore = defineStore('bridle', () => {
     attachmentErrors.value = {};
     epochs.value = {};
     agentOnline.value = {};
+    agentTools.value = {};
     limits.value = {};
     connection.value = {};
     resetting.value = {};
@@ -2169,6 +2181,16 @@ export const useBridleStore = defineStore('bridle', () => {
       tailTs: 0,
     };
     epochs.value[key] = epochFor(key) + 1;
+  }
+
+  /** Whether the hub has said anything about this conversation's agent yet. */
+  function agentOnlineFor(key: string): boolean | undefined {
+    return agentOnline.value[key];
+  }
+
+  /** The agent's tool servers, as the hub last said (CLEAN-245); null: nothing to say. */
+  function toolsFor(key: string): 'connecting' | 'limited' | null {
+    return agentTools.value[key] ?? null;
   }
 
   /**
@@ -2282,6 +2304,9 @@ export const useBridleStore = defineStore('bridle', () => {
     hasOlder,
     isLoadingOlder,
     loadOlder,
+    // agent state off the hub
+    agentOnlineFor,
+    toolsFor,
     // new chat
     newChatBlock,
     startNewChat,

@@ -49,7 +49,7 @@ const props = withDefaults(defineProps<{
   // seconds ("Connected" while the pod is dying), and on a freshly opened
   // page a failed agent reads as "reconnecting" for 30s. Hosts that know the
   // real state (the admin agent page) pass it here; null = derive from WS.
-  agentState?: 'restarting' | 'failed' | 'stopped' | 'unreachable' | null
+  agentState?: 'restarting' | 'failed' | 'stopped' | 'unreachable' | 'connecting' | null
   // Troubleshooting links for the "pod is up but the runtime never reached
   // the bridle hub" state. Only rendered once `agentState` is 'unreachable' —
   // the server's own verdict after watching a Running+Ready pod stay off the
@@ -57,6 +57,10 @@ const props = withDefaults(defineProps<{
   // offline line with the status reason, the pod env preview (missing BRIDLE_*
   // vars are visible there), the bridle settings page, and the restart note.
   offlineHint?: { reason: string | null; envHref: string; settingsHref: string } | null
+  // The agent runs without some of its tool servers (CLEAN-245). The host
+  // words it (it knows who may be told a server's name); this widget only
+  // shows the line above the composer. Nothing is blocked by it.
+  toolNotice?: { label: string; detail: string } | null
   // Host-supplied debugEnabled from an agent record the host already fetched.
   // When set (non-null), the widget skips its own GET /agents/:id — the admin
   // agent page otherwise loads the same agent twice on every open.
@@ -79,6 +83,7 @@ const props = withDefaults(defineProps<{
   frameless: false,
   agentState: null,
   offlineHint: null,
+  toolNotice: null,
   initialDebugEnabled: null,
   manageable: true,
 })
@@ -181,6 +186,9 @@ const connectionStatus = computed<{ label: string; color: string } | null>(() =>
   }
   if (props.agentState === 'unreachable') {
     return { label: 'Agent unreachable', color: 'text-orange-500' }
+  }
+  if (props.agentState === 'connecting') {
+    return { label: 'Connecting tools…', color: 'text-orange-500' }
   }
   const chat = isConnected.value
   const agent = isAgentConnected.value
@@ -697,6 +705,15 @@ async function onConfirmReset() {
           pick them up.
         </p>
       </div>
+      <p
+        v-if="toolNotice"
+        class="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+        role="status"
+        data-tool-state="limited"
+      >
+        <span class="font-medium">{{ toolNotice.label }}.</span>
+        {{ toolNotice.detail }}
+      </p>
       <!-- Informational only: neutral, not an error, and Send is untouched. -->
       <p
         v-if="visitorLimit"

@@ -15,6 +15,7 @@ import type {
   IBridleTranscriptPage,
 } from '../domain/bridle.types';
 import { FAILED_MS, FAILURE_TIMEOUT } from '../utils/delivery';
+import { toolSummary } from '../utils/toolNotice';
 import { BridleMapper } from './bridle.mapper';
 
 /**
@@ -178,12 +179,15 @@ export class BridleGateway extends BaseGateway implements IBridleGateway {
       events.onReset(mapper.toSeq(raw)),
     );
     // Whether the agent runtime is on the hub: sent on connect and on every
-    // change. State, not history — it carries no `seq`.
-    socket.on('agent_status', (raw: unknown) =>
+    // change. State, not history — it carries no `seq`. `tools` rides along
+    // (CLEAN-245): how its tool servers stand, or null when all answer.
+    socket.on('agent_status', (raw: unknown) => {
+      const status = raw as { connected?: unknown; tools?: unknown } | null;
       events.onAgentStatus(
-        (raw as { connected?: unknown } | null)?.connected === true,
-      ),
-    );
+        status?.connected === true,
+        toolSummary(status?.tools),
+      );
+    });
     // The agent's request limit filled, or room was made early (CLEAN-224):
     // sent right after `welcome` when an hour or day window is already full,
     // and on every change. State like `agent_status` — no `seq`.

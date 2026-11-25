@@ -37,6 +37,33 @@ export interface IAgentStatus {
   /** Live hub connectivity from the API process; false for a few seconds
    *  after an API restart until runtimes reconnect. */
   bridleConnected: boolean;
+  /** One word on the agent's tool servers (CLEAN-245); null when all is well
+   *  or nothing is known. Never a server's name: the stream is public. */
+  tools: ToolSummaryTypes;
+}
+
+export type ToolSummaryTypes = 'connecting' | 'limited' | null;
+
+export type ToolServerStateTypes = 'connected' | 'retrying' | 'refused';
+
+/** One tool server as the agent's runtime reports it (managers only). */
+export interface IAgentToolServer {
+  id: string | null;
+  name: string;
+  state: ToolServerStateTypes;
+  /** ISO time it entered this state. */
+  since: string;
+  /** Attempts since it last was connected; 0 when connected. */
+  attempts: number;
+  /** First line of the last failure, without credentials. */
+  lastError: string | null;
+}
+
+/** `GET /agents/:id/tool-state`: read only while the summary is set. */
+export interface IAgentToolState {
+  phase: 'connecting' | 'limited' | 'ready';
+  since: string;
+  servers: IAgentToolServer[];
 }
 
 export type AgentStatusEventType = 'added' | 'modified' | 'deleted';

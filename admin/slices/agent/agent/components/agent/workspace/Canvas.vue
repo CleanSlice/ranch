@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { IAgentData } from '#agent/domain';
 import type { ChatOverlay } from '#agent/composables/useAgentLifecycle';
+import type { IToolStateView } from '#agent/utils/toolState';
 import {
   SECTIONS,
   settingsSectionOf,
@@ -15,6 +16,7 @@ const props = defineProps<{
   tab: AgentTab;
   counts: SectionCounts;
   overlay: ChatOverlay;
+  toolView: IToolStateView | null;
   restarting: boolean;
   toggling: boolean;
 }>();
@@ -55,6 +57,7 @@ const restartUnderway = computed(
         :agent="agent"
         :api-url="apiUrl"
         :overlay="overlay"
+        :tool-view="toolView"
         :restarting="restarting"
         :toggling="toggling"
         :active="chatActive"

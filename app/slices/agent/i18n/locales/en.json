@@ -35,7 +35,25 @@
     "pending": "Pending",
     "deploying": "Deploying",
     "failed": "Failed",
-    "stopped": "Stopped"
+    "stopped": "Stopped",
+    "unreachable": "Unreachable"
+  },
+  "tool_state": {
+    "label_connecting": "Connecting tools…",
+    "label_limited": "Limited tools",
+    "connecting_generic": "Still reaching some of its tool servers.",
+    "connecting_one": "{name} is not answering yet — trying again.",
+    "connecting_one_attempt": "{name} is not answering yet — trying again (attempt {attempt}, {wait}).",
+    "connecting_many": "{names} are not answering yet — trying again.",
+    "limited_generic": "Running without some of its tools.",
+    "limited_retrying": "Running without {names} — still trying to reconnect.",
+    "limited_refused": "Running without {names} — refused, check the credentials.",
+    "wait_seconds": "{count} s",
+    "wait_minutes": "{count} min",
+    "rail_connecting": "connecting tools",
+    "rail_limited": "limited tools",
+    "rail_connecting_hint": "Just started and still reaching some of its tool servers",
+    "rail_limited_hint": "Running without some of its tool servers — open the agent to see which"
   },
   "restart_stage": {
     "stopping_title": "Stopping current pod…",

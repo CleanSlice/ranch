@@ -6,6 +6,8 @@ import type {
   IAgentCreateInput,
   IAgentData,
   IAgentLinkData,
+  IAgentToolServer,
+  IAgentToolState,
   IAgentUpdateInput,
   IClusterCapacityData,
 } from '../domain/agent.types';
@@ -46,6 +48,11 @@ export class AgentMapper {
         : [],
       isAdmin: o.isAdmin === true,
       pinned: o.pinned === true,
+      // Absent from an older API and from a ready agent alike: no mark.
+      toolState:
+        o.toolState === 'connecting' || o.toolState === 'limited'
+          ? o.toolState
+          : null,
       createdAt: typeof o.createdAt === 'string' ? o.createdAt : '',
       updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : '',
     };
@@ -72,6 +79,36 @@ export class AgentMapper {
       freeAgentSlots: o.freeAgentSlots,
       usedAgentSlots: o.usedAgentSlots,
       totalAgentSlots: o.totalAgentSlots,
+    };
+  }
+
+  /** `null` when the API gave no answer, or one this console cannot read. */
+  toToolState(raw: unknown): IAgentToolState | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    if (o.phase !== 'connecting' && o.phase !== 'limited' && o.phase !== 'ready') {
+      return null;
+    }
+    const servers: IAgentToolServer[] = [];
+    for (const item of Array.isArray(o.servers) ? o.servers : []) {
+      const s = item as Record<string, unknown> | null;
+      if (!s || typeof s.name !== 'string') continue;
+      if (s.state !== 'connected' && s.state !== 'retrying' && s.state !== 'refused') {
+        continue;
+      }
+      servers.push({
+        id: typeof s.id === 'string' ? s.id : null,
+        name: s.name,
+        state: s.state,
+        since: typeof s.since === 'string' ? s.since : '',
+        attempts: typeof s.attempts === 'number' ? s.attempts : 0,
+        lastError: typeof s.lastError === 'string' ? s.lastError : null,
+      });
+    }
+    return {
+      phase: o.phase,
+      since: typeof o.since === 'string' ? o.since : '',
+      servers,
     };
   }
 

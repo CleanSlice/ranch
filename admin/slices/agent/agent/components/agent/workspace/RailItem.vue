@@ -87,9 +87,20 @@ defineProps<{ entry: IRailEntry }>();
            would say nothing to a reader who cannot tell it apart. The
            `data-agent-*` hooks sit on the row itself, in `Rail.vue`. -->
       <span
-        v-if="entry.atLimit || entry.needsLimits"
+        v-if="entry.atLimit || entry.needsLimits || entry.tools"
         class="mt-1 flex flex-wrap gap-1"
       >
+        <!-- Tool servers (CLEAN-245), in words like the marks beside it. -->
+        <span
+          v-if="entry.tools"
+          class="rounded-sm border border-amber-500/40 bg-amber-500/10 px-1 text-[11px] font-medium leading-4 text-amber-800 dark:text-amber-300"
+          :title="entry.tools === 'limited'
+            ? 'Running without some of its tool servers — open the agent to see which'
+            : 'Just started and still reaching some of its tool servers'"
+          :data-tool-state="entry.tools"
+        >
+          {{ entry.tools === 'limited' ? 'limited tools' : 'connecting tools' }}
+        </span>
         <span
           v-if="entry.atLimit"
           class="rounded-sm border border-rose-500/40 bg-rose-500/10 px-1 text-[11px] font-medium leading-4 text-rose-700 dark:text-rose-400"

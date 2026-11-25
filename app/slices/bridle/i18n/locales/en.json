@@ -73,7 +73,9 @@
     "source_not_helpful": "This source did not help",
     "source_rating_failed": "Couldn’t save your rating",
     "source_open_failed": "Couldn’t open this document",
-    "shared_session_draft": "I've shared my {site} session with you as the browser profile \"{profile}\". Open {site} with browser_play(profile: \"{profile}\") — you're signed in as me there — and «what to do there»."
+    "shared_session_draft": "I've shared my {site} session with you as the browser profile \"{profile}\". Open {site} with browser_play(profile: \"{profile}\") — you're signed in as me there — and «what to do there».",
+    "tools_starting": "Starting — almost ready…",
+    "tools_limited": "Part of this assistant's knowledge is temporarily unavailable."
   },
   "bridle": {
     "limit": {

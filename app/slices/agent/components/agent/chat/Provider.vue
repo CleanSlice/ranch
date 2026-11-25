@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { IBridleConversation } from '#bridle/domain';
 import { canManageAgent } from '#agent/utils/agentAccess';
+import { useAgentToolState } from '#agent/composables/useAgentToolState';
 
 const props = defineProps<{
   id: string;
@@ -38,6 +39,28 @@ const conversation = computed<IBridleConversation | null>(() =>
 const canManage = computed(() =>
   agent.value ? canManageAgent(authStore.role, agent.value) : false,
 );
+
+// ── Tool servers (CLEAN-245) ──────────────────────────────────
+// The list poll writes `toolState` onto the record; an open chat hears the
+// hub first, so its word is patched in — the rail row, the sheet and this
+// chat then read one fact (docs/state.md). Until the hub has spoken for this
+// conversation the record keeps what the poll said.
+const bridleStore = useBridleStore();
+watch(
+  () =>
+    [
+      bridleStore.agentOnlineFor(props.id),
+      bridleStore.toolsFor(props.id),
+    ] as const,
+  ([online, tools]) => {
+    const current = agent.value;
+    if (!current || online !== true) return;
+    if (current.toolState !== tools) agentStore.patch(current.id, { toolState: tools });
+  },
+);
+// Named servers, attempts and the wait: a manager's line. Anyone else gets
+// the chat's own wording, which is not built here and names nothing.
+const { toolView } = useAgentToolState(agent, canManage);
 
 const restarting = ref(false);
 const restartError = ref<string | null>(null);
@@ -118,6 +141,8 @@ const statusMeta = computed(() => {
       return { labelKey: 'status.pending', label: status, dot: 'bg-amber-500', pulse: true };
     case 'failed':
       return { labelKey: 'status.failed', label: status, dot: 'bg-rose-500', pulse: false };
+    case 'unreachable':
+      return { labelKey: 'status.unreachable', label: status, dot: 'bg-orange-500', pulse: false };
     case 'stopped':
       return { labelKey: 'status.stopped', label: status, dot: 'bg-muted-foreground', pulse: false };
     default:
@@ -234,6 +259,13 @@ const initials = computed(() => {
               </span>
               {{ statusMeta.labelKey ? $t(statusMeta.labelKey) : statusMeta.label }}
             </span>
+            <span
+              v-if="toolView"
+              class="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+              :data-tool-state="toolView.kind"
+            >
+              {{ $t(toolView.labelKey) }}
+            </span>
           </div>
           <p
             v-if="agent"
@@ -310,6 +342,7 @@ const initials = computed(() => {
         :title="agent.name"
         :subtitle="agent.templateId"
         :show-header="false"
+        :tool-view="toolView"
       />
 
       <!-- Restart overlay — covers the chat while the pod is bouncing.

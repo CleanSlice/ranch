@@ -43,6 +43,13 @@ const agentRef = computed(() => props.agent);
 const controls = useAgentControls(agentRef);
 
 const meta = computed(() => agentStatusMeta(props.agent?.status));
+// The tool-server mark (CLEAN-245) beside the status, for a manager; the
+// sentence that names the server is the chat's, right below.
+const toolMark = computed(() =>
+  props.canManage && props.agent?.status === 'running'
+    ? props.agent.toolState
+    : null,
+);
 const initials = computed(() => agentInitials(props.agent?.name, props.agent?.id ?? '?'));
 
 const conversation = computed<IBridleConversation | null>(() =>
@@ -143,6 +150,13 @@ const failedKey = computed(() => {
               />
             </span>
             {{ meta.labelKey ? $t(meta.labelKey) : agent.status }}
+          </span>
+          <span
+            v-if="toolMark"
+            class="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+            :data-tool-state="toolMark"
+          >
+            {{ $t(toolMark === 'limited' ? 'tool_state.label_limited' : 'tool_state.label_connecting') }}
           </span>
         </div>
         <p

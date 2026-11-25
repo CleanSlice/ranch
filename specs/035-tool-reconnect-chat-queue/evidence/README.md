@@ -2,9 +2,9 @@
 
 Screenshots and checks of the three stories, taken with Playwright against a
 local stack: the API and both consoles of this branch, a scratch Postgres
-database, and agent runtimes with the model taken out (`runtime.mjs`). No
-production system was touched to make this folder; the production checks are
-on the ticket.
+database, and agent runtimes with the model taken out (`runtime.mjs`). The
+four `prod-…` pictures are the exception: they are the released consoles
+(Ranch 0.3.100, runtime 0.40.0) and a real agent, see *Production* below.
 
 ## What is here
 
@@ -32,6 +32,8 @@ on the ticket.
 | `us4-app-held-stale.png` | Messages written two days ago wait for *Send now* |
 | `us4-app-blocked.png` | A message whose file the server no longer has: it stays, marked, and the one behind it went |
 | `compat-old-runtime.png` | A runtime that reports no tool state (0.39): no tool line, the queue works |
+| `prod-admin-queue.png`, `prod-admin-drained.png` | Production, admin: three messages written while the test agent restarts, in the open under the start overlay; then answered one per turn |
+| `prod-app-queue.png`, `prod-app-drained.png` | Production, app: the same |
 
 Viewport 1440×900; `…-400w.png` is 400×800.
 
@@ -58,6 +60,22 @@ never printed.
 picture is meant to show (what reached the agent, in which order, how many
 times; what a User's page, its responses and its socket frames contain) and
 exits non-zero on a failure. The last full run: 60 checks, none failed.
+
+## Production
+
+`prod.mjs` restarts the test agent, writes three messages in each console
+while it is away and checks that each is sent once, in the order written, and
+answered before the next goes; then that the Owner reads the tool servers by
+name and a User is refused them. It runs with the test accounts and prints no
+credential. Run of 2026-11-25 on Ranch 0.3.100: 16 checks, none failed; the
+tool state read `ready`, both servers connected.
+
+Its pictures are cut to the chat column, and to this run's messages: the rest
+of a production page is left out on purpose.
+
+The first run, on 0.3.99, is what found that admin's start overlay covered
+the queue (fixed in 0.3.100): the local stack has no pod behind it, so no
+local scene ever queued under that overlay.
 
 ## What is and is not real
 

@@ -67,7 +67,7 @@ exits non-zero on a failure. The last full run: 60 checks, none failed.
 while it is away and checks that each is sent once, in the order written, and
 answered before the next goes; then that the Owner reads the tool servers by
 name and a User is refused them. It runs with the test accounts and prints no
-credential. Run of 2026-11-25 on Ranch 0.3.100: 17 checks, none failed; the
+credential. Run of 2026-11-25 on Ranch 0.3.100: 16 checks, none failed; the
 tool state read `ready`, both servers connected.
 
 Its pictures are cut to the chat column, and to this run's messages: the rest

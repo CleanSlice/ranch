@@ -57,6 +57,8 @@ import type {
   AgentControllerUpdateData,
   GetAgentMetricsData,
   GetAgentMetricsResponse,
+  GetAgentToolStateData,
+  GetAgentToolStateResponse,
   GetAgentEnvData,
   GetAgentEnvResponse,
   GetAgentMcpsData,
@@ -1281,6 +1283,22 @@ export class AgentsService {
       ThrowOnError
     >({
       url: "/agents/{id}/metrics",
+      ...options,
+    });
+  }
+
+  /**
+   * What the agent's running runtime says about its tool servers: which are connected, which it keeps trying, which refused its credentials, since when, and the last error of each. Null while no runtime is on the hub, or when the runtime predates this report. Held in memory: an API restart empties it until the runtime reconnects.
+   */
+  public static getAgentToolState<ThrowOnError extends boolean = false>(
+    options: Options<GetAgentToolStateData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).get<
+      GetAgentToolStateResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/agents/{id}/tool-state",
       ...options,
     });
   }

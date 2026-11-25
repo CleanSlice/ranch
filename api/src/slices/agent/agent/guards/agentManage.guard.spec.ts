@@ -223,6 +223,7 @@ const EXPECTED: Record<string, 'id' | 'agentId'> = {
   // there, so the handler asks the rule for a person (agent.controller.spec).
   'GET /agents/:id/env': 'id',
   'GET /agents/:id/metrics': 'id',
+  'GET /agents/:id/tool-state': 'id',
   'GET /agents/:id/mcp-status': 'id',
   // Channels: who it answers, with which bot tokens. Read and write.
   'GET /agents/:id/channels': 'id',

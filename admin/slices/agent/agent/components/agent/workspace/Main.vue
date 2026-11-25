@@ -84,6 +84,7 @@ const {
   pendingRestart,
   dismissRestartBanner,
   chatOverlay,
+  toolView,
 } = useAgentLifecycle(props.id, agent, refresh);
 
 // Pin / unpin (CLEAN-216): its own composable so the optimistic patch and
@@ -291,6 +292,7 @@ async function onDeleted() {
             :deploy-verb="lastDeployStartedAt ? deployVerb : null"
             :deploy-ago="lastDeployStartedAt ? deployAgo : null"
             :deploy-hint-title="deployHintTitle"
+            :tools="toolView"
           />
         </span>
         <h1 class="min-w-0 truncate text-base font-semibold">{{ agent.name }}</h1>
@@ -475,6 +477,7 @@ async function onDeleted() {
           :tab="tab"
           :counts="counts"
           :overlay="chatOverlay"
+          :tool-view="toolView"
           :restarting="isRestarting"
           :toggling="toggling"
           @restart="restart"

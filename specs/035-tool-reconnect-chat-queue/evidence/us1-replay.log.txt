@@ -1,0 +1,37 @@
+CLEAN-245 — US1 replay, runtime branch feat/CLEAN-245-tool-reconnect (T017)
+
+What ran: the runtime's real MCP module (McpModule → McpService → McpGateway, the SDK's
+streamable-HTTP client) against a local HTTP server on 127.0.0.1 that answers the way the
+ingress did on 20 November — an nginx 503 HTML page — and starts serving MCP 12 s later.
+Then the server is taken away again under a read call and brought back before a turn.
+
+Not what the task asked for word for word: this is one process on a laptop, not an agent pod
+on the local cluster. The cluster run is covered after the release (T059, production).
+MCP_START_GRACE_MS was 8000 here so that "limited" shows within the run; the default is 60000.
+Lines starting with "---" are the replay script; the others are the runtime's own log.
+
+--- tool_state phase=ready 
+--- agent starts; the API is restarting (503)
+·  mcp      connecting to 1 server(s): Documents
+--- tool_state phase=connecting Documents:retrying(attempts 1)
+⚠  mcp      Documents: connect failed — HTTP 503; will keep trying
+·  mcp      total 0 tools registered from MCP servers
+--- registry after start: 0 tools
+--- tool_state phase=connecting Documents:retrying(attempts 2)
+⚠  mcp      Documents: connect failed — HTTP 503 (attempt 2)
+--- tool_state phase=limited Documents:retrying(attempts 2)
+--- the API is back
+--- tool_state phase=ready Documents:connected(attempts 0)
+·  mcp      Documents: registered 1 tools — connected after retrying
+·  mcp      Documents: 1 tools are live
+--- registry now: Documents__search
+--- Documents__search answered: [{"type":"text","text":"3 documents found"}]
+--- the API drops again under a read
+⚠  mcp      Documents: the connection broke — reconnecting
+--- tool_state phase=ready Documents:retrying(attempts 1)
+⚠  mcp      Documents: still failing after a reconnect — HTTP 503
+--- Documents__search answered: {"error":"Documents is not reachable right now."}
+--- tool_state phase=ready Documents:connected(attempts 0)
+·  mcp      Documents: registered 1 tools — connected after retrying
+·  mcp      Documents: 1 tools are live
+--- a turn starts; after settle the phase is ready

@@ -23,6 +23,7 @@ import {
   usagePctClass,
 } from '#agent/utils/agentFormat'
 import { formatDate, formatMoney, formatNumber } from '#common/utils/format'
+import { useAgentToolState } from '#agent/composables/useAgentToolState'
 
 const props = defineProps<{ agentId: string }>()
 
@@ -34,6 +35,9 @@ const agent = computed(() => agentStore.byId(props.agentId))
 const pod = computed(() => agentStatusStore.statuses[props.agentId] ?? null)
 const load = computed(() => limitStore.byAgent[props.agentId]?.load ?? null)
 const { usage, state: usageState } = useAgentUsage(props.agentId)
+// The tool-server mark (CLEAN-245): the same derivation as the header dot and
+// the chat line. The detail is kept fresh by the page, not from here.
+const { toolView } = useAgentToolState(props.agentId, agent)
 const { metrics, answered: metricsAnswered } = useInjectedAgentMetrics()
 
 // The load poll swallows a failed request and tries again, so "it failed" is
@@ -137,8 +141,22 @@ const DETAIL = 'text-xs text-muted-foreground'
             aria-hidden="true"
           />
           {{ summary.status.label }}
+          <span
+            v-if="toolView"
+            class="rounded-sm border border-amber-500/40 bg-amber-500/10 px-1 text-[11px] font-medium leading-4 text-amber-800 dark:text-amber-300"
+            :data-tool-state="toolView.kind"
+          >
+            {{ toolView.label }}
+          </span>
         </strong>{{ ' ' }}
         <span :class="DETAIL">{{ statusDetail }}</span>{{ ' ' }}
+        <span
+          v-if="toolView"
+          class="text-xs break-words text-amber-800 dark:text-amber-300"
+          data-tool-state-detail
+        >
+          {{ toolView.detail }}
+        </span>{{ ' ' }}
         <span
           v-if="summary.status.reason"
           class="text-xs break-words"

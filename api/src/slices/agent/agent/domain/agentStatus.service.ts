@@ -30,6 +30,8 @@ import {
 } from '#/agent/pod/domain/pod.types';
 import { IBridleGateway } from '#/bridle/domain';
 import { ApiInstanceService } from '#/setting/domain/apiInstance.service';
+import { AgentToolStateService } from './agentToolState.service';
+import type { ToolSummaryTypes } from './toolState.types';
 
 export interface IAgentStatus {
   agent: IAgentData;
@@ -37,6 +39,8 @@ export interface IAgentStatus {
   // Live truth from the in-process bridle hub — never persisted (an API
   // restart empties the hub map for a few seconds until runtimes reconnect).
   bridleConnected: boolean;
+  // The runtime's own word on its tool servers (CLEAN-245) — in memory too.
+  tools?: ToolSummaryTypes;
 }
 
 export type AgentStatusStreamMessage =
@@ -91,6 +95,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AgentStatusService.name);
   private reconcileSub: Subscription | null = null;
   private bridleSub: Subscription | null = null;
+  private toolSub: Subscription | null = null;
   private driftTimer: NodeJS.Timeout | null = null;
   private driftRunning = false;
   // First-observed timestamps of "running pod, no hub connection" per agent.
@@ -113,6 +118,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     @Inject(forwardRef(() => IBridleGateway))
     private readonly bridleGateway: IBridleGateway,
     private readonly apiInstances: ApiInstanceService,
+    private readonly toolState: AgentToolStateService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -137,8 +143,17 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     // fires before the K8s readiness probe ever has a chance to pass. If the
     // runtime then hangs or crashes between bridle-connect and Bun.serve, the
     // pod-event reconciler still catches it via Failed/CrashLoopBackOff.
+    // A change of an agent's tool summary has no pod or hub event of its own.
+    this.toolSub = this.toolState
+      .changes$()
+      .subscribe((agentId) => this.statusWrites$.next(agentId));
+
     this.bridleSub = this.bridleGateway.agentEvents$().subscribe({
       next: (evt) => {
+        // What a runtime said about its tools describes that socket only: it
+        // goes with the socket, and a new socket starts with nothing said (a
+        // runtime that predates the report never says anything).
+        this.toolState.clear(evt.agentId);
         if (evt.type !== 'connected') return;
         void this.markRunningFromBridle(evt.agentId).catch((err) => {
           this.logger.warn(
@@ -181,6 +196,8 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
     this.reconcileSub = null;
     this.bridleSub?.unsubscribe();
     this.bridleSub = null;
+    this.toolSub?.unsubscribe();
+    this.toolSub = null;
     if (this.driftTimer) {
       clearInterval(this.driftTimer);
       this.driftTimer = null;
@@ -243,6 +260,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
       agent,
       pod: podByAgent.get(agent.id) ?? null,
       bridleConnected: this.bridleGateway.isAgentConnected(agent.id),
+      tools: this.toolState.summary(agent.id),
     }));
   }
 
@@ -293,6 +311,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
                       bridleConnected: this.bridleGateway.isAgentConnected(
                         agent.id,
                       ),
+                      tools: this.toolState.summary(agent.id),
                     },
                   },
                 }
@@ -324,6 +343,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
                       agent,
                       pod: pods.find((p) => p.agentId === evt.agentId) ?? null,
                       bridleConnected: evt.type === 'connected',
+                      tools: this.toolState.summary(evt.agentId),
                     },
                   },
                 }
@@ -359,6 +379,7 @@ export class AgentStatusService implements OnModuleInit, OnModuleDestroy {
                       pod: pods.find((p) => p.agentId === agentId) ?? null,
                       bridleConnected:
                         this.bridleGateway.isAgentConnected(agentId),
+                      tools: this.toolState.summary(agentId),
                     },
                   },
                 }

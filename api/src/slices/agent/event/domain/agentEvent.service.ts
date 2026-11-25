@@ -11,6 +11,8 @@ import {
   AgentStatusChanges,
   IAgentGateway,
   IAgentStatusChange,
+  AgentToolStateService,
+  IToolAlert,
 } from '#/agent/agent/domain';
 import { IApiKeyData } from '#/user/apiKey/domain/apiKey.types';
 import { IAgentEventGateway } from './agentEvent.gateway';
@@ -25,6 +27,7 @@ import {
   IIncidentListFilter,
   IPage,
   RANCH_SENDER_NAME,
+  AgentTroubleStatusTypes,
 } from './agentEvent.types';
 import { AgentIncidentService } from './agentIncident.service';
 import { AgentNotificationWorker } from './agentNotification.worker';
@@ -72,6 +75,7 @@ export class TooManyEventsException extends HttpException {
 export class AgentEventService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AgentEventService.name);
   private statusSub: Subscription | null = null;
+  private toolSub: Subscription | null = null;
   // When each key's recent requests arrived, oldest first (takeSlot).
   private readonly slots = new Map<string, number[]>();
 
@@ -81,9 +85,20 @@ export class AgentEventService implements OnModuleInit, OnModuleDestroy {
     private readonly agents: IAgentGateway,
     private readonly statusChanges: AgentStatusChanges,
     private readonly worker: AgentNotificationWorker,
+    private readonly toolState: AgentToolStateService,
   ) {}
 
   onModuleInit(): void {
+    // An agent that has been without some of its tools for too long, or has
+    // them back (CLEAN-245). Same care as below: one alert, never the
+    // subscription.
+    this.toolSub = this.toolState.alerts$().subscribe((alert) => {
+      void this.onToolAlert(alert).catch((err) =>
+        this.logger.warn(
+          `Could not record tool alert of agent ${alert.agentId}: ${(err as Error).message}`,
+        ),
+      );
+    });
     this.statusSub = this.statusChanges.changes$().subscribe((change) => {
       // An error here must cost this one change, never the subscription:
       // a rejected handler inside `subscribe` would otherwise end it for
@@ -97,6 +112,7 @@ export class AgentEventService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
+    this.toolSub?.unsubscribe();
     this.statusSub?.unsubscribe();
   }
 
@@ -223,18 +239,48 @@ export class AgentEventService implements OnModuleInit, OnModuleDestroy {
    */
   async recordRanchFailure(change: IAgentStatusChange): Promise<void> {
     if (change.status !== 'failed' && change.status !== 'unreachable') return;
-    const agent = await this.agents.findById(change.agentId);
+    await this.recordRanchTrouble(change.agentId, change.status, {
+      reason: change.reason,
+      at: change.at,
+      ranchStatus: change.status,
+    });
+  }
+
+  /**
+   * The agent runs without some of its tool servers and has for longer than
+   * the threshold. It is up, so its Ranch status stays what it is; the
+   * incident carries 'limited' and the names of the servers.
+   */
+  private async onToolAlert(alert: IToolAlert): Promise<void> {
+    if (alert.kind === 'recovered') {
+      await this.incidents.noteRunning(alert.agentId, alert.at);
+      return;
+    }
+    await this.recordRanchTrouble(alert.agentId, 'limited', {
+      reason: alert.reason,
+      at: alert.at,
+      ranchStatus: null,
+    });
+  }
+
+  private async recordRanchTrouble(
+    agentId: string,
+    status: AgentTroubleStatusTypes,
+    change: { reason: string | null; at: Date; ranchStatus: string | null },
+  ): Promise<void> {
+    const agent = await this.agents.findById(agentId);
     if (!agent) return;
+    const ranchStatus = change.ranchStatus ?? agent.status;
 
     const attached = await this.incidents.attachFailure({
       agentId: agent.id,
       agentName: agent.name,
-      status: change.status,
+      status,
       reason: change.reason,
       witness: 'ranch',
       senderName: RANCH_SENDER_NAME,
       tool: null,
-      ranchStatus: change.status,
+      ranchStatus,
       occurredAt: change.at,
       receivedAt: change.at,
     });
@@ -242,13 +288,13 @@ export class AgentEventService implements OnModuleInit, OnModuleDestroy {
       agentId: agent.id,
       agentRef: agent.id,
       agentName: agent.name,
-      status: change.status,
+      status,
       reason: change.reason,
       witness: 'ranch',
       apiKeyId: null,
       senderName: RANCH_SENDER_NAME,
       tool: null,
-      ranchStatus: change.status,
+      ranchStatus,
       outcome: attached.outcome,
       incidentId: attached.incidentId,
       occurredAt: change.at,

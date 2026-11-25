@@ -14,6 +14,10 @@ import type {
   IUpdateAgentData,
   LaunchContextTypes,
 } from '../domain/agent.types';
+import type {
+  IAgentToolServer,
+  IAgentToolState,
+} from '../domain/agentStatus.types';
 
 const KNOWN_STATUSES = new Set<AgentStatusTypes>([
   'pending',
@@ -150,6 +154,37 @@ export class AgentMapper {
         diskAvailBytes: num(node.diskAvailBytes),
         diskCapacityBytes: num(node.diskCapacityBytes),
       },
+    };
+  }
+
+  /** `null` for "nothing known": no runtime on the hub, or one that predates the report. */
+  toToolState(raw: unknown): IAgentToolState | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    if (o.phase !== 'connecting' && o.phase !== 'limited' && o.phase !== 'ready') {
+      return null;
+    }
+    const servers = Array.isArray(o.servers) ? o.servers : [];
+    return {
+      phase: o.phase,
+      since: typeof o.since === 'string' ? o.since : '',
+      servers: servers
+        .map((item): IAgentToolServer | null => {
+          if (!item || typeof item !== 'object') return null;
+          const s = item as Record<string, unknown>;
+          if (typeof s.name !== 'string') return null;
+          const state =
+            s.state === 'retrying' || s.state === 'refused' ? s.state : 'connected';
+          return {
+            id: typeof s.id === 'string' ? s.id : null,
+            name: s.name,
+            state,
+            since: typeof s.since === 'string' ? s.since : '',
+            attempts: num(s.attempts),
+            lastError: typeof s.lastError === 'string' ? s.lastError : null,
+          };
+        })
+        .filter((s): s is IAgentToolServer => s !== null),
     };
   }
 

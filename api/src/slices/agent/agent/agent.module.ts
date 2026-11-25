@@ -6,6 +6,7 @@ import { AgentStatusService } from './domain/agentStatus.service';
 import { AgentDeployService } from './domain/agentDeploy.service';
 import { DeployTracker } from './domain/deployTracker';
 import { AgentStatusChanges } from './domain/agentStatusChanges';
+import { AgentToolStateService } from './domain/agentToolState.service';
 import { AgentGateway } from './data/agent.gateway';
 import { AgentMapper } from './data/agent.mapper';
 import { WorkflowModule } from '#/workflow/workflow.module';
@@ -48,6 +49,7 @@ import { UserModule } from '#/user/user/user.module';
     AgentDeployService,
     DeployTracker,
     AgentStatusChanges,
+    AgentToolStateService,
     AgentAdminTool,
     {
       provide: IAgentGateway,
@@ -56,6 +58,13 @@ import { UserModule } from '#/user/user/user.module';
   ],
   // AgentPermissionService (who may manage one agent, CLEAN-232) lives in
   // AgentPermissionModule, which is global.
-  exports: [IAgentGateway, AgentDeployService, AgentStatusChanges],
+  exports: [
+    IAgentGateway,
+    AgentDeployService,
+    AgentStatusChanges,
+    // What each agent's runtime says about its tool servers (CLEAN-245): the
+    // hub writes it, the incident machinery listens to it.
+    AgentToolStateService,
+  ],
 })
 export class AgentModule {}

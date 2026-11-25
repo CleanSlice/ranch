@@ -6,6 +6,9 @@ import {
 import { useLimitCountdown } from '#bridle/composables/useLimitCountdown';
 import { buildChatFlow } from '#bridle/utils/chatFlow';
 import { noticeParams } from '#bridle/utils/noticeParams';
+import { toolNotice } from '#bridle/utils/toolNotice';
+import { canTake, held } from '#bridle/utils/queue';
+import type { QueueAgentStates } from '#bridle/stores/bridle';
 import { useFormat } from '#common/composables/useFormat';
 
 const props = withDefaults(
@@ -21,8 +24,29 @@ const props = withDefaults(
     subtitle?: string;
     /** Hide the inner header — useful when the parent already shows agent identity. */
     showHeader?: boolean;
+    /**
+     * The host's own reading of the agent's tool servers (CLEAN-245), for a
+     * viewer who may manage the agent: it may name a server. As keys — this
+     * component renders them. Absent or null for everyone else, who gets the
+     * line this chat words itself from the hub's bare word.
+     */
+    toolView?: {
+      kind: 'connecting' | 'limited';
+      labelKey: string;
+      lines: {
+        key: string;
+        params: Record<string, string | number>;
+        wait?: { key: string; count: number };
+      }[];
+    } | null;
+    /**
+     * What the host knows of the agent beyond the hub's word (CLEAN-245): it
+     * is being started, or it failed, or it was stopped. Null when it runs,
+     * and on a page that knows nothing of it (a share link, the landing).
+     */
+    agentState?: QueueAgentStates;
   }>(),
-  { showHeader: true },
+  { showHeader: true, toolView: null, agentState: null },
 );
 const bridleStore = useBridleStore();
 // The locale itself, handed to the pure `buildChatFlow` for the date on a day
@@ -98,6 +122,16 @@ const reconnecting = computed(() => {
     ? bridleStore.connectionFor(key) === BridleChannelStates.Offline &&
         messages.value.length > 0
     : false;
+});
+
+// ── Tool servers (CLEAN-245) ──────────────────────────────────
+// The agent is up and some of its tool servers are not: said in one line
+// above the composer, which stays usable either way. A share visitor and a
+// landing visitor get it too — this is the component they all render.
+const ownToolNotice = computed(() => {
+  if (props.toolView) return null;
+  const key = activeConversation.value?.key;
+  return key ? toolNotice(bridleStore.toolsFor(key)) : null;
 });
 
 // ── Chat flow ─────────────────────────────────────────────────
@@ -207,17 +241,77 @@ const composerEpoch = computed(() => {
   return key ? bridleStore.epochFor(key) : 0;
 });
 
-async function onSend(text: string) {
+// ── Queue (CLEAN-245) ─────────────────────────────────────────
+// The composer is never locked on the agent's account. A message the agent
+// cannot take now waits above the composer, and this chat sends the first of
+// them each time the agent becomes free: one per turn, in order.
+
+const queue = computed(() => {
+  const key = activeConversation.value?.key;
+  return key ? bridleStore.queueFor(key) : [];
+});
+const queueState = computed(() => {
   const conversation = activeConversation.value;
-  if (!conversation) return;
-  // The store refuses this by itself while the agent's limit is full and
-  // hands the text back to the composer (CLEAN-224).
-  bridleStore.sendMessage(conversation, text);
+  return conversation
+    ? bridleStore.queueStateFor(conversation, props.agentState)
+    : null;
+});
+const takes = computed(() =>
+  queueState.value ? canTake(queueState.value) : false,
+);
+// "Older than a day" is a reading of the clock: taken when the queue or the
+// agent changes, and once a minute while something waits.
+const nowMs = ref(Date.now());
+let nowTimer: ReturnType<typeof setInterval> | undefined;
+watch(
+  () => queue.value.length > 0,
+  (waiting) => {
+    nowMs.value = Date.now();
+    if (waiting && !nowTimer) {
+      nowTimer = setInterval(() => (nowMs.value = Date.now()), 60_000);
+    } else if (!waiting && nowTimer) {
+      clearInterval(nowTimer);
+      nowTimer = undefined;
+    }
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  if (nowTimer) clearInterval(nowTimer);
+});
+const heldReason = computed(() =>
+  queueState.value ? held(queue.value, queueState.value, nowMs.value) : null,
+);
+
+watch(
+  () => [takes.value, heldReason.value, queue.value.length] as const,
+  ([free, reason, waiting]) => {
+    const conversation = activeConversation.value;
+    if (!conversation || !free || reason || !waiting) return;
+    void bridleStore.drain(conversation, props.agentState);
+  },
+  { immediate: true },
+);
+
+// The panel sits between the transcript and the composer: a row more takes
+// its height from the transcript. A reader at the bottom stays there.
+watch([() => queue.value.length, heldReason], async () => {
+  const follow = isNearBottom();
+  await nextTick();
+  if (follow) scrollToBottom();
+});
+
+const inputRef = ref<{ requestEdit: (id: string) => void } | null>(null);
+
+function onSubmit(text: string) {
+  const conversation = activeConversation.value;
+  if (!conversation) return 'ignored' as const;
+  const result = bridleStore.submit(conversation, text, props.agentState);
   // Wherever the person was reading, they just spoke: show them their
   // message. The watcher below would not — it only follows a reader who was
   // already at the bottom.
-  await nextTick();
-  scrollToBottom();
+  if (result === 'sent') void nextTick(scrollToBottom);
+  return result;
 }
 
 function onResend(id: string) {
@@ -357,7 +451,10 @@ onBeforeUnmount(() => {
         </p>
       </header>
 
-      <!-- Message list — gradient backdrop so bubbles read against it -->
+      <!-- Message list — gradient backdrop so bubbles read against it. The
+           wrapper is what a host covers while the agent restarts (`overlay`):
+           the transcript, never the composer below it (CLEAN-245). -->
+      <div class="relative flex min-h-0 flex-1 flex-col">
       <div
         ref="scrollEl"
         class="flex-1 min-h-0 overflow-y-auto bg-linear-to-b from-muted/20 via-background to-background"
@@ -491,12 +588,57 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+      <slot name="overlay" />
+      </div>
 
       <!-- The compose area is replaced, not covered: the dashed block takes
            its place while a file is overhead. Draft text and staged files live
            in the store, so the swap cannot lose them. Neither is disabled
-           while the agent answers: a follow-up mid-turn is a normal thing to
-           send, and the store gates sending on uploads alone. -->
+           on the agent's account: what it cannot take now waits in the queue
+           (CLEAN-245), and the store gates sending on uploads alone. -->
+      <div
+        v-if="toolView || ownToolNotice"
+        class="shrink-0 px-4 pt-2"
+      >
+        <p
+          class="mx-auto flex max-w-3xl items-start gap-2 rounded-md border px-3 py-2 text-xs"
+          :class="
+            toolView
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300'
+              : 'border-border bg-muted/50 text-muted-foreground'
+          "
+          role="status"
+          :data-tool-state="toolView?.kind ?? ownToolNotice?.kind"
+        >
+          <Icon
+            v-if="(toolView?.kind ?? ownToolNotice?.kind) === 'connecting'"
+            name="loader-2"
+            :size="12"
+            class="mt-0.5 shrink-0 animate-spin"
+          />
+          <span v-if="toolView">
+            <span class="font-medium">{{ $t(toolView.labelKey) }}</span>
+            <template v-for="line in toolView.lines" :key="line.key">
+              {{ ' ' }}{{
+                $t(line.key, {
+                  ...line.params,
+                  wait: line.wait ? $t(line.wait.key, { count: line.wait.count }) : '',
+                })
+              }}
+            </template>
+          </span>
+          <span v-else-if="ownToolNotice">{{ $t(ownToolNotice.key) }}</span>
+        </p>
+      </div>
+      <!-- What waits for the agent, directly above the composer and as wide. -->
+      <div v-if="queue.length" class="shrink-0 px-4 pt-2">
+        <BridleChatQueue
+          class="mx-auto max-w-3xl"
+          :conversation="activeConversation"
+          :held="heldReason"
+          @edit="inputRef?.requestEdit($event)"
+        />
+      </div>
       <BridleChatDropZone v-if="isDraggingFile" />
       <!-- Keyed on the conversation's epoch: after "New chat" the composer
            remounts, so text typed into the closed conversation does not
@@ -506,8 +648,9 @@ onBeforeUnmount(() => {
         :key="composerEpoch"
         :conversation="activeConversation"
         :limit="limit"
+        ref="inputRef"
         :limit-notice-id="limitNoticeId"
-        @send="onSend"
+        :submit="onSubmit"
       />
     </template>
   </div>

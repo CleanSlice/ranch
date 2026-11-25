@@ -15,6 +15,9 @@
 
 const DEBUG_PREFIX = 'bridle:debug:';
 const OUTBOX_PREFIX = 'bridle:outbox:';
+// The messages waiting for the agent (CLEAN-245). Scoped from its first day,
+// so the sweep below has nothing of it to remove and leaves it alone.
+const QUEUE_PREFIX = 'bridle:queue:';
 
 // The restart marks (an agent whose settings or files changed and wants a
 // restart, a restart that is under way). Maps keyed by agent id, so they
@@ -64,6 +67,11 @@ export function debugKey(userId: string | null, agentId: string): string | null 
  */
 export function outboxKey(userId: string | null, conversationKey: string): string | null {
   return userId ? `${OUTBOX_PREFIX}${userId}:${conversationKey}` : null;
+}
+
+/** Storage key of the messages a conversation still has to send; keyed like the outbox. */
+export function queueKey(userId: string | null, conversationKey: string): string | null {
+  return userId ? `${QUEUE_PREFIX}${userId}:${conversationKey}` : null;
 }
 
 /** Agents of this account whose settings changed and want a restart. */

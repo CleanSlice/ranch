@@ -402,6 +402,13 @@ export const AgentDtoSchema = {
       nullable: true,
       description: `Human-readable reason accompanying status='failed' or 'unreachable' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff", "pod is running but the runtime never connected to the bridle hub…"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.`,
     },
+    toolState: {
+      type: "string",
+      nullable: true,
+      enum: ["connecting", "limited"],
+      description:
+        "One word on the agent's tool servers, from its running runtime: `connecting` — it has just started and is still reaching some of them; `limited` — it runs without some of them; null — nothing to say (all connected, no runtime on the hub, or a runtime that does not report). Never which server or why: a person who manages the agent reads that from GET /agents/:id/tool-state.",
+    },
     workflowId: {
       type: "object",
       nullable: true,
@@ -501,6 +508,7 @@ export const AgentDtoSchema = {
     "templateId",
     "status",
     "statusReason",
+    "toolState",
     "workflowId",
     "firstDeployedAt",
     "lastDeployStartedAt",
@@ -755,6 +763,69 @@ export const AgentMetricsDtoSchema = {
     },
   },
   required: ["pod", "node"],
+} as const;
+
+export const AgentToolServerDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      nullable: true,
+      description:
+        "Ranch's id of the server, when the agent's config carried one.",
+      example: "mcp-documents",
+    },
+    name: {
+      type: "string",
+      example: "Documents",
+    },
+    state: {
+      type: "string",
+      enum: ["connected", "retrying", "refused"],
+      description: `\`connected\`; \`retrying\` — it does not answer and the runtime keeps trying; \`refused\` — it answered 401/403, which waiting does not fix: its credentials need changing.`,
+    },
+    since: {
+      type: "string",
+      description: "When it entered this state.",
+      example: "2026-11-20T09:10:52.368Z",
+    },
+    attempts: {
+      type: "number",
+      description: "Attempts since it last was connected; 0 when connected.",
+      example: 14,
+    },
+    lastError: {
+      type: "string",
+      nullable: true,
+      description:
+        "The last failure, first line, without credentials. Null when connected.",
+      example: "HTTP 503",
+    },
+  },
+  required: ["id", "name", "state", "since", "attempts", "lastError"],
+} as const;
+
+export const AgentToolStateDtoSchema = {
+  type: "object",
+  properties: {
+    phase: {
+      type: "string",
+      enum: ["connecting", "limited", "ready"],
+      description: `\`connecting\` — just started and still reaching some servers; \`limited\` — running without some of them; \`ready\` — all connected.`,
+    },
+    since: {
+      type: "string",
+      description: "When this phase began.",
+      example: "2026-11-20T09:10:52.368Z",
+    },
+    servers: {
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AgentToolServerDto",
+      },
+    },
+  },
+  required: ["phase", "since", "servers"],
 } as const;
 
 export const AgentEnvVarDtoSchema = {
@@ -5937,7 +6008,8 @@ export const AgentEventDtoSchema = {
     },
     status: {
       type: "string",
-      enum: ["failed", "unreachable", "recovered"],
+      enum: ["failed", "unreachable", "limited", "recovered"],
+      description: `\`limited\` is Ranch's own word, like \`unreachable\`: the agent runs without some of its tool servers.`,
     },
     reason: {
       type: "string",
@@ -6072,7 +6144,7 @@ export const AgentIncidentDtoSchema = {
     },
     status: {
       type: "string",
-      enum: ["failed", "unreachable"],
+      enum: ["failed", "unreachable", "limited"],
     },
     reason: {
       type: "string",

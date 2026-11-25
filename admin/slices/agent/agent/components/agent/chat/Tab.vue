@@ -2,6 +2,7 @@
 import { useResizeObserver } from '@vueuse/core';
 import type { IAgentData } from '#agent/domain';
 import type { ChatOverlay } from '#agent/composables/useAgentLifecycle';
+import type { IToolStateView } from '#agent/utils/toolState';
 import { useAgentAccess } from '#agent/composables/useAgentAccess';
 import {
   IconAlertTriangle,
@@ -16,6 +17,8 @@ const props = withDefaults(
     agent: IAgentData;
     apiUrl: string;
     overlay: ChatOverlay;
+    /** The agent's tool-server mark (CLEAN-245); null when there is none. */
+    toolView?: IToolStateView | null;
     restarting: boolean;
     toggling: boolean;
     /** False while another tab is on screen. The chat itself stays mounted
@@ -24,7 +27,7 @@ const props = withDefaults(
      *  section showing the same thing. */
     active?: boolean;
   }>(),
-  { active: true },
+  { active: true, toolView: null },
 );
 
 const emit = defineEmits<{ restart: []; toggleRunning: [] }>();
@@ -39,7 +42,7 @@ const authStore = useAuthStore();
 const { canManage } = useAgentAccess(() => props.agent);
 
 // One "restart is underway" signal for every surface (bridle header status,
-// disabled input, logs overlay) — covers both an explicit Restart click and
+// the queue that holds what is written meanwhile — CLEAN-245, logs overlay) — covers both an explicit Restart click and
 // a deploy in progress, so nothing lags behind the WS state.
 const restartUnderway = computed(
   () => props.restarting || props.overlay?.kind === 'starting',
@@ -57,6 +60,7 @@ const bridleAgentState = computed(() => {
   if (restartUnderway.value) return 'restarting';
   if (props.overlay?.kind === 'failed') return 'failed';
   if (props.overlay?.kind === 'stopped') return 'stopped';
+  if (props.overlay?.kind === 'tools') return 'connecting';
   if (displayStatus.value === 'unreachable') return 'unreachable';
   return null;
 });
@@ -79,6 +83,14 @@ const hubUnreachable = computed(
     agentStatusStore.bridleConnected[props.agent.id] !== true,
 );
 
+// Running without some of its tools: a line above the composer, nothing
+// blocked. While they are still being reached the overlay says it instead.
+const toolNotice = computed(() =>
+  props.toolView?.kind === 'limited'
+    ? { label: props.toolView.label, detail: props.toolView.detail }
+    : null,
+);
+
 const offlineHint = computed(() =>
   hubUnreachable.value && canManage.value
     ? {
@@ -90,7 +102,7 @@ const offlineHint = computed(() =>
 );
 
 // The failure overlay blurs only the MESSAGE AREA (the card-content box).
-// Footer (input, disabled by bridle while the agent is down) and the logs bar
+// Footer (the input, open whatever the agent is doing, and its queue) and the logs bar
 // stay visible — the user keeps the frame and the controls, only the
 // transcript is dimmed. The box is measured from the DOM because the footer
 // height is content-driven.
@@ -147,6 +159,7 @@ watch(
         frameless
         :agent-state="bridleAgentState"
         :offline-hint="offlineHint"
+        :tool-notice="toolNotice"
         :initial-debug-enabled="agent.debugEnabled"
         class="h-full w-full gap-0"
       />
@@ -158,6 +171,7 @@ watch(
       >
         <div
           v-if="overlay"
+          :data-chat-overlay="overlay.kind"
           class="pointer-events-auto absolute z-10 flex flex-col items-center justify-center gap-4 bg-background/85 backdrop-blur-sm"
           :style="{
             top: overlayBox.top + 'px',
@@ -167,7 +181,7 @@ watch(
           }"
         >
           <IconLoader2
-            v-if="overlay.kind === 'starting'"
+            v-if="overlay.kind === 'starting' || overlay.kind === 'tools'"
             class="size-10 animate-spin text-primary"
           />
           <IconPlayerStop

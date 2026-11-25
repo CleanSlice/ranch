@@ -5,6 +5,7 @@ import type {
   ConnectionStateTypes,
   IAgentPodStatus,
   IAgentRecord,
+  IAgentToolState,
 } from '#agent/domain';
 import { collectionIsStale, rowIsStale } from '#agent/utils/agentStatusFrame';
 
@@ -30,6 +31,14 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
   const agentStore = useAgentStore();
   // Live hub connectivity per agent — pushed with every snapshot/event.
   const bridleConnected = ref<Record<string, boolean>>({});
+  // One word per agent on its tool servers, off the same frames (CLEAN-245):
+  // `connecting` while a start is still reaching them, `limited` once it runs
+  // without some. An agent with nothing to say has no entry.
+  const tools = ref<Record<string, 'connecting' | 'limited'>>({});
+  // Which servers and why, for an agent whose word above is set. Read through
+  // the authenticated route by whoever may manage the agent, and dropped as
+  // soon as the word clears.
+  const toolStates = ref<Record<string, IAgentToolState>>({});
 
   // Consumer ref-count: multiple components mount/unmount the stream, but only
   // one EventSource should be open. `active` guards the single subscribe.
@@ -137,19 +146,50 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
     }
   }
 
+  // The detail of an agent whose word cleared is no longer true of it.
+  function setTools(next: Record<string, 'connecting' | 'limited'>) {
+    tools.value = next;
+    const stale = Object.keys(toolStates.value).filter((id) => !next[id]);
+    if (!stale.length) return;
+    const kept = { ...toolStates.value };
+    for (const id of stale) delete kept[id];
+    toolStates.value = kept;
+  }
+
+  // Asked only while the word is set, and only for somebody who may manage
+  // the agent: the route refuses anybody else. A failed read keeps what was
+  // shown; the next tick asks again.
+  async function fetchToolState(id: string) {
+    if (!tools.value[id]) return;
+    const generation = accountGeneration;
+    try {
+      const state = await agentStore.fetchToolState(id);
+      if (generation !== accountGeneration || !tools.value[id]) return;
+      const next = { ...toolStates.value };
+      if (state) next[id] = state;
+      else delete next[id];
+      toolStates.value = next;
+    } catch {
+      // Refused or unreachable: nothing was learned.
+    }
+  }
+
   function applyMessage(msg: AgentStatusStreamMessage) {
     lastEventAt.value = Date.now();
     if (msg.type === 'snapshot') {
       const nextStatuses: Record<string, IAgentPodStatus> = {};
       const nextBridle: Record<string, boolean> = {};
+      const nextTools: Record<string, 'connecting' | 'limited'> = {};
       for (const item of msg.payload) {
         if (item.pod) nextStatuses[item.agent.id] = item.pod;
         nextBridle[item.agent.id] = item.bridleConnected;
+        if (item.tools) nextTools[item.agent.id] = item.tools;
         lastSeen.set(item.agent.id, item.agent);
         patchStatus(item.agent);
       }
       statuses.value = nextStatuses;
       bridleConnected.value = nextBridle;
+      setTools(nextTools);
       // The snapshot names every agent. When the collection is not that list
       // (a new agent, a changed row, one deleted while the stream was down),
       // GET /agents loads it, as it does on a page load. Agents already
@@ -179,6 +219,10 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
       ...bridleConnected.value,
       [status.agent.id]: status.bridleConnected,
     };
+    const nextTools = { ...tools.value };
+    if (status.tools) nextTools[status.agent.id] = status.tools;
+    else delete nextTools[status.agent.id];
+    setTools(nextTools);
 
     if (eventType === 'deleted' || !status.pod) {
       const next = { ...statuses.value };
@@ -198,6 +242,8 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
     accountGeneration += 1;
     statuses.value = {};
     bridleConnected.value = {};
+    tools.value = {};
+    toolStates.value = {};
     lastEventAt.value = null;
     lastSeen.clear();
     reading.clear();
@@ -230,6 +276,9 @@ export const useAgentStatusStore = defineStore('agentStatus', () => {
     lastEventAt,
     statuses,
     bridleConnected,
+    tools,
+    toolStates,
+    fetchToolState,
     failingCount,
     unreachableCount,
     resetForAccount,

@@ -18,6 +18,8 @@ const META: Record<string, AgentStatusMeta> = {
   deploying: { labelKey: 'status.deploying', color: '#f5a16b', pulse: true, alarm: false },
   pending: { labelKey: 'status.pending', color: '#f5a16b', pulse: true, alarm: false },
   failed: { labelKey: 'status.failed', color: '#d6453d', pulse: false, alarm: true },
+  // The pod is up and the runtime is not on the hub: Ranch's own verdict.
+  unreachable: { labelKey: 'status.unreachable', color: '#f5a16b', pulse: false, alarm: true },
   stopped: { labelKey: 'status.stopped', color: '#7e7488', pulse: false, alarm: false },
 };
 

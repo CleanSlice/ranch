@@ -70,7 +70,19 @@ import {
   type NewChatBlocks,
 } from '#bridle/utils/newChat';
 import { proposalMessageId, proposalTs } from '#bridle/utils/proposalMerge';
-import { conversationKey, seqKey } from '#bridle/utils/storageKeys';
+import { conversationKey, queueKey, seqKey } from '#bridle/utils/storageKeys';
+import {
+  canTake,
+  held as queueHeld,
+  move,
+  nextToSend,
+  parseQueue,
+  refresh,
+  remove,
+  submitOutcome,
+  type IQueueState,
+  type IQueuedMessage,
+} from '#bridle/utils/queue';
 import type {
   IBridleProposalSnapshot,
   IBridleProposalUpdate,
@@ -398,6 +410,21 @@ export const useBridleStore = defineStore('bridle', () => {
    */
   const drafts = ref<Record<string, string>>({});
   /**
+   * The messages waiting for the agent, by conversation (CLEAN-245), in the
+   * order they will be sent; at most three (`#bridle/utils/queue`). Mirrored
+   * in storage under `queueKey`, so a reload or a second tab shows them.
+   */
+  const queues = ref<Record<string, IQueuedMessage[]>>({});
+  /** The queue panel is folded to its header. This session only. */
+  const queueFolded = ref<Record<string, boolean>>({});
+  /** Conversations whose stored queue was read, and so follow other tabs. */
+  const queueLoaded = new Set<string>();
+  /** Conversations with a drain under way in this tab: one at a time each. */
+  const draining = new Set<string>();
+  /** A queued message on its way, by message id: a refused one goes back to the queue. */
+  const queuedSends = new Map<string, IQueuedMessage>();
+  let queueMirrored = false;
+  /**
    * The conversation as the server holds it (CLEAN-136): whether its newest
    * page was merged in, and where the next older one starts.
    */
@@ -406,6 +433,12 @@ export const useBridleStore = defineStore('bridle', () => {
   const resetting = ref<Record<string, boolean>>({});
   /** Whether the agent runtime is on the hub; absent until the hub says. */
   const agentOnline = ref<Record<string, boolean>>({});
+  /**
+   * How the agent's tool servers stand, by conversation (CLEAN-245): the
+   * word the hub sends with `agent_status`. Absent when all answer and when
+   * the hub has not spoken — both read as "nothing to say".
+   */
+  const agentTools = ref<Record<string, 'connecting' | 'limited'>>({});
   /**
    * Bumped by every reset of a conversation. The composer is keyed on it, so
    * typed text goes with the conversation it was typed into, and a request
@@ -457,6 +490,7 @@ export const useBridleStore = defineStore('bridle', () => {
   const conversationStorageKey = (key: string) =>
     conversationKey(accountId(), key);
   const seqStorageKey = (key: string) => seqKey(accountId(), key);
+  const queueStorageKey = (key: string) => queueKey(accountId(), key);
 
   // Read side takes the bare `key` — a template already holds the descriptor
   // and passing the whole object just to look up an array buys nothing.
@@ -600,8 +634,8 @@ export const useBridleStore = defineStore('bridle', () => {
    * Sending is allowed with text OR at least one ready attachment, and is
    * blocked while anything is still uploading or has failed — an incomplete
    * message would reach the agent missing exactly the file it was about.
-   * A turn in progress is no reason to wait: the follow-up is queued behind
-   * it by the agent, not by the composer.
+   * Whether it goes out now or waits its turn is `submit`'s question, not
+   * this one's (CLEAN-245).
    */
   function canSend(key: string, draft: string): boolean {
     if (isUploading(key) || hasFailedAttachment(key)) return false;
@@ -619,6 +653,7 @@ export const useBridleStore = defineStore('bridle', () => {
    */
   function hydrate(conv: IBridleConversation) {
     const key = conv.key;
+    loadQueue(conv);
     if (hydrated.value[key]) return;
     // Nothing is read until it is known whose copy to read (CLEAN-231). Not
     // marked as hydrated either: the copy is still there for its owner.
@@ -1568,8 +1603,11 @@ export const useBridleStore = defineStore('bridle', () => {
         if (!acceptSeq(key, seq)) return;
         applyReset(conv);
       },
-      onAgentStatus(connected) {
+      onAgentStatus(connected, tools) {
         agentOnline.value[key] = connected;
+        // An agent off the hub has no tool state to speak of.
+        if (connected && tools) agentTools.value[key] = tools;
+        else delete agentTools.value[key];
       },
       onAgentLimit: (event) => onAgentLimit(conv, event),
     };
@@ -1750,6 +1788,7 @@ export const useBridleStore = defineStore('bridle', () => {
       connection.value[key] = BridleChannelStates.Offline;
       // Without a channel nothing says whether the agent is reachable.
       delete agentOnline.value[key];
+      delete agentTools.value[key];
       pending.value[key] = false;
       closeAllTurns(key);
     }, RELEASE_GRACE_MS);
@@ -1803,7 +1842,7 @@ export const useBridleStore = defineStore('bridle', () => {
     // let go, until the hub has answered (see `heldStaged`).
     holdStaged(conv, message.id);
     errors.value[key] = null;
-    transmit(conv, message.id);
+    void transmit(conv, message.id);
   }
 
   /** Take the staged files out of the composer and keep them for `id`. */
@@ -1835,17 +1874,20 @@ export const useBridleStore = defineStore('bridle', () => {
    * the wire `clientMessageId` IS the message id, so the hub recognises a
    * repeat and answers `duplicate` instead of handing it to the agent twice.
    */
-  function transmit(conv: IBridleConversation, id: string) {
+  function transmit(
+    conv: IBridleConversation,
+    id: string,
+  ): Promise<IBridleSendAck | null> {
     const key = conv.key;
     const message = findMessage(key, id);
-    if (!message) return;
+    if (!message) return Promise.resolve(null);
 
     const channel = channels.get(key)?.channel;
     if (!channel || connectionFor(key) !== BridleChannelStates.Connected) {
       // Never emit into a socket that is not there: socket.io would buffer
       // it, and the bubble would claim a send that is not happening.
       settle(conv, id, { type: 'ackRejected', code: FAILURE_OFFLINE });
-      return;
+      return Promise.resolve(null);
     }
 
     // What the "thinking" line showed before this send claimed it, so a send
@@ -1864,7 +1906,7 @@ export const useBridleStore = defineStore('bridle', () => {
       }, SLOW_MS),
     );
 
-    void channel
+    return channel
       .send(
         message.text || EMPTY_TEXT_PLACEHOLDER,
         message.attachments?.length
@@ -1872,7 +1914,10 @@ export const useBridleStore = defineStore('bridle', () => {
           : undefined,
         id,
       )
-      .then((ack) => onAck(conv, id, ack));
+      .then((ack) => {
+        onAck(conv, id, ack);
+        return ack;
+      });
   }
 
   function applyDelivery(
@@ -1932,6 +1977,11 @@ export const useBridleStore = defineStore('bridle', () => {
         conv,
         withDelivery(message, { type: 'ackRejected', code: resentAfter }),
       );
+    } else if (message && queuedSends.has(id)) {
+      // It came from the queue (CLEAN-245) and goes back to its front: the
+      // field may hold the next message by now, and the wait ends by itself.
+      removeMessage(conv, id);
+      requeue(conv, queuedSends.get(id) as IQueuedMessage);
     } else if (message) {
       removeMessage(conv, id);
       if (message.text) {
@@ -2004,7 +2054,7 @@ export const useBridleStore = defineStore('bridle', () => {
     errors.value[conv.key] = null;
     resendCodes.set(id, message.failureCode ?? 'UNKNOWN');
     applyDelivery(conv, id, { type: 'resend' });
-    transmit(conv, id);
+    void transmit(conv, id);
   }
 
   /** Drop a message that was not delivered. Anything else is history. */
@@ -2076,10 +2126,15 @@ export const useBridleStore = defineStore('bridle', () => {
     // Messages, pending, notice, draft, thinking, staged files, timers and
     // the stored copy.
     reset(conv);
+    // What waited was written to an agent this account no longer reaches.
+    setQueue(conv, []);
+    queueLoaded.delete(key);
+    delete queueFolded.value[key];
     clearConversationFromStorage(seqStorageKey(key));
     delete hydrated.value[key];
     delete history.value[key];
     delete agentOnline.value[key];
+    delete agentTools.value[key];
     delete attachmentErrors.value[key];
     delete resetting.value[key];
     connection.value[key] = BridleChannelStates.Offline;
@@ -2128,10 +2183,17 @@ export const useBridleStore = defineStore('bridle', () => {
     pending.value = {};
     errors.value = {};
     drafts.value = {};
+    // In memory only: the stored queues stay under their owner's id.
+    queues.value = {};
+    queueFolded.value = {};
+    queueLoaded.clear();
+    draining.clear();
+    queuedSends.clear();
     staged.value = {};
     attachmentErrors.value = {};
     epochs.value = {};
     agentOnline.value = {};
+    agentTools.value = {};
     limits.value = {};
     connection.value = {};
     resetting.value = {};
@@ -2171,6 +2233,16 @@ export const useBridleStore = defineStore('bridle', () => {
     epochs.value[key] = epochFor(key) + 1;
   }
 
+  /** Whether the hub has said anything about this conversation's agent yet. */
+  function agentOnlineFor(key: string): boolean | undefined {
+    return agentOnline.value[key];
+  }
+
+  /** The agent's tool servers, as the hub last said (CLEAN-245); null: nothing to say. */
+  function toolsFor(key: string): 'connecting' | 'limited' | null {
+    return agentTools.value[key] ?? null;
+  }
+
   /**
    * Why "New chat" is unavailable for this conversation, or null when it is
    * available. `hubClientIds` is a plain map, but it is written on `welcome`
@@ -2185,11 +2257,265 @@ export const useBridleStore = defineStore('bridle', () => {
       connected: connectionFor(key) === BridleChannelStates.Connected,
       agentOnline: agentOnline.value[key],
       hasClientId: hubClientIds.has(key),
-      answering:
-        isPending(key) ||
-        hasOpenThinking(key) ||
-        list.some((m) => m.streaming === true),
+      answering: isAnswering(key),
     });
+  }
+
+  /**
+   * A turn is open: a message is on its way to the agent, or the agent is
+   * thinking, or its answer is still being written. What "New chat" waits for
+   * and what the queue waits for (CLEAN-245) are the same thing.
+   */
+  function isAnswering(key: string): boolean {
+    return (
+      isPending(key) ||
+      hasOpenThinking(key) ||
+      messagesFor(key).some((m) => m.streaming === true)
+    );
+  }
+
+  // ── Queue (CLEAN-245) ──────────────────────────────────────
+
+  const queueFor = (key: string): IQueuedMessage[] => queues.value[key] ?? [];
+  const isQueueFolded = (key: string) => queueFolded.value[key] === true;
+
+  function setQueueFolded(key: string, folded: boolean) {
+    queueFolded.value[key] = folded;
+  }
+
+  /** Everything `canTake` and `held` ask about, for one conversation. */
+  function queueStateFor(
+    conv: IBridleConversation,
+    agentState: QueueAgentStates,
+  ): IQueueState {
+    const key = conv.key;
+    return {
+      chatConnected: connectionFor(key) === BridleChannelStates.Connected,
+      agentOnline: agentOnline.value[key] === true,
+      agentState,
+      tools: toolsFor(key),
+      answering: isAnswering(key),
+      limitWaiting: isLimited(conv),
+    };
+  }
+
+  /** Read the stored queue into the record, and start mirroring other tabs. */
+  function loadQueue(conv: IBridleConversation) {
+    const key = conv.key;
+    if (queueLoaded.has(key)) return;
+    const stored = loadQueueFromStorage(queueStorageKey(key));
+    // Nobody to read it for yet (CLEAN-231): asked again once there is.
+    if (stored === null) return;
+    queueLoaded.add(key);
+    queues.value[key] = stored;
+    if (queueMirrored || typeof window.addEventListener !== 'function') return;
+    queueMirrored = true;
+    // Another tab of this person changed a queue: show the same list.
+    window.addEventListener('storage', (e: StorageEvent) => {
+      if (!e.key) return;
+      for (const loaded of queueLoaded) {
+        if (queueStorageKey(loaded) === e.key) {
+          queues.value[loaded] = parseQueue(e.newValue);
+        }
+      }
+    });
+  }
+
+  function setQueue(conv: IBridleConversation, queue: IQueuedMessage[]) {
+    if (queue === queues.value[conv.key]) return;
+    if (!queue.length && !queueFor(conv.key).length) return;
+    queues.value[conv.key] = queue;
+    saveQueueToStorage(queueStorageKey(conv.key), queue);
+  }
+
+  /** The queue as storage has it now: another tab may have sent from it. */
+  function freshQueue(conv: IBridleConversation): IQueuedMessage[] {
+    const stored = loadQueueFromStorage(queueStorageKey(conv.key));
+    if (stored) queues.value[conv.key] = stored;
+    return queueFor(conv.key);
+  }
+
+  /** A queued message that was not taken goes back to the front, as it was or marked. */
+  function requeue(
+    conv: IBridleConversation,
+    entry: IQueuedMessage,
+    blocked?: IQueuedMessage['blocked'],
+  ) {
+    setQueue(conv, [
+      blocked ? { ...entry, blocked } : entry,
+      ...remove(freshQueue(conv), entry.id),
+    ]);
+  }
+
+  /**
+   * What Send does. The message goes out when the agent can take it and
+   * nothing waits; otherwise it joins the queue, with its uploaded files,
+   * and the composer is free again. With three already waiting nothing
+   * happens to it (`full`) and the caller keeps the text. `ignored` is the
+   * refusal `sendMessage` makes: nothing to send, a file not ready, or the
+   * request limit waiting — that wait is the limit notice's story, and
+   * nothing is queued under it.
+   */
+  function submit(
+    conv: IBridleConversation,
+    text: string,
+    agentState: QueueAgentStates,
+  ): QueueSubmitResults {
+    const key = conv.key;
+    const trimmed = text.trim();
+    const ready = stagedFor(key).filter(
+      (a) => a.state === BridleAttachmentStates.Ready && a.remoteId,
+    );
+    if (!trimmed && !ready.length) return 'ignored';
+    if (isUploading(key) || hasFailedAttachment(key)) return 'ignored';
+    if (isLimited(conv)) return 'ignored';
+
+    const queue = queueFor(key);
+    const outcome = submitOutcome(
+      queue,
+      canTake(queueStateFor(conv, agentState)),
+    );
+    if (outcome === 'full') return 'full';
+    if (outcome === 'send') {
+      sendMessage(conv, trimmed);
+      return 'sent';
+    }
+    setQueue(conv, [
+      ...queue,
+      {
+        id: newMessageId(),
+        text: trimmed,
+        attachments: ready.map((a) => ({
+          remoteId: a.remoteId as string,
+          name: a.name,
+          size: a.size,
+          kind: a.kind,
+          mimeType: a.mimeType,
+        })),
+        queuedAt: Date.now(),
+      },
+    ]);
+    clearStaged(conv);
+    return 'queued';
+  }
+
+  /**
+   * Send the first queued message that can be sent, if the agent can take
+   * one now and nothing holds the queue. One per call and one per turn: the
+   * message it sends opens a turn, and the chat calls again when that
+   * closes. The list is read again under the lock — another tab may have
+   * sent from it — and the entry leaves it before it is sent.
+   */
+  async function drain(conv: IBridleConversation, agentState: QueueAgentStates) {
+    const key = conv.key;
+    if (draining.has(key)) return;
+    draining.add(key);
+    const generation = accountGeneration;
+    try {
+      await withQueueLock(`bridle-queue:${queueStorageKey(key) ?? key}`, async () => {
+        // More than one round only past a message the hub would not take
+        // (a file it can no longer read): that one opened no turn.
+        for (;;) {
+          if (generation !== accountGeneration) return;
+          const queue = freshQueue(conv);
+          const state = queueStateFor(conv, agentState);
+          if (!canTake(state) || queueHeld(queue, state, Date.now())) return;
+          const next = nextToSend(queue);
+          if (!next) return;
+          setQueue(conv, remove(queue, next.id));
+          // The lock is kept until the hub answered: by then the other tab
+          // has been told of the message and sees the turn it opened.
+          if ((await sendQueued(conv, next)) !== 'ATTACHMENT_FAILED') return;
+        }
+      });
+    } finally {
+      if (generation === accountGeneration) draining.delete(key);
+    }
+  }
+
+  /**
+   * One queued message becomes an ordinary outgoing one: same id on the
+   * bubble and the wire. Its files are on the server already. A file the hub
+   * can no longer read sends the message back to the queue, marked, to be
+   * edited or removed — the rest drains past it. Resolves with the code the
+   * hub refused it with, or null.
+   */
+  async function sendQueued(
+    conv: IBridleConversation,
+    entry: IQueuedMessage,
+  ): Promise<string | null> {
+    const key = conv.key;
+    // Already in the conversation: another tab sent it.
+    if (findMessage(key, entry.id)) return null;
+    const attachments: IBridleAttachment[] = entry.attachments.map((a) => ({
+      id: a.remoteId,
+      name: a.name,
+      mimeType: a.mimeType,
+      size: a.size,
+      kind: a.kind as BridleAttachmentKinds,
+      url: `/api/agent/${encodeURIComponent(conv.agentId)}/attachment/${a.remoteId}`,
+      readableByAgent: isReadableByAgent(
+        a.kind as BridleAttachmentKinds,
+        a.mimeType,
+      ),
+    }));
+    appendMessage(
+      conv,
+      withDelivery(
+        {
+          id: entry.id,
+          role: BridleRoleTypes.User,
+          text: entry.text,
+          ts: Date.now(),
+          ...(attachments.length ? { attachments } : {}),
+        },
+        { type: 'sent' },
+      ),
+    );
+    errors.value[key] = null;
+    queuedSends.set(entry.id, entry);
+    const ack = await transmit(conv, entry.id);
+    queuedSends.delete(entry.id);
+    if (!ack || isRateLimitedAck(ack) || ack.status === 'accepted') return null;
+    if (ack.code === 'ATTACHMENT_FAILED') {
+      removeMessage(conv, entry.id);
+      requeue(conv, entry, { code: ack.code });
+    }
+    return ack.code;
+  }
+
+  /** Put the queued message at `from` where `to` is. */
+  function moveQueued(conv: IBridleConversation, from: number, to: number) {
+    setQueue(conv, move(queueFor(conv.key), from, to));
+  }
+
+  /** Drop a queued message; its files stay on the server, unreferenced. */
+  function removeQueued(conv: IBridleConversation, id: string) {
+    setQueue(conv, remove(queueFor(conv.key), id));
+  }
+
+  /**
+   * Take a queued message back for editing: it leaves the queue, its files
+   * become the staged ones (replacing what was staged), and its text is
+   * returned for the composer. Whether the composer may be overwritten is
+   * the caller's question to the person, asked before this.
+   */
+  function editQueued(conv: IBridleConversation, id: string): string | null {
+    const entry = queueFor(conv.key).find((e) => e.id === id);
+    if (!entry) return null;
+    setQueue(conv, remove(queueFor(conv.key), id));
+    clearStaged(conv);
+    staged.value[conv.key] = entry.attachments.map(stagedFromQueued);
+    return entry.text;
+  }
+
+  function clearQueue(conv: IBridleConversation) {
+    setQueue(conv, []);
+  }
+
+  /** "Send now" on messages written a while ago: they wait like new ones again. */
+  function resumeQueue(conv: IBridleConversation) {
+    setQueue(conv, refresh(queueFor(conv.key), Date.now()));
   }
 
   /**
@@ -2282,6 +2608,22 @@ export const useBridleStore = defineStore('bridle', () => {
     hasOlder,
     isLoadingOlder,
     loadOlder,
+    // agent state off the hub
+    agentOnlineFor,
+    toolsFor,
+    isAnswering,
+    // queue (CLEAN-245)
+    queueFor,
+    isQueueFolded,
+    setQueueFolded,
+    queueStateFor,
+    submit,
+    drain,
+    moveQueued,
+    removeQueued,
+    editQueued,
+    clearQueue,
+    resumeQueue,
     // new chat
     newChatBlock,
     startNewChat,
@@ -2289,6 +2631,81 @@ export const useBridleStore = defineStore('bridle', () => {
     epochFor,
   };
 });
+
+// ── Queue (CLEAN-245) ────────────────────────────────────────
+// What the person wrote while the agent could not take it. The rules are in
+// `#bridle/utils/queue`; the store keeps the list, mirrors it in storage
+// under its owner (a reload or a second tab shows the same one) and sends.
+
+/** What the page hosting the chat says about the agent; null when it runs. */
+export type QueueAgentStates = IQueueState['agentState'];
+export type QueueSubmitResults = 'sent' | 'queued' | 'full' | 'ignored';
+
+/** The stored queue, or null when there is nobody to keep one for. */
+function loadQueueFromStorage(storageKey: string | null): IQueuedMessage[] | null {
+  if (typeof window === 'undefined' || !storageKey) return null;
+  try {
+    return parseQueue(window.localStorage.getItem(storageKey));
+  } catch (err) {
+    console.warn('[bridle] failed to load queue', err);
+    return null;
+  }
+}
+
+function saveQueueToStorage(
+  storageKey: string | null,
+  queue: IQueuedMessage[],
+): void {
+  if (typeof window === 'undefined' || !storageKey) return;
+  try {
+    if (!queue.length) {
+      window.localStorage.removeItem(storageKey);
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(queue));
+  } catch (err) {
+    // Quota exceeded or storage disabled — the queue still works for this
+    // session; it just will not survive a reload.
+    console.warn('[bridle] failed to persist queue', err);
+  }
+}
+
+/**
+ * Run `task` as the one tab that sends from a conversation's queue. Two tabs
+ * show the same list; without this both would send its first row. A tab that
+ * does not get the lock does nothing: the other one is sending. (The hub
+ * drops a repeated `clientMessageId` anyway — this keeps the second tab from
+ * showing a bubble for it.)
+ */
+async function withQueueLock(
+  name: string,
+  task: () => Promise<void>,
+): Promise<void> {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  if (!locks) return task();
+  await locks.request(name, { ifAvailable: true }, async (lock) => {
+    if (lock) await task();
+  });
+}
+
+/** A staged chip for a file the server already holds and this tab has no bytes of. */
+function stagedFromQueued(
+  a: IQueuedMessage['attachments'][number],
+): IBridleStagedAttachment {
+  return {
+    localId: newMessageId(),
+    file: new File([], a.name, { type: a.mimeType }),
+    name: a.name,
+    size: a.size,
+    mimeType: a.mimeType,
+    kind: a.kind as BridleAttachmentKinds,
+    previewUrl: null,
+    state: BridleAttachmentStates.Ready,
+    progress: 100,
+    remoteId: a.remoteId,
+    error: null,
+  };
+}
 
 /** Membership test hoisted out of the hot path in `stageFiles`. */
 const ALLOWED_SET = new Set<string>([

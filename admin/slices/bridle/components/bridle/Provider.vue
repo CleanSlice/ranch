@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, toRefs, watch, onMounted, onUnmounted, type HTMLAttributes } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBridleStore } from '../../stores/bridle'
+import { queueStateOf, useBridleStore } from '../../stores/bridle'
+import { canTake, held } from '../../utils/queue'
 import { buildChatFlow, type IChatFlowDayItem } from '../../utils/chatFlow'
 import Message from './Message.vue'
 import Thinking from './Thinking.vue'
 import Input from './Input.vue'
 import DropZone from './DropZone.vue'
+import Queue from './queue/Provider.vue'
 import Toggles from './Toggles.vue'
 import ToolCatalogButton from '#toolCatalog/components/toolCatalog/Button.vue'
 import DebugPanel from './DebugPanel.vue'
@@ -49,7 +51,7 @@ const props = withDefaults(defineProps<{
   // seconds ("Connected" while the pod is dying), and on a freshly opened
   // page a failed agent reads as "reconnecting" for 30s. Hosts that know the
   // real state (the admin agent page) pass it here; null = derive from WS.
-  agentState?: 'restarting' | 'failed' | 'stopped' | 'unreachable' | null
+  agentState?: 'restarting' | 'failed' | 'stopped' | 'unreachable' | 'connecting' | null
   // Troubleshooting links for the "pod is up but the runtime never reached
   // the bridle hub" state. Only rendered once `agentState` is 'unreachable' —
   // the server's own verdict after watching a Running+Ready pod stay off the
@@ -57,6 +59,10 @@ const props = withDefaults(defineProps<{
   // offline line with the status reason, the pod env preview (missing BRIDLE_*
   // vars are visible there), the bridle settings page, and the restart note.
   offlineHint?: { reason: string | null; envHref: string; settingsHref: string } | null
+  // The agent runs without some of its tool servers (CLEAN-245). The host
+  // words it (it knows who may be told a server's name); this widget only
+  // shows the line above the composer. Nothing is blocked by it.
+  toolNotice?: { label: string; detail: string } | null
   // Host-supplied debugEnabled from an agent record the host already fetched.
   // When set (non-null), the widget skips its own GET /agents/:id — the admin
   // agent page otherwise loads the same agent twice on every open.
@@ -79,6 +85,7 @@ const props = withDefaults(defineProps<{
   frameless: false,
   agentState: null,
   offlineHint: null,
+  toolNotice: null,
   initialDebugEnabled: null,
   manageable: true,
 })
@@ -181,6 +188,9 @@ const connectionStatus = computed<{ label: string; color: string } | null>(() =>
   }
   if (props.agentState === 'unreachable') {
     return { label: 'Agent unreachable', color: 'text-orange-500' }
+  }
+  if (props.agentState === 'connecting') {
+    return { label: 'Connecting tools…', color: 'text-orange-500' }
   }
   const chat = isConnected.value
   const agent = isAgentConnected.value
@@ -401,20 +411,51 @@ onUnmounted(() => {
   store.release(conversationKey)
 })
 
-/**
- * One answer for both the composer and the drop target: a chat that cannot
- * send a message must not accept a file either.
- */
-const inputDisabled = computed(
-  () => !isConnected.value || !isAgentConnected.value || props.agentState !== null,
+// ── Queue (CLEAN-245) ────────────────────────────────────────
+// The composer is never closed for what the agent is doing: starting,
+// answering, connecting its tools. What is written meanwhile waits in the
+// queue (at most three) and goes out by itself, one per turn. Nothing in the
+// admin console takes the right to write away, so nothing disables it here.
+
+const queue = computed(() => store.getQueue(conversationKey))
+const queueState = computed(() => queueStateOf(conversation, props.agentState))
+/** The agent can take a message now. */
+const takes = computed(() => canTake(queueState.value))
+/** Why the queue waits for the person rather than the agent, if it does. */
+const heldReason = computed(() => held(queue.value, queueState.value, nowMs.value))
+
+// The one place that sends from the queue: whenever the agent becomes free
+// (it came up, a turn closed), the hold is lifted, or the list changes.
+watch(
+  [takes, heldReason, () => queue.value.length],
+  ([free, reason, waiting]) => {
+    if (free && !reason && waiting > 0) void store.drain(conversationKey, props.agentState)
+  },
+  { immediate: true },
 )
 
-const handleSend = async (text: string) => {
-  await store.sendMessage(conversationKey, text)
-  // Sending always lands on the new message, wherever the reader was — the
-  // near-bottom rule above is for INCOMING content only.
+// The panel sits between the transcript and the composer: a row more takes
+// its height from the transcript. A reader at the bottom stays there.
+watch([() => queue.value.length, heldReason], async () => {
+  const viewport = getViewport()
+  const nearBottom =
+    !viewport ||
+    viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80
   await nextTick()
-  scrollToBottom()
+  if (nearBottom) scrollToBottom()
+})
+
+const inputRef = ref<InstanceType<typeof Input> | null>(null)
+
+const handleSend = async (text: string) => {
+  const result = await store.submit(conversationKey, text, props.agentState)
+  if (result === 'sent') {
+    // Sending always lands on the new message, wherever the reader was — the
+    // near-bottom rule above is for INCOMING content only.
+    await nextTick()
+    scrollToBottom()
+  }
+  return result
 }
 
 const onResend = (id: string) => {
@@ -455,7 +496,7 @@ function onDragOver(event: DragEvent) {
   // Without this the browser treats the drop as a navigation.
   event.preventDefault()
   if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = inputDisabled.value ? 'none' : 'copy'
+    event.dataTransfer.dropEffect = 'copy'
   }
 }
 
@@ -472,7 +513,6 @@ function onDrop(event: DragEvent) {
   // Reset unconditionally: a drop ends the drag however the counter got here.
   dragDepth.value = 0
   isDraggingFile.value = false
-  if (inputDisabled.value) return
 
   const files = event.dataTransfer?.files
   if (files?.length) {
@@ -697,6 +737,15 @@ async function onConfirmReset() {
           pick them up.
         </p>
       </div>
+      <p
+        v-if="toolNotice"
+        class="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+        role="status"
+        data-tool-state="limited"
+      >
+        <span class="font-medium">{{ toolNotice.label }}.</span>
+        {{ toolNotice.detail }}
+      </p>
       <!-- Informational only: neutral, not an error, and Send is untouched. -->
       <p
         v-if="visitorLimit"
@@ -717,19 +766,24 @@ async function onConfirmReset() {
       <!-- The composer is replaced, not covered: the dashed block takes its
            place while a file is overhead. The draft and staged files live in
            the component and the store, so the swap cannot lose them. -->
-      <DropZone v-if="isDraggingFile" :disabled="inputDisabled" />
-      <!-- Stays visible when the agent is down — a hidden input reads as a
-           broken layout; disabled communicates "chat exists, agent doesn't". -->
+      <Queue
+        :conversation-key="conversationKey"
+        :held="heldReason"
+        @edit="inputRef?.requestEdit($event)"
+      />
+      <DropZone v-if="isDraggingFile" />
+      <!-- Open whatever the agent is doing (CLEAN-245): what cannot be sent
+           yet waits in the queue above. -->
       <Input
         v-else
+        ref="inputRef"
         :api-url="apiUrl"
         :agent-id="agentId"
         :channel="channel"
         :placeholder="placeholder"
-        :disabled="inputDisabled"
         :boxed="frameless"
         :manageable="manageable"
-        @send="handleSend"
+        :submit="handleSend"
       >
         <!-- Frameless: the toggles sit inside the composer box, and the two
              things the header carried that still matter — New chat and the

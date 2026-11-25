@@ -7,6 +7,7 @@ import {
   debugKey,
   filePendingRestartKey,
   outboxKey,
+  queueKey,
   sweepUnscopedKeys,
   type IKeyStorage,
 } from './storageKeys';
@@ -40,6 +41,12 @@ describe('account-scoped keys', () => {
   test('without a known account there is no key at all', () => {
     expect(debugKey(null, 'agent-a')).toBe(null);
     expect(outboxKey(null, 'agent-a:admin')).toBe(null);
+  });
+
+  test('the queue of a conversation is kept like its outbox', () => {
+    expect(queueKey('u1', 'agent-a:admin')).toBe('bridle:queue:u1:agent-a:admin');
+    expect(queueKey('u1', 'agent-a:admin') === queueKey('u2', 'agent-a:admin')).toBe(false);
+    expect(queueKey(null, 'agent-a:admin')).toBe(null);
   });
 
   test('the restart marks are one map per account', () => {
@@ -84,6 +91,12 @@ describe('the one-time removal of old keys', () => {
     expect(sweepUnscopedKeys(storage)).toEqual([]);
     expect(storage.getItem('bridle:debug:u1:agent-a')).toBe('{}');
     expect(storage.getItem('bridle:outbox:u1:agent-a:admin')).toBe('[]');
+  });
+
+  test('a queue is never an old key: it is left alone by a browser that has not swept yet', () => {
+    const storage = storageOf({ [queueKey('u1', 'agent-a:admin') as string]: '[]' });
+    expect(sweepUnscopedKeys(storage)).toEqual([]);
+    expect(storage.getItem('bridle:queue:u1:agent-a:admin')).toBe('[]');
   });
 
   test('an empty browser is only marked', () => {

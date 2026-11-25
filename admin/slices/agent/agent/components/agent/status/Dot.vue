@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AgentStatusTypes } from '#agent/domain';
+import type { IToolStateView } from '#agent/utils/toolState';
 import { TONE } from '#agent/composables/useAgentRailEntries';
 import {
   Tooltip,
@@ -25,12 +26,15 @@ const props = defineProps<{
   deployVerb: 'started' | 'restarted' | null;
   deployAgo: string | null;
   deployHintTitle?: string;
+  /** The tool-server mark (CLEAN-245): a running agent missing some of its tools. */
+  tools?: IToolStateView | null;
 }>();
 
 const tone = computed(() => TONE[props.status]);
 
 const headline = computed(() => {
   const parts: string[] = [props.status];
+  if (props.tools) parts.push(props.tools.label.toLowerCase());
   if (props.deployVerb && props.deployAgo)
     parts.push(`${props.deployVerb} ${props.deployAgo}`);
   return parts.join(' · ');
@@ -55,7 +59,8 @@ const headline = computed(() => {
               />
               <span
                 class="relative inline-flex size-2.5 rounded-full"
-                :class="tone.dot"
+                :class="tools ? 'bg-amber-500' : tone.dot"
+                :data-tool-state="tools?.kind"
               />
             </span>
           </span>
@@ -64,6 +69,9 @@ const headline = computed(() => {
           <div class="space-y-0.5">
             <div class="font-medium capitalize">{{ headline }}</div>
             <div v-if="statusReason" class="opacity-80">{{ statusReason }}</div>
+            <div v-if="tools" class="opacity-80" data-tool-state-detail>
+              {{ tools.detail }}
+            </div>
             <div v-if="deployHintTitle" class="opacity-80">
               {{ deployHintTitle }}
             </div>

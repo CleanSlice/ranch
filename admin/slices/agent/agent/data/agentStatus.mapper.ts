@@ -88,6 +88,8 @@ export class AgentStatusMapper {
       agent,
       pod: this.toPod(o.pod),
       bridleConnected: o.bridleConnected === true,
+      tools:
+        o.tools === 'connecting' || o.tools === 'limited' ? o.tools : null,
     };
   }
 

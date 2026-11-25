@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { relativeTime } from '#agent/utils/relativeTime';
+import { canManageAgent } from '#agent/utils/agentAccess';
 const props = defineProps<{
   agent: {
     id: string;
@@ -11,6 +12,8 @@ const props = defineProps<{
     isAdmin?: boolean;
     /** Pinned by an Owner/Admin: marked, and ahead of the rest (CLEAN-216). */
     pinned?: boolean;
+    /** How its tool servers stand (CLEAN-245); null when all answer. */
+    toolState?: 'connecting' | 'limited' | null;
   };
   active: boolean;
 }>();
@@ -60,6 +63,14 @@ const statusMeta = computed(() => {
         pulse: false,
         text: 'text-rose-700 dark:text-rose-400',
       };
+    case 'unreachable':
+      return {
+        labelKey: 'status.unreachable',
+        label: props.agent.status,
+        dot: 'bg-orange-500',
+        pulse: false,
+        text: 'text-orange-700 dark:text-orange-400',
+      };
     case 'stopped':
       return {
         labelKey: 'status.stopped',
@@ -77,6 +88,18 @@ const statusMeta = computed(() => {
         text: 'text-muted-foreground',
       };
   }
+});
+
+// The tool-server mark (CLEAN-245), for whoever may manage the agent: a row
+// names no server, and someone who only talks to the agent is told in the
+// chat, in other words.
+const authStore = useAuthStore();
+const toolMark = computed(() => {
+  if (props.agent.status !== 'running' || !props.agent.toolState) return null;
+  if (!canManageAgent(authStore.role, { isAdmin: props.agent.isAdmin === true })) {
+    return null;
+  }
+  return props.agent.toolState;
 });
 
 const updatedRelative = computed(() => relativeTime(props.agent.updatedAt));
@@ -137,6 +160,14 @@ const updatedRelative = computed(() => relativeTime(props.agent.updatedAt));
         </span>
         <span :class="statusMeta.text">
           {{ statusMeta.labelKey ? $t(statusMeta.labelKey) : statusMeta.label }}
+        </span>
+        <span
+          v-if="toolMark"
+          class="shrink-0 rounded-sm border border-amber-500/40 bg-amber-500/10 px-1 text-[10px] font-medium leading-4 text-amber-700 dark:text-amber-400"
+          :title="$t(toolMark === 'limited' ? 'tool_state.rail_limited_hint' : 'tool_state.rail_connecting_hint')"
+          :data-tool-state="toolMark"
+        >
+          {{ $t(toolMark === 'limited' ? 'tool_state.rail_limited' : 'tool_state.rail_connecting') }}
         </span>
         <template v-if="updatedRelative">
           <span class="text-muted-foreground/60">·</span>

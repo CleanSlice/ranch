@@ -13,6 +13,9 @@
 
 const CONVERSATION_PREFIX = 'bridle:conversation:';
 const SEQ_PREFIX = 'bridle:seq:';
+// The messages waiting for the agent (CLEAN-245). Scoped from its first day,
+// so the sweep below has nothing of it to remove and leaves it alone.
+const QUEUE_PREFIX = 'bridle:queue:';
 const LAST_AGENT_KEY = 'agent:lastOpened';
 
 /** What a share-link conversation's key starts with (`share:<agent>:<visitor>`). */
@@ -44,6 +47,15 @@ export function conversationKey(userId: string | null, key: string): string | nu
 /** Storage key of a conversation's highest hub `seq`; null like the above. */
 export function seqKey(userId: string | null, key: string): string | null {
   return scoped(SEQ_PREFIX, userId, key);
+}
+
+/**
+ * Storage key of the messages a conversation still has to send. A share-link
+ * conversation's key already names its visitor, so there the visitor is the
+ * owner; null like the above.
+ */
+export function queueKey(userId: string | null, key: string): string | null {
+  return scoped(QUEUE_PREFIX, userId, key);
 }
 
 /** Storage key of the agent this account opened last. */

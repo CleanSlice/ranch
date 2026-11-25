@@ -1,5 +1,6 @@
 import type { AgentStatusTypes } from './agent.types';
 import type { PodPhaseTypes } from '#/agent/pod/domain/pod.types';
+import type { ToolSummaryTypes } from './toolState.types';
 import type {
   AgentStatusStreamMessage,
   IAgentStatus,
@@ -17,7 +18,10 @@ import type {
  *    (`updatedAt`), so a console knows the record it holds is stale and reads
  *    it again through a route that knows who is asking (`GET /agents/:id`);
  *  - of the pod, what a status dot is drawn from;
- *  - whether the runtime is on the hub.
+ *  - whether the runtime is on the hub;
+ *  - one word on its tool servers (`tools`, CLEAN-245): `connecting` while
+ *    it is still reaching some of them, `limited` when it runs without
+ *    some, null otherwise. Never which server, never why.
  *
  * No name, no configuration, no credential or workflow id, no reason text.
  * This is the only place that decides what the stream says; the exact keys
@@ -32,6 +36,7 @@ export interface IAgentStatusFrame {
     containerWaitingReason: string | null;
   } | null;
   bridleConnected: boolean;
+  tools: ToolSummaryTypes;
 }
 
 export type AgentStatusFrameMessage =
@@ -57,6 +62,10 @@ export function toStatusFrame(status: IAgentStatus): IAgentStatusFrame {
         }
       : null,
     bridleConnected: status.bridleConnected === true,
+    tools:
+      status.tools === 'connecting' || status.tools === 'limited'
+        ? status.tools
+        : null,
   };
 }
 

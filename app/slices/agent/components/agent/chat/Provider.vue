@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { IBridleConversation } from '#bridle/domain';
 import { canManageAgent } from '#agent/utils/agentAccess';
+import { useAgentToolState } from '#agent/composables/useAgentToolState';
 
 const props = defineProps<{
   id: string;
@@ -39,6 +40,28 @@ const canManage = computed(() =>
   agent.value ? canManageAgent(authStore.role, agent.value) : false,
 );
 
+// ── Tool servers (CLEAN-245) ──────────────────────────────────
+// The list poll writes `toolState` onto the record; an open chat hears the
+// hub first, so its word is patched in — the rail row, the sheet and this
+// chat then read one fact (docs/state.md). Until the hub has spoken for this
+// conversation the record keeps what the poll said.
+const bridleStore = useBridleStore();
+watch(
+  () =>
+    [
+      bridleStore.agentOnlineFor(props.id),
+      bridleStore.toolsFor(props.id),
+    ] as const,
+  ([online, tools]) => {
+    const current = agent.value;
+    if (!current || online !== true) return;
+    if (current.toolState !== tools) agentStore.patch(current.id, { toolState: tools });
+  },
+);
+// Named servers, attempts and the wait: a manager's line. Anyone else gets
+// the chat's own wording, which is not built here and names nothing.
+const { toolView } = useAgentToolState(agent, canManage);
+
 const restarting = ref(false);
 const restartError = ref<string | null>(null);
 const restartFailed = ref(false);
@@ -51,6 +74,18 @@ const isTransitioning = computed(
     restarting.value ||
     (agent.value ? TRANSITIONAL_STATUSES.has(agent.value.status) : false),
 );
+
+/**
+ * What the chat's queue is told about the agent (CLEAN-245): on its way up
+ * the messages wait and go out by themselves; failed or stopped they are
+ * kept and the person is asked. Null: running, as far as this page knows.
+ */
+const queueAgentState = computed(() => {
+  if (isTransitioning.value) return 'starting' as const;
+  if (agent.value?.status === 'failed') return 'failed' as const;
+  if (agent.value?.status === 'stopped') return 'stopped' as const;
+  return null;
+});
 
 async function onRestart() {
   if (!agent.value || restarting.value) return;
@@ -118,6 +153,8 @@ const statusMeta = computed(() => {
       return { labelKey: 'status.pending', label: status, dot: 'bg-amber-500', pulse: true };
     case 'failed':
       return { labelKey: 'status.failed', label: status, dot: 'bg-rose-500', pulse: false };
+    case 'unreachable':
+      return { labelKey: 'status.unreachable', label: status, dot: 'bg-orange-500', pulse: false };
     case 'stopped':
       return { labelKey: 'status.stopped', label: status, dot: 'bg-muted-foreground', pulse: false };
     default:
@@ -234,6 +271,13 @@ const initials = computed(() => {
               </span>
               {{ statusMeta.labelKey ? $t(statusMeta.labelKey) : statusMeta.label }}
             </span>
+            <span
+              v-if="toolView"
+              class="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+              :data-tool-state="toolView.kind"
+            >
+              {{ $t(toolView.labelKey) }}
+            </span>
           </div>
           <p
             v-if="agent"
@@ -310,11 +354,14 @@ const initials = computed(() => {
         :title="agent.name"
         :subtitle="agent.templateId"
         :show-header="false"
-      />
-
-      <!-- Restart overlay — covers the chat while the pod is bouncing.
-           Shown both during the API call and while the status is in a
-           transitional state (deploying/pending). Slide in from below. -->
+        :tool-view="toolView"
+        :agent-state="queueAgentState"
+      >
+      <!-- Restart overlay — covers the transcript while the pod is bouncing,
+           never the composer: what is written meanwhile waits in the queue
+           (CLEAN-245). Shown both during the API call and while the status
+           is in a transitional state (deploying/pending). -->
+      <template #overlay>
       <Transition
         enter-active-class="transition-all duration-300 ease-out"
         enter-from-class="opacity-0"
@@ -363,6 +410,8 @@ const initials = computed(() => {
           </div>
         </div>
       </Transition>
+      </template>
+      </BridleChatProvider>
     </div>
   </div>
 </template>

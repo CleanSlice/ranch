@@ -8,6 +8,7 @@ import type {
   ICreateAgentData,
   IUpdateAgentData,
 } from './agent.types';
+import type { IAgentToolState } from './agentStatus.types';
 
 /**
  * Domain service for admin agent management. Exposes the CRUD + lifecycle
@@ -80,6 +81,10 @@ export class AgentService {
 
   metrics(id: string): Promise<IAgentMetrics | null> {
     return this.gateway.metrics(id);
+  }
+
+  toolState(id: string): Promise<IAgentToolState | null> {
+    return this.gateway.toolState(id);
   }
 
   capacity(): Promise<IClusterCapacityData | null> {

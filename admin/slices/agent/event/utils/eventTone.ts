@@ -50,6 +50,8 @@ export function outcomeTone(outcome: string): IToneLabel {
 const STATUSES: Record<string, IToneLabel> = {
   failed: { label: 'Failed', tone: 'danger' },
   unreachable: { label: 'Unreachable', tone: 'warning' },
+  // Up and answering, without some of its tool servers (CLEAN-245).
+  limited: { label: 'Limited tools', tone: 'warning' },
   recovered: { label: 'Recovered', tone: 'success' },
 };
 

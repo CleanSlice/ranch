@@ -27,6 +27,8 @@ export interface IRailEntry {
   atLimit: boolean;
   /** Public with no request limits — made public before limits existed. */
   needsLimits: boolean;
+  /** Running, with tool servers still being reached or missing (CLEAN-245). */
+  tools: 'connecting' | 'limited' | null;
   isActive: boolean;
 }
 
@@ -103,6 +105,9 @@ export function useAgentRailEntries(
   // The limit store's records by agent id. The two marks are read from there
   // and nowhere else, so a row and the open agent's cards cannot disagree.
   limits?: Ref<Record<string, IAgentLimitEntry>>,
+  // The status store's word per agent on its tool servers. A row names no
+  // server: the detail is read for the open agent only.
+  tools?: Ref<Record<string, 'connecting' | 'limited'>>,
 ) {
   return computed<IRailEntry[]>(() => {
     const term = search.value.trim().toLowerCase();
@@ -122,6 +127,7 @@ export function useAgentRailEntries(
         pinned: a.pinned,
         atLimit: limits?.value[a.id]?.atLimit === true,
         needsLimits: limits?.value[a.id]?.needsLimits === true,
+        tools: a.status === 'running' ? (tools?.value[a.id] ?? null) : null,
         isActive: a.id === activeId.value,
       }));
   });

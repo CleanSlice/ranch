@@ -320,6 +320,7 @@ function makeConnection(options: IConnectOptions) {
       });
     },
     isAgentConnected: () => true,
+    agentTools: () => null,
     currentSeq: () => 0,
     replaySince: () => [],
     agentLimitEvent: () => options.limit ?? null,

@@ -319,3 +319,94 @@ describe('BridleGateway — the word that an administrator is sending', () => {
     expect(gateway.isAdminChannel('user-admin', 'agent-2')).toBe(false);
   });
 });
+
+/**
+ * What a chat is told about the agent's tools (CLEAN-245): one word beside
+ * `connected`, sent again when it changes. A runtime that reports nothing
+ * (older than 0.40) reads as null — the chat shows what it always did.
+ */
+describe('BridleGateway — agent_status carries the tool summary', () => {
+  function chat() {
+    const gateway = new BridleGateway();
+    const frames: Array<Record<string, unknown>> = [];
+    gateway.registerClient(
+      'user-1',
+      'agent-1',
+      'client-socket',
+      (data) => frames.push(data as Record<string, unknown>),
+      false,
+    );
+    const status = () => frames.filter((f) => f.type === 'agent_status');
+    return { gateway, status };
+  }
+
+  it('null for a runtime that has not reported', () => {
+    const { gateway, status } = chat();
+    gateway.registerAgent('agent-1', 'socket-1', () => undefined);
+
+    expect(status()).toEqual([
+      {
+        type: 'agent_status',
+        agentId: 'agent-1',
+        connected: true,
+        tools: null,
+      },
+    ]);
+    expect(gateway.agentTools('agent-1')).toBeNull();
+  });
+
+  it('is sent again when the summary changes, and only then', () => {
+    const { gateway, status } = chat();
+    gateway.registerAgent('agent-1', 'socket-1', () => undefined);
+
+    gateway.setAgentTools('agent-1', 'socket-1', 'connecting');
+    gateway.setAgentTools('agent-1', 'socket-1', 'connecting');
+    gateway.setAgentTools('agent-1', 'socket-1', 'limited');
+    gateway.setAgentTools('agent-1', 'socket-1', null);
+
+    expect(status().map((f) => f.tools)).toEqual([
+      null,
+      'connecting',
+      'limited',
+      null,
+    ]);
+    expect(status().every((f) => f.connected === true)).toBe(true);
+  });
+
+  it('ignores a socket that is not the agent’s', () => {
+    const { gateway, status } = chat();
+    gateway.registerAgent('agent-1', 'socket-1', () => undefined);
+
+    gateway.setAgentTools('agent-1', 'socket-old', 'limited');
+    gateway.setAgentTools('agent-2', 'socket-1', 'limited');
+
+    expect(status()).toHaveLength(1);
+    expect(gateway.agentTools('agent-1')).toBeNull();
+  });
+
+  it('a new runtime starts with nothing said', () => {
+    const { gateway, status } = chat();
+    gateway.registerAgent('agent-1', 'socket-1', () => undefined);
+    gateway.setAgentTools('agent-1', 'socket-1', 'limited');
+
+    gateway.registerAgent('agent-1', 'socket-2', () => undefined);
+
+    expect(gateway.agentTools('agent-1')).toBeNull();
+    expect(status().at(-1)).toMatchObject({ connected: true, tools: null });
+  });
+
+  it('gone with the agent', () => {
+    const { gateway, status } = chat();
+    gateway.registerAgent('agent-1', 'socket-1', () => undefined);
+    gateway.setAgentTools('agent-1', 'socket-1', 'limited');
+
+    gateway.unregisterAgent('agent-1', 'socket-1');
+
+    expect(status().at(-1)).toEqual({
+      type: 'agent_status',
+      agentId: 'agent-1',
+      connected: false,
+      tools: null,
+    });
+  });
+});

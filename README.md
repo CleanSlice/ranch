@@ -117,7 +117,7 @@ curl -X POST "$RANCH_API/agent-events" \
   -d '{"agentId":"'"$AGENT_ID"'","status":"failed","reason":"CrashLoopBackOff"}'
 ```
 
-Choose where the team is told under **Settings → Notifications**. Details: [`docs/operations/agent-events.md`](docs/operations/agent-events.md).
+Choose where the team is told under **Settings → Notifications**. Details: [`docs/operations/agent-events.md`](docs/operations/agent-events.md). What *Limited tools* means on that page: [`docs/operations/agent-tools-state.md`](docs/operations/agent-tools-state.md).
 
 ## How it works
 

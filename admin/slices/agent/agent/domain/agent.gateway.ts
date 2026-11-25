@@ -7,6 +7,7 @@ import type {
   ICreateAgentData,
   IUpdateAgentData,
 } from './agent.types';
+import type { IAgentToolState } from './agentStatus.types';
 
 /**
  * Contract for the admin agents API. Implemented by `AgentGateway` in the data
@@ -35,5 +36,7 @@ export abstract class IAgentGateway {
   abstract logSummary(id: string): Promise<IAgentLogSummary>;
   abstract env(id: string): Promise<IAgentEnvVar[]>;
   abstract metrics(id: string): Promise<IAgentMetrics | null>;
+  /** What the runtime says of its tool servers; `null` when nothing is known. */
+  abstract toolState(id: string): Promise<IAgentToolState | null>;
   abstract capacity(): Promise<IClusterCapacityData | null>;
 }

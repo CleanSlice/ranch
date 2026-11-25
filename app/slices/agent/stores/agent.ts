@@ -4,6 +4,7 @@ import type {
   IAgentCreateInput,
   IAgentData,
   IAgentLinkData,
+  IAgentToolState,
   IAgentUpdateInput,
   IClusterCapacityData,
 } from '#agent/domain';
@@ -36,6 +37,11 @@ export const useAgentStore = defineStore('agent', () => {
   // a record whole — a status poll would wipe a field it does not carry. An
   // id that is absent has not been answered yet; the sheet then says nothing.
   const limitsEnabled = ref<Record<string, boolean>>({});
+  // Which tool servers an agent is missing, by agent id (CLEAN-245). Beside
+  // the records for the same reason as the limits: its own endpoint, asked
+  // only for a manager and only while the record's `toolState` says there is
+  // something to name.
+  const toolStates = ref<Record<string, IAgentToolState>>({});
   const loading = ref(false);
   const error = ref<string | null>(null);
   // Bumped by `resetForAccount`: the answer to a request that was open when
@@ -52,6 +58,7 @@ export const useAgentStore = defineStore('agent', () => {
     capacity.value = null;
     links.value = [];
     limitsEnabled.value = {};
+    toolStates.value = {};
     loading.value = false;
     error.value = null;
   }
@@ -141,6 +148,24 @@ export const useAgentStore = defineStore('agent', () => {
       // Keep what we have.
     }
     return limitsEnabled.value[id];
+  }
+
+  // Undefined until a manager's request has been answered.
+  function toolStateFor(id: string): IAgentToolState | undefined {
+    return toolStates.value[id];
+  }
+
+  // No answer leaves what we have: a failed refresh must not swap a named
+  // server for the generic line on screen.
+  async function fetchToolState(id: string) {
+    const generation = accountGeneration;
+    try {
+      const state = await getService().getToolState(id);
+      if (state && generation === accountGeneration) toolStates.value[id] = state;
+    } catch {
+      // Keep what we have.
+    }
+    return toolStates.value[id];
   }
 
   async function fetchAll() {
@@ -304,6 +329,9 @@ export const useAgentStore = defineStore('agent', () => {
     limitsEnabled,
     limitsEnabledFor,
     fetchLimitsEnabled,
+    toolStates,
+    toolStateFor,
+    fetchToolState,
     create,
     update,
     setPinned,

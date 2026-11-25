@@ -5,6 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AgentController } from './agent.controller';
+import { MANAGES_AGENT_METADATA_KEY } from './guards/agentManage.guard';
+import { ROLES_METADATA_KEY } from '#/user/auth/guards/roles.decorator';
+import { UserRoleTypes } from '#/user/user/domain';
 import {
   DOCUMENTS_MCP_ID,
   RANCH_MCP_ID,
@@ -62,6 +65,10 @@ function build(opts: { resolved?: IMcpServerData[]; agent?: unknown } = {}) {
   const mcpResolver = {
     resolveForAgent: jest.fn(() => Promise.resolve(opts.resolved ?? [])),
   };
+  const toolState = {
+    summary: jest.fn((): 'connecting' | 'limited' | null => null),
+    detail: jest.fn((): unknown => null),
+  };
   const stub = {} as never;
   const controller = new AgentController(
     agentGateway as never,
@@ -77,8 +84,9 @@ function build(opts: { resolved?: IMcpServerData[]; agent?: unknown } = {}) {
     permissionOver(agentGateway),
     openAccess(),
     noPins(),
+    toolState as never,
   );
-  return { controller, mcpResolver, agentGateway };
+  return { controller, mcpResolver, agentGateway, toolState };
 }
 
 const asOwner = {
@@ -220,6 +228,7 @@ function buildForLimits(
     permissionOver(agentGateway),
     openAccess(),
     noPins(),
+    { summary: () => null, detail: () => null } as never,
   );
   return { controller, agentGateway, agentLimits, deploy, order, userGateway };
 }
@@ -574,6 +583,57 @@ describe('AgentController — who created an agent', () => {
     expect(userGateway.findById.mock.calls.map(([id]) => id).sort()).toEqual([
       'user-a',
       'user-gone',
+    ]);
+  });
+});
+
+describe('AgentController.getAgentToolState (CLEAN-245)', () => {
+  const detail = {
+    phase: 'limited',
+    since: '2026-11-20T09:10:52.000Z',
+    servers: [
+      {
+        id: 'mcp-documents',
+        name: 'Documents',
+        state: 'retrying',
+        since: '2026-11-20T09:09:53.000Z',
+        attempts: 7,
+        lastError: 'HTTP 503',
+      },
+    ],
+  };
+
+  it('returns what the runtime reported', async () => {
+    const { controller, toolState } = build();
+    toolState.detail.mockReturnValue(detail);
+
+    await expect(controller.getAgentToolState('ag-1')).resolves.toEqual(detail);
+    expect(toolState.detail).toHaveBeenCalledWith('ag-1');
+  });
+
+  it('null while nothing was reported', async () => {
+    const { controller } = build();
+    await expect(controller.getAgentToolState('ag-1')).resolves.toBeNull();
+  });
+
+  it('404 for an agent that does not exist', async () => {
+    const { controller, toolState } = build({ agent: null });
+
+    await expect(controller.getAgentToolState('nope')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(toolState.detail).not.toHaveBeenCalled();
+  });
+
+  it('is behind the manage rule: a User, or an Admin the agent is hidden from, gets the guard’s 404', () => {
+    const handler = Object.getOwnPropertyDescriptor(
+      AgentController.prototype,
+      'getAgentToolState',
+    )!.value as object;
+    expect(Reflect.getMetadata(MANAGES_AGENT_METADATA_KEY, handler)).toBe('id');
+    expect(Reflect.getMetadata(ROLES_METADATA_KEY, handler)).toEqual([
+      UserRoleTypes.Owner,
+      UserRoleTypes.Admin,
     ]);
   });
 });

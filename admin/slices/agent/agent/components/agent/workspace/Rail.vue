@@ -24,11 +24,15 @@ const activeIdRef = computed(() => props.activeId);
 // "At limit" and "public without limits" (CLEAN-224) come from the limit
 // store, which the workspace keeps fresh with the 15 s summary poll.
 const { byAgent: limitsByAgent } = storeToRefs(useAgentLimitStore());
+// "Limited tools" (CLEAN-245) comes off the status stream every row already
+// listens to.
+const { tools: toolsByAgent } = storeToRefs(useAgentStatusStore());
 const entries = useAgentRailEntries(
   agentsRef,
   activeIdRef,
   search,
   limitsByAgent,
+  toolsByAgent,
 );
 
 const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);

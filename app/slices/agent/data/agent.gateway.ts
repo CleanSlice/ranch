@@ -6,6 +6,7 @@ import type {
   IAgentCreateInput,
   IAgentData,
   IAgentLinkData,
+  IAgentToolState,
   IAgentUpdateInput,
   IClusterCapacityData,
 } from '../domain/agent.types';
@@ -154,6 +155,14 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
       });
       const body = unwrapEnvelope<{ enabled?: unknown }>(res.data);
       return typeof body?.enabled === 'boolean' ? body.enabled : null;
+    });
+  }
+
+  // Same reading as the limits: no answer is "not known", never "all fine".
+  getToolState(id: string): Promise<IAgentToolState | null> {
+    return this.execute(async () => {
+      const res = await AgentsService.getAgentToolState({ path: { id } });
+      return this.mapper.toToolState(unwrapEnvelope(res.data));
     });
   }
 }

@@ -1,5 +1,6 @@
 /** What a sender, or Ranch itself, said about an agent. */
-export type AgentEventStatusTypes = 'failed' | 'unreachable' | 'recovered';
+// `limited`: running, but without some of its tool servers (CLEAN-245).
+export type AgentEventStatusTypes = 'failed' | 'unreachable' | 'limited' | 'recovered';
 export type AgentEventWitnessTypes = 'ranch' | 'external';
 export type AgentIncidentStateTypes = 'open' | 'closed';
 /** The webhook queues the first and the last; the bot says something at every step. */
@@ -47,7 +48,7 @@ export interface IAgentIncident {
   agentId: string | null;
   agentName: string;
   state: AgentIncidentStateTypes;
-  status: 'failed' | 'unreachable';
+  status: 'failed' | 'unreachable' | 'limited';
   reason: string | null;
   witnesses: string[];
   ranchWitnessed: boolean;

@@ -185,6 +185,10 @@ export type AgentDto = {
    * Human-readable reason accompanying status='failed' or 'unreachable' (e.g. "startup did not produce a running agent within 5 minutes", "ImagePullBackOff", "pod is running but the runtime never connected to the bridle hub…"). Also set during 'deploying' when bridle integration settings are empty. Null otherwise.
    */
   statusReason: string | null;
+  /**
+   * One word on the agent's tool servers, from its running runtime: `connecting` — it has just started and is still reaching some of them; `limited` — it runs without some of them; null — nothing to say (all connected, no runtime on the hub, or a runtime that does not report). Never which server or why: a person who manages the agent reads that from GET /agents/:id/tool-state.
+   */
+  toolState: "connecting" | "limited";
   workflowId: {
     [key: string]: unknown;
   } | null;
@@ -341,6 +345,42 @@ export type AgentNodeMetricsDto = {
 export type AgentMetricsDto = {
   pod: AgentPodMetricsDto;
   node: AgentNodeMetricsDto;
+};
+
+export type AgentToolServerDto = {
+  /**
+   * Ranch's id of the server, when the agent's config carried one.
+   */
+  id: string | null;
+  name: string;
+  /**
+   * `connected`; `retrying` — it does not answer and the runtime keeps trying; `refused` — it answered 401/403, which waiting does not fix: its credentials need changing.
+   */
+  state: "connected" | "retrying" | "refused";
+  /**
+   * When it entered this state.
+   */
+  since: string;
+  /**
+   * Attempts since it last was connected; 0 when connected.
+   */
+  attempts: number;
+  /**
+   * The last failure, first line, without credentials. Null when connected.
+   */
+  lastError: string | null;
+};
+
+export type AgentToolStateDto = {
+  /**
+   * `connecting` — just started and still reaching some servers; `limited` — running without some of them; `ready` — all connected.
+   */
+  phase: "connecting" | "limited" | "ready";
+  /**
+   * When this phase began.
+   */
+  since: string;
+  servers: Array<AgentToolServerDto>;
 };
 
 export type AgentEnvVarDto = {
@@ -2711,7 +2751,10 @@ export type AgentEventDto = {
    */
   agentRef: string;
   agentName: string | null;
-  status: "failed" | "unreachable" | "recovered";
+  /**
+   * `limited` is Ranch's own word, like `unreachable`: the agent runs without some of its tool servers.
+   */
+  status: "failed" | "unreachable" | "limited" | "recovered";
   /**
    * As received. Never translated or reformatted.
    */
@@ -2763,7 +2806,7 @@ export type AgentIncidentDto = {
   agentId: string | null;
   agentName: string;
   state: "open" | "closed";
-  status: "failed" | "unreachable";
+  status: "failed" | "unreachable" | "limited";
   reason: string | null;
   /**
    * Sender names, Ranch included.
@@ -3908,6 +3951,22 @@ export type GetAgentMetricsResponses = {
 
 export type GetAgentMetricsResponse =
   GetAgentMetricsResponses[keyof GetAgentMetricsResponses];
+
+export type GetAgentToolStateData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: "/agents/{id}/tool-state";
+};
+
+export type GetAgentToolStateResponses = {
+  200: AgentToolStateDto;
+};
+
+export type GetAgentToolStateResponse =
+  GetAgentToolStateResponses[keyof GetAgentToolStateResponses];
 
 export type GetAgentEnvData = {
   body?: never;

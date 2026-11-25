@@ -1,6 +1,16 @@
-export type AgentEventStatusTypes = 'failed' | 'unreachable' | 'recovered';
+export type AgentEventStatusTypes =
+  | 'failed'
+  | 'unreachable'
+  | 'limited'
+  | 'recovered';
 
-/** What an outside sender may post. 'unreachable' is Ranch's own word. */
+/**
+ * What opens or joins an incident. 'limited' (CLEAN-245) is an agent that
+ * runs without some of its tool servers: up, answering, and not whole.
+ */
+export type AgentTroubleStatusTypes = 'failed' | 'unreachable' | 'limited';
+
+/** What an outside sender may post. 'unreachable' and 'limited' are Ranch's own words. */
 export const EXTERNAL_EVENT_STATUSES = ['failed', 'recovered'] as const;
 export type ExternalEventStatusTypes = (typeof EXTERNAL_EVENT_STATUSES)[number];
 
@@ -176,7 +186,7 @@ export interface IAgentIncidentData {
   lastJoinedNotifiedAt: Date | null;
   // A report was swallowed by the minute rule; the sweep rewrites the root.
   rootStale: boolean;
-  status: 'failed' | 'unreachable';
+  status: AgentTroubleStatusTypes;
   reason: string | null;
   ranchWitnessed: boolean;
   // Sender names, the first reporter first; and how many reports there are.
@@ -206,7 +216,7 @@ export interface IOpenIncidentWithAgent {
 export interface IOpenIncidentInput {
   agentId: string;
   agentName: string;
-  status: 'failed' | 'unreachable';
+  status: AgentTroubleStatusTypes;
   reason: string | null;
   ranchWitnessed: boolean;
   openedAt: Date;
@@ -223,7 +233,7 @@ export interface IOpenedNotificationPayload {
   kind: 'opened';
   agentId: string | null;
   agentName: string;
-  status: 'failed' | 'unreachable';
+  status: AgentTroubleStatusTypes;
   reason: string | null;
   occurredAt: string;
   witness: AgentEventWitnessTypes;
@@ -237,7 +247,7 @@ export interface IJoinedNotificationPayload {
   kind: 'joined';
   agentId: string | null;
   agentName: string;
-  status: 'failed' | 'unreachable';
+  status: AgentTroubleStatusTypes;
   reason: string | null;
   occurredAt: string;
   witness: AgentEventWitnessTypes;
@@ -271,6 +281,9 @@ export interface IClosedNotificationPayload {
   closedAt: string;
   firstSenderName: string | null;
   eventCount: number;
+  // What the incident was opened for. Absent on rows queued before 'limited'
+  // existed — those were all down.
+  status?: AgentTroubleStatusTypes;
 }
 
 export type INotificationPayload =

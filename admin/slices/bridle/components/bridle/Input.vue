@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Textarea } from '#theme/components/ui/textarea'
 import { Button } from '#theme/components/ui/button'
@@ -12,6 +12,7 @@ import {
   hasPlaceholder,
   insertTemplate,
 } from '#toolCatalog/utils/insertTemplate'
+import { QUEUE_MAX } from '../../utils/queue'
 import {
   FILE_PICKER_ACCEPT,
   MAX_ATTACHMENTS_PER_MESSAGE,
@@ -36,11 +37,12 @@ const props = withDefaults(defineProps<{
   // False when the viewer may not manage this agent (CLEAN-232); handed on
   // to the Tools panel, which then leaves out its restart button.
   manageable?: boolean
+  // What Send does (CLEAN-245). The host answers with what became of the
+  // message: `full` (three already wait) and `ignored` leave the text where
+  // it is; anything else means it is on its way, or waiting, and the box
+  // clears.
+  submit: (text: string) => Promise<'sent' | 'queued' | 'full' | 'ignored'>
 }>(), { manageable: true })
-
-const emit = defineEmits<{
-  send: [text: string]
-}>()
 
 const store = useBridleStore()
 
@@ -76,12 +78,59 @@ const attachTitle = computed(() =>
     : 'Attach a file',
 )
 
-const handleSend = () => {
+// ─── Queue (CLEAN-245) ───────────────────────────────────────────────────
+const queueLength = computed(() => store.getQueue(conversationKey.value).length)
+// Send was pressed with three already waiting. The line goes as soon as it
+// stops being true: a row was removed, or the agent took one.
+const refusedAsFull = ref(false)
+const queueFull = computed(() => refusedAsFull.value && queueLength.value >= QUEUE_MAX)
+watch(queueLength, (n) => {
+  if (n < QUEUE_MAX) refusedAsFull.value = false
+})
+
+const handleSend = async () => {
   if (!canSend.value) return
-  emit('send', input.value)
-  input.value = ''
+  const text = input.value
+  const result = await props.submit(text)
+  refusedAsFull.value = result === 'full'
+  // Only what was submitted is cleared: typing went on while it was sent.
+  if ((result === 'sent' || result === 'queued') && input.value === text) input.value = ''
   textareaRef.value?.$el?.focus()
 }
+
+// A queued message taken back for editing replaces what is in the composer.
+// With something already there the person is asked first — inline, under the
+// box, where the answer is one key away.
+const pendingEdit = ref<string | null>(null)
+
+function takeBack(id: string) {
+  pendingEdit.value = null
+  const text = store.editQueued(conversationKey.value, id)
+  if (text === null) return
+  input.value = text
+  void nextTick(() => {
+    const el = textareaEl()
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  })
+}
+
+function requestEdit(id: string) {
+  if (input.value.trim() || staged.value.length) pendingEdit.value = id
+  else takeBack(id)
+}
+
+// The row may leave the queue while the question stands (sent, or removed in
+// another tab): then there is nothing left to ask about.
+watch(
+  () => store.getQueue(conversationKey.value).some(e => e.id === pendingEdit.value),
+  (stillQueued) => {
+    if (!stillQueued) pendingEdit.value = null
+  },
+)
+
+defineExpose({ requestEdit })
 
 // ─── Tools panel (CLEAN-109) ─────────────────────────────────────────────
 // The sheet lives here, not in the Provider, because the draft does: picking
@@ -281,6 +330,41 @@ const onPaste = (event: ClipboardEvent) => {
         <Send class="h-4 w-4" />
       </Button>
     </div>
+
+    <p
+      v-if="queueFull"
+      class="text-[11px] text-muted-foreground"
+      role="status"
+      aria-live="polite"
+      data-queue-full
+    >
+      Three messages are already waiting. Remove one or wait for the agent.
+    </p>
+
+    <p
+      v-if="pendingEdit"
+      class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground"
+      role="alert"
+      data-queue-replace
+    >
+      <span>Replace what you are writing with the queued message?</span>
+      <button
+        type="button"
+        class="cursor-pointer font-medium text-foreground underline underline-offset-2 hover:no-underline"
+        data-queue-replace-confirm
+        @click="takeBack(pendingEdit)"
+      >
+        Replace
+      </button>
+      <button
+        type="button"
+        class="cursor-pointer underline underline-offset-2 hover:no-underline"
+        data-queue-replace-cancel
+        @click="pendingEdit = null"
+      >
+        Cancel
+      </button>
+    </p>
 
     <!-- Rejections are announced, not just coloured: a screen reader user gets
          no signal from a red line. -->

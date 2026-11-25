@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { agentInitials, agentStatusMeta, LEGEND_STATUSES } from './agentStatus';
 
 describe('agentStatusMeta', () => {
-  test('the five known statuses carry a wording key and their own colour', () => {
+  test('the known statuses carry a wording key and their own colour', () => {
     expect(agentStatusMeta('running')).toEqual({
       labelKey: 'status.running',
       color: '#2fa66b',
@@ -13,6 +13,12 @@ describe('agentStatusMeta', () => {
     expect(agentStatusMeta('pending').pulse).toBe(true);
     expect(agentStatusMeta('failed').alarm).toBe(true);
     expect(agentStatusMeta('failed').color).toBe('#d6453d');
+    expect(agentStatusMeta('unreachable')).toEqual({
+      labelKey: 'status.unreachable',
+      color: '#f5a16b',
+      pulse: false,
+      alarm: true,
+    });
     expect(agentStatusMeta('stopped')).toEqual({
       labelKey: 'status.stopped',
       color: '#7e7488',
@@ -22,7 +28,7 @@ describe('agentStatusMeta', () => {
   });
 
   test('a status without wording is neutral and keeps no key, so the raw text is shown', () => {
-    const unknown = agentStatusMeta('unreachable');
+    const unknown = agentStatusMeta('degraded');
     expect(unknown.labelKey).toBe(null);
     expect(unknown.color).toBe('#7e7488');
     expect(unknown.pulse).toBe(false);

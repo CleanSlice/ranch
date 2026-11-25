@@ -26,8 +26,35 @@ export interface IAgentData {
    *  it; it changes nothing about the pod, the status, access, or anybody
    *  else's list. */
   pinned: boolean;
+  /** How its tool servers stand (CLEAN-245): still being reached after a
+   *  start, running without some of them, or null — all answer, or the agent
+   *  is not running. The word only; which server is a manager's question
+   *  (`IAgentToolState`). */
+  toolState: ToolSummaryTypes;
   createdAt: string;
   updatedAt: string;
+}
+
+export type ToolSummaryTypes = 'connecting' | 'limited' | null;
+export type ToolServerStateTypes = 'connected' | 'retrying' | 'refused';
+
+/** One tool server of an agent, as its runtime last reported it. */
+export interface IAgentToolServer {
+  id: string | null;
+  /** The operator's own name for it: shown as received. */
+  name: string;
+  state: ToolServerStateTypes;
+  since: string;
+  attempts: number;
+  /** Redacted by the runtime; shown as received. */
+  lastError: string | null;
+}
+
+/** What a manager is told about an agent's tool servers (CLEAN-245). */
+export interface IAgentToolState {
+  phase: 'connecting' | 'limited' | 'ready';
+  since: string;
+  servers: IAgentToolServer[];
 }
 
 /** Payload to create an agent. Mirrors the fields the app sends; the mapper

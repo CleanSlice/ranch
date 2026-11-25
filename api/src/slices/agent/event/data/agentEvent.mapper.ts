@@ -8,6 +8,7 @@ import type {
 import {
   AgentEventOutcomeTypes,
   AgentEventStatusTypes,
+  AgentTroubleStatusTypes,
   AgentEventWitnessTypes,
   DestinationKindTypes,
   SlackReactionTypes,
@@ -58,7 +59,7 @@ export class AgentEventMapper {
       notificationSeq: record.notificationSeq,
       lastJoinedNotifiedAt: record.lastJoinedNotifiedAt,
       rootStale: record.rootStale,
-      status: record.status as 'failed' | 'unreachable',
+      status: record.status as AgentTroubleStatusTypes,
       reason: record.reason,
       ranchWitnessed: record.ranchWitnessed,
       witnesses: record.witnesses,

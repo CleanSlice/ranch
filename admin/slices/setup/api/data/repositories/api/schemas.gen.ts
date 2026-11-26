@@ -493,6 +493,11 @@ export const AgentDtoSchema = {
         },
       ],
     },
+    createdByMe: {
+      type: "boolean",
+      description:
+        "True when the caller is the recorded creator of the agent (CLEAN-259). For every reader, a User included: it says nothing about anybody else. False when nobody is recorded, for a caller that is not a person, and on the public routes.",
+    },
     createdAt: {
       format: "date-time",
       type: "string",
@@ -524,6 +529,7 @@ export const AgentDtoSchema = {
     "knowledgeIds",
     "isAdmin",
     "createdBy",
+    "createdByMe",
     "createdAt",
     "updatedAt",
   ],
@@ -5374,8 +5380,13 @@ export const MyAssistantAbilityDtoSchema = {
       description:
         "included: the assistant does this for the caller. own_agents_only: only on agents the caller created. not_included: the caller’s role could have it and their setting leaves it out.",
     },
+    onAgent: {
+      type: "boolean",
+      description:
+        "True when the ability acts on one agent the request names (restart, stop, rename): its tool is a manage-agent one. With `state: included` it is something the caller may ask the assistant to do to an agent they reach and did not create (CLEAN-259).",
+    },
   },
-  required: ["name", "title", "state"],
+  required: ["name", "title", "state", "onAgent"],
 } as const;
 
 export const AssistantAreaCountDtoSchema = {

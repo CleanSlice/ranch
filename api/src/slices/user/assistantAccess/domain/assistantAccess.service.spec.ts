@@ -742,7 +742,17 @@ describe('each ability of a person’s role, and how it stands for them', () => 
       title: 'Title of list_agents',
       area: 'agents',
       state: 'included',
+      onAgent: false,
     });
+    // Which abilities act on one agent is the tool's audience, not a list a
+    // console keeps (CLEAN-259): the manage-agent ones, whatever their state.
+    expect(
+      mine.abilities.filter((a) => a.onAgent).map((a) => a.name),
+    ).toEqual(
+      TOOLS.filter(([, , , audience]) => audience === 'manage-agent').map(
+        ([name]) => name,
+      ),
+    );
     expectCountsToFollow(mine);
   });
 

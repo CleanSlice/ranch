@@ -106,7 +106,9 @@ export class RancherTool {
    * (CLEAN-231), the way `GET /agents` answers the same person: whole for a
    * caller who may manage the agent, its reader view otherwise (no config,
    * no credential or knowledge binding, no deploy history), `pinned` as the
-   * person's own pin, and the bare creator id for operators only.
+   * person's own pin, and the bare creator id for operators only. Every
+   * person is told whether they made the agent (`createdByMe`, CLEAN-259),
+   * so the assistant can say "your agent" to a User without naming anybody.
    */
   private async asReadBy(agents: IAgentData[], httpRequest: Request) {
     const caller = manageCaller(httpRequest);
@@ -125,6 +127,8 @@ export class RancherTool {
         return {
           ...rest,
           pinned: pinned.has(agent.id),
+          createdByMe:
+            !!person && !!createdById && createdById === person.userId,
           ...(operator ? { createdById } : {}),
         };
       }),
@@ -183,7 +187,9 @@ export class RancherTool {
       'status, template and resources, and whether that person pinned ' +
       'them. Use it to turn a name into the id the other tools take. An ' +
       'agent the person may manage comes with its configuration; any ' +
-      'other comes without it. Agents the person has no access to are not ' +
+      'other comes without it. `createdByMe` is true for an agent the ' +
+      'person asking created: that one is theirs, and they may manage it ' +
+      'whatever their role. Agents the person has no access to are not ' +
       'listed at all: do not assume there are others.',
     parameters: z.object({}),
   })
@@ -207,8 +213,9 @@ export class RancherTool {
     template: 'Show the agent «name»',
     description:
       'Get a single agent by id, among the ones the person asking can use: ' +
-      'current status, template and resources, and for a person who may ' +
-      'manage it also its workflowId and config.',
+      'current status, template and resources, whether the person asking ' +
+      'created it (`createdByMe`), and for a person who may manage it ' +
+      'also its workflowId and config.',
     parameters: z.object({
       id: z.string().describe('Agent id, e.g. agent-abc123'),
     }),

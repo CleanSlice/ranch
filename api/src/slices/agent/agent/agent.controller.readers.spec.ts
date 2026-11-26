@@ -269,6 +269,52 @@ describe('AgentController — what each reader gets of an agent', () => {
     for (const s of forUser) expect(s.agent).not.toHaveProperty('createdById');
   });
 
+  it('every reader is told whether they created the agent, and a User nothing else about creators (CLEAN-259)', async () => {
+    const { controller } = build();
+    const mineOf = (list: { id: string; createdByMe: boolean }[]) =>
+      list.filter((a) => a.createdByMe).map((a) => a.id);
+
+    const forUser = await controller.findAll(user);
+    expect(mineOf(forUser)).toEqual(['ag-mine']);
+    // The creator's own flag is all a User gets: no name, no id, of anybody.
+    for (const agent of forUser) {
+      expect(agent.createdBy).toBeNull();
+      expect(agent).not.toHaveProperty('createdById');
+    }
+    expect(JSON.stringify(forUser)).not.toContain('user-u');
+
+    // Somebody else's agent is not theirs, whatever their role.
+    expect(mineOf(await controller.findAll(otherUser))).toEqual([]);
+    expect(mineOf(await controller.findAll(admin))).toEqual([]);
+    expect(mineOf(await controller.findAll(owner))).toEqual([]);
+    // An operator still reads who it was.
+    const forAdmin = await controller.findAll(admin);
+    expect(forAdmin[2].createdBy).toEqual({
+      id: 'user-u',
+      name: null,
+      email: null,
+    });
+    // Nobody is recorded: nobody's, the reader's included.
+    expect(forUser[0].createdByMe).toBe(false);
+
+    // The same answer from the routes that return one agent, and in status.
+    expect((await controller.findById('ag-mine', user))?.createdByMe).toBe(
+      true,
+    );
+    expect((await controller.findById('ag-mine', admin))?.createdByMe).toBe(
+      false,
+    );
+    const status = await controller.status(user);
+    expect(
+      status.filter((s) => s.agent.createdByMe).map((s) => s.agent.id),
+    ).toEqual(['ag-mine']);
+
+    // Not a person: an agent's token, nobody at all, the public page.
+    expect(mineOf(await controller.findAll(agentToken('user-u')))).toEqual([]);
+    expect(mineOf(await controller.findAll(undefined))).toEqual([]);
+    expect(mineOf(await controller.findPublic())).toEqual([]);
+  });
+
   it('an anonymous reader and an agent’s token get the reader view of everything', async () => {
     const { controller } = build();
 

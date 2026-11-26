@@ -127,6 +127,17 @@ function withoutCreatorId<T extends { createdById?: string | null }>(
   return rest;
 }
 
+/**
+ * Whether the person asking is the recorded creator (CLEAN-259). False for
+ * an agent nobody is recorded for, and for a reader who is not a person.
+ */
+function isCreator(
+  agent: { createdById?: string | null },
+  me: string | null,
+): boolean {
+  return me !== null && !!agent.createdById && agent.createdById === me;
+}
+
 const ADMIN_AGENT_IS_THE_OWNERS =
   'Only the Owner can make an agent the Ranch admin agent. Create it ' +
   'without that, then ask the Owner to promote it.';
@@ -222,10 +233,14 @@ export class AgentController {
       );
     }
     const visible = await this.withPins(await this.asReadBy(agents, req), req);
+    const me = req ? creatorOf(req) : null;
     return visible.map((agent) => ({
       ...withoutCreatorId(agent),
       // One word, safe for any reader — the detail has its own route.
       toolState: this.toolState.summary(agent.id),
+      // The one thing every reader is told about who made an agent
+      // (CLEAN-259): whether it was them. Nobody else is named by it.
+      createdByMe: isCreator(agent, me),
       createdBy: agent.createdById
         ? (creators.get(agent.createdById) ?? null)
         : null,
@@ -320,7 +335,7 @@ export class AgentController {
   @Roles(UserRoleTypes.User)
   @ApiOperation({
     summary:
-      'List the agents the caller reaches. Any signed-in account; an Admin or User whose access lists hide an agent does not get it, and nothing says it exists (CLEAN-231). `pinned` is the caller’s own pin. An agent the reader may manage comes with its full configuration; any other comes as a reader sees it: `config` empty, `llmCredentialId`, `workflowId`, `statusReason`, `launchContext` and the deploy and sync dates null, `knowledgeIds` empty, `debugEnabled` false (CLEAN-232). `createdBy` is resolved for an Owner or Admin only. The login-free landing page reads GET /agents/public instead (CLEAN-177).',
+      'List the agents the caller reaches. Any signed-in account; an Admin or User whose access lists hide an agent does not get it, and nothing says it exists (CLEAN-231). `pinned` is the caller’s own pin. An agent the reader may manage comes with its full configuration; any other comes as a reader sees it: `config` empty, `llmCredentialId`, `workflowId`, `statusReason`, `launchContext` and the deploy and sync dates null, `knowledgeIds` empty, `debugEnabled` false (CLEAN-232). `createdBy` is resolved for an Owner or Admin only; `createdByMe` says to any reader whether they created it (CLEAN-259). The login-free landing page reads GET /agents/public instead (CLEAN-177).',
   })
   @ApiOkResponse({ type: AgentDto, isArray: true })
   async findAll(@Req() req?: Request) {
@@ -350,7 +365,8 @@ export class AgentController {
   })
   @ApiOkResponse({ type: AgentStatusDto, isArray: true })
   async status(@Req() req?: Request) {
-    // Status carries no creator: the consoles read that from GET /agents.
+    // Status names no creator: the consoles read that from GET /agents. It
+    // does say whether the reader is the creator, like every agent response.
     // The agent inside is read like any other: whole for a reader who may
     // manage it, its reader view otherwise.
     const reach = await this.access.reachableIds(accessCallerOf(req));
@@ -365,9 +381,13 @@ export class AgentController {
       ),
       req,
     );
+    const me = req ? creatorOf(req) : null;
     return snapshot.map((s, i) => ({
       ...s,
-      agent: withoutCreatorId(agents[i]),
+      agent: {
+        ...withoutCreatorId(agents[i]),
+        createdByMe: isCreator(agents[i], me),
+      },
     }));
   }
 

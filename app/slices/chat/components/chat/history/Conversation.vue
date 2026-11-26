@@ -22,7 +22,10 @@ const session = computed(() => chatStore.byId[props.chatId] ?? null);
 // 'missing': it does not exist, or it is not this person's — the server
 // answers both the same way. 'failed': the request itself did not get through.
 const problem = ref<'missing' | 'failed' | null>(null);
-const opening = ref(false);
+// True from the first paint: the record is usually in the store already (the
+// list put it there), so the view is drawn at once, and the messages are
+// still a request or two away (CLEAN-253).
+const opening = ref(true);
 
 async function open() {
   opening.value = true;
@@ -93,6 +96,17 @@ async function loadOlder() {
     loading.value = false;
   }
 }
+
+// The transcript is read from storage and takes seconds for a long
+// conversation. Until its first page is here the feed and the Overview's
+// Navigation show placeholders in their own places, so the screen is never
+// blank and nothing jumps when the messages land (CLEAN-253). Loading older
+// messages is not this: the feed is full then, and its button says so.
+const loadingFirst = computed(
+  () => (opening.value || loading.value) && !messages.value.length,
+);
+// Widths of the placeholder bubbles, alternating sides like a conversation.
+const PLACEHOLDER_BUBBLES = ['w-2/5', 'w-3/5', 'w-1/3', 'w-1/2', 'w-2/5'];
 
 // Current user's 👍/👎 per messageId.
 const feedbackByMsg = ref<Record<string, number>>({});
@@ -335,8 +349,35 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
+            <!-- The first page is on its way. -->
             <div
-              v-if="!messages.length && !loading && !opening"
+              v-if="loadingFirst"
+              class="flex flex-col gap-4"
+              role="status"
+              aria-busy="true"
+              data-conversation-state="loading"
+            >
+              <span class="sr-only">{{ $t('session.loading') }}</span>
+              <div
+                v-for="(width, i) in PLACEHOLDER_BUBBLES"
+                :key="i"
+                class="flex items-start gap-2.5"
+                :class="i % 2 === 0 ? 'justify-end' : undefined"
+                aria-hidden="true"
+              >
+                <div
+                  v-if="i % 2 === 1"
+                  class="h-7 w-7 shrink-0 animate-pulse rounded-full bg-muted"
+                />
+                <div
+                  class="h-11 animate-pulse rounded-2xl"
+                  :class="[width, i % 2 === 0 ? 'bg-primary/20' : 'bg-muted']"
+                />
+              </div>
+            </div>
+
+            <div
+              v-else-if="!messages.length"
               class="py-16 text-center text-sm text-muted-foreground"
             >
               {{ $t('session.no_messages') }}
@@ -395,6 +436,7 @@ onBeforeUnmount(() => {
             <ChatHistoryOverview
               :session="session"
               :nav-items="navItems"
+              :nav-pending="loadingFirst"
               @jump="onJump"
               @export="onExport"
             />

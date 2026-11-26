@@ -9,13 +9,18 @@
  * Twin of `admin/slices/agent/agent/utils/agentAccess.ts`. The line about the
  * Ranch admin agent (`isAdmin`) is the same there: it is the Owner's alone.
  * What differs is who else is here. The management console is opened by an
- * Owner or an Admin only; this one by a User too, who gets no controls on any
- * agent, as before.
+ * Owner or an Admin only; this one by a User too, who gets the controls of
+ * the agents they created and of no other (CLEAN-259: the API's third line,
+ * "the caller created the agent", read off `createdByMe`, which is the
+ * API's own answer).
  */
 export function canManageAgent(
   viewerRole: string | null | undefined,
-  agent: { isAdmin: boolean },
+  agent: { isAdmin: boolean; createdByMe?: boolean },
 ): boolean {
   if (viewerRole === 'Owner') return true;
-  return viewerRole === 'Admin' && !agent.isAdmin;
+  if (agent.isAdmin) return false;
+  if (viewerRole === 'Admin') return true;
+  // Somebody signed in, of whatever role below Admin.
+  return Boolean(viewerRole) && agent.createdByMe === true;
 }

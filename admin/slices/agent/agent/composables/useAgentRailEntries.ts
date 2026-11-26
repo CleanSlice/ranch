@@ -5,6 +5,12 @@ import type {
   IAgentLimitEntry,
 } from '#agent/domain';
 import { railOrder } from '#agent/utils/railOrder';
+import {
+  filterByOwner,
+  ownerMark,
+  type OwnerFilterTypes,
+  type OwnerMarkTypes,
+} from '#agent/utils/agentOwnership';
 
 export interface IRailStatusTone {
   dot: string;
@@ -29,6 +35,9 @@ export interface IRailEntry {
   needsLimits: boolean;
   /** Running, with tool servers still being reached or missing (CLEAN-245). */
   tools: 'connecting' | 'limited' | null;
+  /** Whose agent it is, for the badge on the avatar (CLEAN-259): the
+   *  viewer's own, somebody else's by initials, or no badge. */
+  mark: OwnerMarkTypes | null;
   isActive: boolean;
 }
 
@@ -108,11 +117,14 @@ export function useAgentRailEntries(
   // The status store's word per agent on its tool servers. A row names no
   // server: the detail is read for the open agent only.
   tools?: Ref<Record<string, 'connecting' | 'limited'>>,
+  // "All" or "Mine" (CLEAN-259), already resolved by the rail: "mine" is
+  // read off the records here, never kept as a second list.
+  ownerFilter?: Ref<OwnerFilterTypes>,
 ) {
   return computed<IRailEntry[]>(() => {
     const term = search.value.trim().toLowerCase();
     return railOrder(
-      (agents.value ?? []).filter(
+      filterByOwner(agents.value ?? [], ownerFilter?.value ?? 'all').filter(
         (a) => !term || a.name.toLowerCase().includes(term),
       ),
     ).map((a) => ({
@@ -128,6 +140,7 @@ export function useAgentRailEntries(
         atLimit: limits?.value[a.id]?.atLimit === true,
         needsLimits: limits?.value[a.id]?.needsLimits === true,
         tools: a.status === 'running' ? (tools?.value[a.id] ?? null) : null,
+        mark: ownerMark(a),
         isActive: a.id === activeId.value,
       }));
   });

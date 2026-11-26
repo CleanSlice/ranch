@@ -155,6 +155,12 @@ export class AgentDto {
   })
   createdBy: AgentCreatorDto | null;
 
+  @ApiProperty({
+    description:
+      'True when the caller is the recorded creator of the agent (CLEAN-259). For every reader, a User included: it says nothing about anybody else. False when nobody is recorded, for a caller that is not a person, and on the public routes.',
+  })
+  createdByMe: boolean;
+
   @ApiProperty()
   createdAt: Date;
 

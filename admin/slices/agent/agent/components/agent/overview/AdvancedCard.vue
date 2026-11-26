@@ -40,7 +40,10 @@ const uid = useId()
 const canChangeAdmin = computed(() => isOwnerRole(auth.user?.role))
 
 // Who created the agent, read off the store record like everything else here.
-const creator = computed(() => agentCreatorView(agent.value?.createdBy))
+// "You" when it is the viewer's own account (CLEAN-259), as the header says.
+const creator = computed(() =>
+  agentCreatorView(agent.value?.createdBy, agent.value?.createdByMe === true),
+)
 
 // ── Promote / demote ─────────────────────────────────────────────────
 const promoting = ref(false)
@@ -248,6 +251,10 @@ const CALM_SWITCH =
               >
                 <dt class="text-muted-foreground">Created by</dt>
                 <dd v-if="creator.state === 'known'" class="min-w-0 break-words">
+                  <template v-if="creator.you">
+                    <span class="font-medium text-foreground" data-created-by-you>You</span>
+                    <span v-if="creator.name" class="text-muted-foreground"> · </span>
+                  </template>
                   {{ creator.name }}
                   <template v-if="creator.email">
                     <span class="text-muted-foreground">·</span>

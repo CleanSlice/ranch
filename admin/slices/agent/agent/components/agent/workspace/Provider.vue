@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { IconUsersGroup, IconX } from '@tabler/icons-vue';
+import type { OwnerFilterTypes } from '#agent/utils/agentOwnership';
 
 const props = defineProps<{ id: string }>();
 
@@ -24,6 +25,11 @@ const { pending, refresh: refreshAgents } = useAsyncData(
   { lazy: true },
 );
 const { agents } = storeToRefs(agentStore);
+
+// "All" or "Mine" in the rail (CLEAN-259). View state, transient like the
+// rail's search; held here so the rail beside the agent and the one a phone
+// opens over it show the same list.
+const ownerFilter = ref<OwnerFilterTypes>('all');
 
 // Cluster headroom, rendered in the rail's footer next to the create action.
 // Store actions refetch on their own; the interval catches pods actually
@@ -149,6 +155,7 @@ async function onDeleted() {
       variant="outline"
       size="sm"
       class="shrink-0 self-start lg:hidden"
+      data-rail-open
       @click="railOverlayOpen = true"
     >
       <IconUsersGroup class="size-4" />
@@ -164,6 +171,7 @@ async function onDeleted() {
           :active-id="id"
           :pending="pending"
           :capacity="capacity"
+          v-model:owner-filter="ownerFilter"
           @select="onSelect"
         />
       </aside>
@@ -194,6 +202,7 @@ async function onDeleted() {
           :active-id="id"
           :pending="pending"
           :capacity="capacity"
+          v-model:owner-filter="ownerFilter"
           @select="onSelect"
         />
       </div>

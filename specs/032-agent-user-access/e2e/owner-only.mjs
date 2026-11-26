@@ -143,15 +143,15 @@ try {
         `instead: "${await textOf(page, '[data-admin-owner-only]')}"`,
       );
       check(
-        (await textOf(page, '[data-created-by][data-state="known"] dd')) === `access-admin · ${ADMIN_USER.email}`,
-        `Created by shows the seeded creator ("${await textOf(page, '[data-created-by] dd')}")`,
+        (await textOf(page, '[data-created-by][data-state="known"] dd')) === `You · access-admin · ${ADMIN_USER.email}`,
+        `Created by shows the seeded creator, who is the Admin looking (CLEAN-259) ("${await textOf(page, '[data-created-by] dd')}")`,
       );
       await shot(page, `owner-only-admin-alpha-${width}`);
 
       await open(page, workspace(AGENTS.b.id, 'overview'));
       await openAdvanced(page);
       check(
-        (await textOf(page, '[data-created-by][data-state="unknown"] dd')) === 'Unknown',
+        (await textOf(page, '[data-created-by][data-state="unknown"] dd')) === 'Creator not recorded',
         `${AGENTS.b.name}, with no creator recorded: "${await textOf(page, '[data-created-by] dd')}"`,
       );
       await shot(page, `owner-only-admin-bravo-${width}`);

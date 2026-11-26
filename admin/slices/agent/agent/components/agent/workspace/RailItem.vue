@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { IconPin, IconShield } from '@tabler/icons-vue';
 import type { IRailEntry } from '#agent/composables/useAgentRailEntries';
+import { ownerMarkText } from '#agent/utils/agentOwnership';
 
 defineProps<{ entry: IRailEntry }>();
 </script>
@@ -16,9 +17,10 @@ defineProps<{ entry: IRailEntry }>();
     :aria-current="entry.isActive ? 'true' : undefined"
   >
     <span
-      class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary"
+      class="relative flex size-9 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary"
     >
       {{ entry.initials }}
+      <AgentOwnerMark :mark="entry.mark" />
     </span>
 
     <span class="min-w-0 flex-1">
@@ -28,6 +30,11 @@ defineProps<{ entry: IRailEntry }>();
           :title="entry.name"
         >
           {{ entry.name }}
+        </span>
+        <!-- What the badge on the avatar means, for a reader who cannot see
+             it: part of the row's name, right after the agent's (CLEAN-259). -->
+        <span v-if="entry.mark" class="sr-only" data-owner-name>
+          , {{ ownerMarkText(entry.mark) }}
         </span>
         <IconPin
           v-if="entry.pinned"

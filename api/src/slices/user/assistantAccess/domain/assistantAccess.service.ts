@@ -153,6 +153,12 @@ export interface IAssistantMyAbility {
   title: string;
   area: ToolTopic;
   state: AssistantAbilityStateTypes;
+  /**
+   * It acts on one agent the call names (the tool's audience is
+   * `manage-agent`): restart, stop, rename. A console reads it to say what
+   * the person may do to an agent somebody else made (CLEAN-259).
+   */
+  onAgent: boolean;
 }
 
 export interface IAssistantMine {
@@ -891,6 +897,7 @@ export class AssistantAccessService {
         : ownOnly.has(a.name)
           ? 'own_agents_only'
           : 'not_included',
+      onAgent: a.audience === 'manage-agent',
     }));
     const named = (state: AssistantAbilityStateTypes) =>
       abilities

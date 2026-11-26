@@ -498,6 +498,12 @@ describe('list_agents and get_agent — the agents the caller reaches (CLEAN-231
     // Who created an agent is for operators.
     expect(support).not.toHaveProperty('createdById');
     expect(mine).not.toHaveProperty('createdById');
+    // Whether it is theirs is for everybody (CLEAN-259).
+    expect(support.createdByMe).toBe(false);
+    expect(mine.createdByMe).toBe(true);
+    expect(
+      parse(await tool.getAgent({ id: 'agent-mine' }, null, forCreator())),
+    ).toMatchObject({ id: 'agent-mine', createdByMe: true });
   });
 
   it('an operator gets every agent, whole, with its creator', async () => {
@@ -507,6 +513,8 @@ describe('list_agents and get_agent — the agents the caller reaches (CLEAN-231
 
     expect(list.map((a) => a.id)).toEqual(AGENTS.map((a) => a.id));
     expect(list[2]).toMatchObject({ createdById: 'user-u', ...OPERATOR_SIDE });
+    // Made by somebody else: the Owner reads who, and it is not the Owner's.
+    expect(list.map((a) => a.createdByMe)).toEqual(AGENTS.map(() => false));
   });
 
   it('get_agent answers an agent out of reach as one that does not exist', async () => {

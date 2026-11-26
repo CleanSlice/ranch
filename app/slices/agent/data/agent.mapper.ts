@@ -4,6 +4,7 @@ import type {
 } from '#api/data/repositories/api/types.gen';
 import type {
   IAgentCreateInput,
+  IAgentCreator,
   IAgentData,
   IAgentLinkData,
   IAgentToolServer,
@@ -48,6 +49,8 @@ export class AgentMapper {
         : [],
       isAdmin: o.isAdmin === true,
       pinned: o.pinned === true,
+      createdByMe: o.createdByMe === true,
+      createdBy: this.toCreator(o.createdBy),
       // Absent from an older API and from a ready agent alike: no mark.
       toolState:
         o.toolState === 'connecting' || o.toolState === 'limited'
@@ -62,6 +65,17 @@ export class AgentMapper {
       statusReason: typeof o.statusReason === 'string' ? o.statusReason : null,
       createdAt: typeof o.createdAt === 'string' ? o.createdAt : '',
       updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : '',
+    };
+  }
+
+  /** A name and an email, or null: nobody is recorded, or the reader is
+   *  not told. The creator's id stays out of the console: nothing uses it. */
+  private toCreator(raw: unknown): IAgentCreator | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    return {
+      name: typeof o.name === 'string' ? o.name : null,
+      email: typeof o.email === 'string' ? o.email : null,
     };
   }
 

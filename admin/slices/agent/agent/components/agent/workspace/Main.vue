@@ -30,6 +30,7 @@ import { useAgentTab } from '#agent/composables/useAgentTab';
 import { useRelativeTime } from '#common/composables/useRelativeTime';
 import { formatDateTime } from '#common/utils/format';
 import { OWNER_MANAGED_TEXT } from '#agent/utils/agentAccess';
+import { agentCreator, creatorText, ownerMark } from '#agent/utils/agentOwnership';
 import {
   DEFAULT_SECTION,
   WORKSPACE_TABS,
@@ -161,6 +162,18 @@ const initials = computed(() =>
   agent.value ? agentInitials(agent.value.name, agent.value.id) : '?',
 );
 
+// Whose agent it is (CLEAN-259): the badge on the avatar and the words
+// beside the name, both read off the store's record, like the rail's.
+const mark = computed(() => (agent.value ? ownerMark(agent.value) : null));
+const creator = computed(() => (agent.value ? agentCreator(agent.value) : null));
+// On the Ranch admin agent the header already says whose it is to manage;
+// who created it is said only when that is the viewer.
+const creatorLine = computed(() => {
+  if (!creator.value) return null;
+  if (agent.value?.isAdmin && creator.value.kind !== 'mine') return null;
+  return { kind: creator.value.kind, text: creatorText(creator.value) };
+});
+
 // Fetches and status-stream frames both land in the one store record, so
 // there is no "live vs fetched" to pick between any more.
 const agentStatusStore = useAgentStatusStore();
@@ -278,13 +291,18 @@ async function onDeleted() {
            the dot's tooltip; only warnings stay as visible text. -->
       <div
         class="flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-border/70 pb-3"
+        data-agent-header
       >
-        <span class="relative shrink-0">
+        <!-- A 32 px avatar with a badge on each lower corner: the mark sits
+             2 px further out than in the rail, so the initials stay clear. -->
+        <span class="relative shrink-0 [--owner-mark-shift:-8px]">
           <span
             class="flex size-8 items-center justify-center rounded-lg bg-linear-to-br from-primary/20 to-primary/5 text-xs font-semibold text-primary"
           >
             {{ initials }}
           </span>
+          <!-- Bottom-left: the status dot has the other corner. -->
+          <AgentOwnerMark :mark="mark" />
           <AgentStatusDot
             class="absolute -bottom-0.5 -right-0.5"
             :status="displayStatus"
@@ -296,6 +314,23 @@ async function onDeleted() {
           />
         </span>
         <h1 class="min-w-0 truncate text-base font-semibold">{{ agent.name }}</h1>
+        <!-- Who created it, in words (CLEAN-259): the badge on the avatar is
+             decoration. "Your agent" is written out. Somebody else's name,
+             or that none is recorded, is here for a screen reader only: this
+             row has no room for a name of any length (it pushed Stop and the
+             menu to a second line), and both are written out on Overview,
+             under Advanced, "Created by". -->
+        <span
+          v-if="creatorLine"
+          :class="
+            creatorLine.kind === 'mine'
+              ? 'shrink-0 text-xs font-medium text-primary'
+              : 'sr-only'
+          "
+          :data-agent-creator="creatorLine.kind"
+        >
+          {{ creatorLine.text }}
+        </span>
         <IconShield
           v-if="agent.isAdmin"
           class="size-4 shrink-0 text-primary"

@@ -23,6 +23,9 @@ export interface IAssistantAbility {
   /** From the server, shown as received: never translated. */
   title: string;
   state: AssistantAbilityStateTypes;
+  /** It acts on one agent (restart, stop, rename): the server's word, from
+   *  the tool behind it. False from an API that does not say (CLEAN-259). */
+  onAgent: boolean;
 }
 
 export interface IAssistantAreaCount {

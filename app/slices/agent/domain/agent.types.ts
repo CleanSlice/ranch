@@ -26,6 +26,15 @@ export interface IAgentData {
    *  it; it changes nothing about the pod, the status, access, or anybody
    *  else's list. */
   pinned: boolean;
+  /** The signed-in account created this agent (CLEAN-259): the API's own
+   *  answer, for every role. It marks the agent as theirs in every list and
+   *  is why a User gets its controls. False when nobody is recorded. */
+  createdByMe: boolean;
+  /** Who created it, as the API resolves it for an Owner or Admin. Always
+   *  null for a User: the API does not send them anybody's name. Null for an
+   *  operator too when nobody is recorded (the agent is older than the
+   *  field); both fields null when that account has since been removed. */
+  createdBy: IAgentCreator | null;
   /** How its tool servers stand (CLEAN-245): still being reached after a
    *  start, running without some of them, or null — all answer, or the agent
    *  is not running. The word only; which server is a manager's question
@@ -39,6 +48,12 @@ export interface IAgentData {
   statusReason: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** The account that created an agent, by what a person would call it. */
+export interface IAgentCreator {
+  name: string | null;
+  email: string | null;
 }
 
 export type LaunchContextTypes = 'initial' | 'start' | 'restart';

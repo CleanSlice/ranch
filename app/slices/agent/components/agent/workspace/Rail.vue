@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import type { IAgentData, IClusterCapacityData } from '#agent/domain';
 import { railOrder } from '#agent/utils/railOrder';
+import {
+  effectiveOwnerFilter,
+  filterByOwner,
+  ownAgents,
+  type OwnerFilterTypes,
+} from '#agent/utils/agentOwnership';
 
 const props = defineProps<{
   agents: IAgentData[] | null | undefined;
@@ -11,19 +17,28 @@ const props = defineProps<{
    *  which is the rule the cards screen already applied. */
   canCreate: boolean;
   capacity: IClusterCapacityData | null;
+  /** "All" or "Mine" (CLEAN-259). View state of the workspace, which owns
+   *  it, so the list on a phone and the one beside the chat agree. */
+  ownerFilter: OwnerFilterTypes;
 }>();
 
-defineEmits<{ select: [id: string] }>();
+defineEmits<{ select: [id: string]; 'update:ownerFilter': [value: OwnerFilterTypes] }>();
 
 // Transient by design: a filter that survived a reload would leave someone
 // staring at a list missing agents with no memory of why.
 const search = ref('');
 
-// Search first, then the pin: a term that does not match the Ranch admin
-// agent hides it like any other entry (CLEAN-136).
+// "Mine" is read off the records, not kept as a second list (docs/state.md):
+// the count and the rows cannot disagree. The switch is offered only to
+// somebody who has agents of their own.
+const ownCount = computed(() => ownAgents(props.agents ?? []).length);
+const shownFilter = computed(() => effectiveOwnerFilter(props.ownerFilter, ownCount.value));
+
+// The owner filter and the search first, then the pin: a term that does not
+// match the Ranch admin agent hides it like any other entry (CLEAN-136).
 const filtered = computed(() => {
   const term = search.value.trim().toLowerCase();
-  const list = props.agents ?? [];
+  const list = filterByOwner(props.agents ?? [], shownFilter.value);
   return railOrder(
     term ? list.filter((a) => a.name.toLowerCase().includes(term)) : list,
   );
@@ -69,6 +84,14 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
         class="w-full rounded-full border bg-card/60 py-2 pl-8 pr-3 text-sm transition-colors placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/25"
       />
     </div>
+
+    <AgentOwnerFilter
+      v-if="ownCount > 0"
+      :model-value="shownFilter"
+      :total="agents?.length ?? 0"
+      :mine="ownCount"
+      @update:model-value="$emit('update:ownerFilter', $event)"
+    />
 
     <!-- Placeholder rows rather than an empty column while the list loads. -->
     <div v-if="pending && !hasAgents" class="flex flex-col gap-1">

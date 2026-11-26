@@ -288,6 +288,15 @@ export class MyAssistantAbilityDto {
       'could have it and their setting leaves it out.',
   })
   state: (typeof ABILITY_STATES)[number];
+
+  @ApiProperty({
+    description:
+      'True when the ability acts on one agent the request names (restart, ' +
+      'stop, rename): its tool is a manage-agent one. With `state: ' +
+      'included` it is something the caller may ask the assistant to do to ' +
+      'an agent they reach and did not create (CLEAN-259).',
+  })
+  onAgent: boolean;
 }
 
 export class AssistantAreaCountDto {

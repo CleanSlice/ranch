@@ -240,6 +240,10 @@ export type AgentDto = {
    * Who created the agent (CLEAN-232). Resolved for an Owner or Admin reader only: `{ id, name, email }`, with null `name` and `email` when that account has since been removed. Null when nobody is recorded (the agent is older than the field, or a trusted party created it) and always null for a User reader and on the public routes.
    */
   createdBy: AgentCreatorDto | null;
+  /**
+   * True when the caller is the recorded creator of the agent (CLEAN-259). For every reader, a User included: it says nothing about anybody else. False when nobody is recorded, for a caller that is not a person, and on the public routes.
+   */
+  createdByMe: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -2432,6 +2436,10 @@ export type MyAssistantAbilityDto = {
    * included: the assistant does this for the caller. own_agents_only: only on agents the caller created. not_included: the caller’s role could have it and their setting leaves it out.
    */
   state: "included" | "own_agents_only" | "not_included";
+  /**
+   * True when the ability acts on one agent the request names (restart, stop, rename): its tool is a manage-agent one. With `state: included` it is something the caller may ask the assistant to do to an agent they reach and did not create (CLEAN-259).
+   */
+  onAgent: boolean;
 };
 
 export type AssistantAreaCountDto = {

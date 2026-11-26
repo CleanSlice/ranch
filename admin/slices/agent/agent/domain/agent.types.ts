@@ -112,6 +112,12 @@ export interface IAgentData {
    *  is anonymous and never does); the store keeps what it already knew, so
    *  a record read from the store has a creator or `null`. */
   createdBy?: IAgentCreator | null;
+  /** The signed-in account created this agent (CLEAN-259): the API's own
+   *  answer, in every response that carries an agent. It marks the agent as
+   *  the viewer's in the rail and the header. `undefined` only where
+   *  `createdBy` may be: on a record decoded from a status-stream frame,
+   *  which the store completes from what it already holds. */
+  createdByMe?: boolean;
   createdAt: string;
   updatedAt: string;
 }

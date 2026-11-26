@@ -267,7 +267,12 @@ export class AssistantAccessController {
         ...area,
         abilities: mine.abilities
           .filter((ability) => ability.area === area.key)
-          .map(({ name, title, state }) => ({ name, title, state }))
+          .map(({ name, title, state, onAgent }) => ({
+            name,
+            title,
+            state,
+            onAgent,
+          }))
           .sort((a, b) => a.title.localeCompare(b.title)),
       })),
     };

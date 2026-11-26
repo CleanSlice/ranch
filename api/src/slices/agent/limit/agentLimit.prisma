@@ -43,3 +43,23 @@ model AgentLoadMinute {
   @@id([agentId, minute])
   @@index([minute])
 }
+
+// Requests per agent per UTC day (CLEAN-261): what remains of the minute rows
+// after they are pruned at 30 days, so a 90-day view and its comparison with
+// the 90 days before can still say how many requests were refused. Incremented
+// by the same deltas, in the same transaction, as the minute row, so a day can
+// only equal the sum of its minutes. Kept 400 days: the longest period shown,
+// its predecessor, and a year's margin for a yearly view (spec 038, FR-030).
+// Counts only, like the minute rows.
+model AgentLoadDay {
+  agentId  String
+  agent    Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // Start of the day, UTC.
+  day      DateTime
+  accepted Int      @default(0)
+  refused  Int      @default(0)
+  exempt   Int      @default(0)
+
+  @@id([agentId, day])
+  @@index([day])
+}

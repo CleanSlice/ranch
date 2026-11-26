@@ -1,3 +1,6 @@
+import { Logger } from '@nestjs/common';
+import type { PrismaService } from '#/setup/prisma/prisma.service';
+import { AgentLimitGateway } from '../data/agentLimit.gateway';
 import { IAgentLimitGateway, IAgentLimitRow } from './agentLimit.gateway';
 import { AgentLimitService } from './agentLimit.service';
 import {
@@ -8,8 +11,11 @@ import {
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
 // On a minute boundary, so "this minute" in a test is unambiguous.
 const T0 = Math.floor(1_800_000_000_000 / MIN) * MIN;
+// T0 is 08:00 UTC on this day.
+const D0 = Date.UTC(2027, 0, 15);
 
 const limits = (l: Partial<IAgentLimits>): IAgentLimits => ({
   perMinute: null,
@@ -24,7 +30,10 @@ function makeGateway(seed: { rows?: IAgentLimitRow[] } = {}) {
     (seed.rows ?? []).map((r) => [r.agentId, r.limits]),
   );
   const minutes = new Map<string, Map<number, IAgentLoadMinute>>();
-  const state = { failWrites: null as null | { code?: string } };
+  const state = {
+    failWrites: null as null | { code?: string },
+    failRebuild: false,
+  };
 
   const gateway: IAgentLimitGateway = {
     findAll: () =>
@@ -69,6 +78,15 @@ function makeGateway(seed: { rows?: IAgentLimitRow[] } = {}) {
           .map((m) => ({ ...m })),
       ),
     pruneBefore: () => Promise.resolve(),
+    // This stand-in keeps no day rows: what they hold is checked over the
+    // real gateway, in "requests by day" below.
+    rebuildMissingDays: () =>
+      state.failRebuild
+        ? Promise.reject(new Error('rebuild failed'))
+        : Promise.resolve(0),
+    pruneDaysBefore: () => Promise.resolve(),
+    findDays: () => Promise.resolve([]),
+    firstDayAt: () => Promise.resolve(null),
   };
 
   const stored = (agentId: string) =>
@@ -114,6 +132,220 @@ async function make(seed: { rows?: IAgentLimitRow[] } = {}) {
   service.attachHub(h.hub);
   return { service, ...g, ...h };
 }
+
+const COUNTS = [
+  'accepted',
+  'refused',
+  'refusedByMinute',
+  'refusedByHour',
+  'refusedByDay',
+  'exempt',
+] as const;
+type Count = (typeof COUNTS)[number];
+type DayCounts = Record<'accepted' | 'refused' | 'exempt', number>;
+type MinuteRow = Record<Count, number> & { agentId: string; minute: Date };
+type DayRow = DayCounts & { agentId: string; day: Date };
+type Increments = Partial<Record<Count, { increment: number }>>;
+
+/**
+ * The load tables in memory, behind the calls the real gateway makes
+ * (CLEAN-261). The day cases run over it so that they exercise the gateway's
+ * own arithmetic rather than a copy of it written for the test.
+ */
+function makeDb() {
+  const minuteRows = new Map<string, MinuteRow>();
+  const dayRows = new Map<string, DayRow>();
+  const key = (agentId: string, at: Date) => `${agentId}|${at.getTime()}`;
+
+  const incremented = <T extends Partial<Record<Count, number>>>(
+    row: T,
+    update: Increments,
+  ): T => {
+    const next = { ...row };
+    for (const field of COUNTS) {
+      const by = update[field];
+      if (by) {
+        Object.assign(next, { [field]: (row[field] ?? 0) + by.increment });
+      }
+    }
+    return next;
+  };
+  // Prisma runs an upsert handed to $transaction only inside it; so does this.
+  const upsert = <T extends Partial<Record<Count, number>>>(
+    rows: Map<string, T>,
+    at: string,
+    query: { create: T; update: Increments },
+  ) => ({
+    run: () => {
+      const have = rows.get(at);
+      rows.set(
+        at,
+        have ? incremented(have, query.update) : { ...query.create },
+      );
+    },
+  });
+  const dropBefore = <T>(
+    rows: Map<string, T>,
+    when: (row: T) => Date,
+    before: Date,
+  ) => {
+    let count = 0;
+    for (const [at, row] of rows) {
+      if (when(row).getTime() >= before.getTime()) continue;
+      rows.delete(at);
+      count++;
+    }
+    return Promise.resolve({ count });
+  };
+
+  const prisma = {
+    agentLimit: {
+      findMany: () => Promise.resolve([]),
+      upsert: () => Promise.resolve({}),
+      deleteMany: () => Promise.resolve({ count: 0 }),
+    },
+    agentLoadMinute: {
+      upsert: (query: { create: MinuteRow; update: Increments }) =>
+        upsert(
+          minuteRows,
+          key(query.create.agentId, query.create.minute),
+          query,
+        ),
+      findMany: (query: {
+        where: { agentId: string; minute: { gte: Date } };
+      }) =>
+        Promise.resolve(
+          [...minuteRows.values()]
+            .filter(
+              (r) =>
+                r.agentId === query.where.agentId &&
+                r.minute.getTime() >= query.where.minute.gte.getTime(),
+            )
+            .sort((a, b) => a.minute.getTime() - b.minute.getTime()),
+        ),
+      deleteMany: (query: { where: { minute: { lt: Date } } }) =>
+        dropBefore(minuteRows, (r) => r.minute, query.where.minute.lt),
+      groupBy: (query: { where: { minute: { gte: Date; lt: Date } } }) => {
+        const { gte, lt } = query.where.minute;
+        const sums = new Map<string, DayCounts>();
+        for (const r of minuteRows.values()) {
+          const at = r.minute.getTime();
+          if (at < gte.getTime() || at >= lt.getTime()) continue;
+          const sum = sums.get(r.agentId) ?? {
+            accepted: 0,
+            refused: 0,
+            exempt: 0,
+          };
+          sum.accepted += r.accepted;
+          sum.refused += r.refused;
+          sum.exempt += r.exempt;
+          sums.set(r.agentId, sum);
+        }
+        return Promise.resolve(
+          [...sums].map(([agentId, _sum]) => ({ agentId, _sum })),
+        );
+      },
+    },
+    agentLoadDay: {
+      upsert: (query: { create: DayRow; update: Increments }) =>
+        upsert(dayRows, key(query.create.agentId, query.create.day), query),
+      createMany: (query: { data: DayRow[]; skipDuplicates?: boolean }) => {
+        let count = 0;
+        for (const row of query.data) {
+          const at = key(row.agentId, row.day);
+          if (dayRows.has(at)) {
+            if (query.skipDuplicates) continue;
+            // What the database answers to a second row on the same key.
+            return Promise.reject(
+              Object.assign(new Error('Unique constraint failed'), {
+                code: 'P2002',
+              }),
+            );
+          }
+          dayRows.set(at, { ...row });
+          count++;
+        }
+        return Promise.resolve({ count });
+      },
+      deleteMany: (query: { where: { day: { lt: Date } } }) =>
+        dropBefore(dayRows, (r) => r.day, query.where.day.lt),
+    },
+    $transaction: (writes: Array<{ run: () => void }>) => {
+      for (const write of writes) write.run();
+      return Promise.resolve([]);
+    },
+  };
+
+  const putMinute = (
+    agentId: string,
+    at: number,
+    counts: Partial<Record<Count, number>>,
+  ) => {
+    const minute = new Date(at);
+    minuteRows.set(key(agentId, minute), {
+      agentId,
+      minute,
+      accepted: 0,
+      refused: 0,
+      refusedByMinute: 0,
+      refusedByHour: 0,
+      refusedByDay: 0,
+      exempt: 0,
+      ...counts,
+    });
+  };
+  const putDay = (agentId: string, at: number, counts: Partial<DayCounts>) => {
+    const day = new Date(at);
+    dayRows.set(key(agentId, day), {
+      agentId,
+      day,
+      accepted: 0,
+      refused: 0,
+      exempt: 0,
+      ...counts,
+    });
+  };
+  const minutesOf = (agentId: string) =>
+    [...minuteRows.values()]
+      .filter((r) => r.agentId === agentId)
+      .map((r) => ({
+        minute: r.minute.getTime(),
+        accepted: r.accepted,
+        refused: r.refused,
+        exempt: r.exempt,
+      }))
+      .sort((a, b) => a.minute - b.minute);
+  const daysOf = (agentId: string) =>
+    [...dayRows.values()]
+      .filter((r) => r.agentId === agentId)
+      .map((r) => ({
+        day: r.day.getTime(),
+        accepted: r.accepted,
+        refused: r.refused,
+        exempt: r.exempt,
+      }))
+      .sort((a, b) => a.day - b.day);
+  return { prisma, putMinute, putDay, minutesOf, daysOf };
+}
+
+/** The limiter over the real gateway and the in-memory tables. */
+function makeOverDb() {
+  const db = makeDb();
+  const service = new AgentLimitService(
+    new AgentLimitGateway(db.prisma as unknown as PrismaService),
+  );
+  return { service, ...db };
+}
+
+const total = (rows: DayCounts[]): DayCounts =>
+  rows.reduce<DayCounts>(
+    (sum, r) => ({
+      accepted: sum.accepted + r.accepted,
+      refused: sum.refused + r.refused,
+      exempt: sum.exempt + r.exempt,
+    }),
+    { accepted: 0, refused: 0, exempt: 0 },
+  );
 
 describe('AgentLimitService', () => {
   describe('with limits off', () => {
@@ -573,6 +805,158 @@ describe('AgentLimitService', () => {
         remaining: 1,
         resetSec: 50,
       });
+    });
+  });
+
+  // CLEAN-261: the minute rows are pruned at 30 days, the day rows are what
+  // a longer period reads.
+  describe('requests by day', () => {
+    it('adds what a flush writes to a minute to the row of its UTC day', async () => {
+      const { service, minutesOf, daysOf } = makeOverDb();
+      await service.setLimits('a', limits({ perMinute: 2 }), null, T0);
+      service.check('a', 'visitor', T0 + 1_000);
+      service.check('a', 'visitor', T0 + 2_000);
+      service.check('a', 'visitor', T0 + 3_000);
+      service.check('a', 'operator', T0 + 4_000);
+      await service.flush();
+      expect(daysOf('a')).toEqual([
+        { day: D0, accepted: 2, refused: 1, exempt: 1 },
+      ]);
+
+      // A later flush adds to the same day, for a minute already written and
+      // for a new one.
+      service.check('a', 'visitor', T0 + 5_000);
+      service.check('a', 'visitor', T0 + 5 * HOUR);
+      service.check('a', 'peer', T0 + 5 * HOUR + 1);
+      await service.flush();
+
+      expect(minutesOf('a')).toHaveLength(2);
+      expect(daysOf('a')).toEqual([
+        { day: D0, accepted: 3, refused: 2, exempt: 2 },
+      ]);
+      // The day can only equal the sum of its minutes.
+      expect(total(minutesOf('a'))).toEqual(total(daysOf('a')));
+    });
+
+    it('counts a minute at 23:59 and the one at 00:00 in two days', async () => {
+      const { service, daysOf } = makeOverDb();
+      service.check('a', 'visitor', D0 + DAY - MIN);
+      service.check('a', 'visitor', D0 + DAY - MIN + 30_000);
+      service.check('a', 'visitor', D0 + DAY);
+      await service.flush();
+      expect(daysOf('a')).toEqual([
+        { day: D0, accepted: 2, refused: 0, exempt: 0 },
+        { day: D0 + DAY, accepted: 1, refused: 0, exempt: 0 },
+      ]);
+    });
+
+    it('at boot sets a day that has minutes and no row to their sum, and leaves a day with a row alone', async () => {
+      const { service, putMinute, putDay, minutesOf, daysOf } = makeOverDb();
+      // Three days back, counted before there were day rows.
+      putMinute('a', D0 - 3 * DAY + 10 * HOUR, {
+        accepted: 4,
+        refused: 1,
+        refusedByHour: 1,
+      });
+      putMinute('a', D0 - 2 * DAY - MIN, { accepted: 2, exempt: 5 });
+      putMinute('b', D0 - 3 * DAY + 10 * HOUR, { accepted: 9 });
+      // Five days back has its row; the minutes disagree on purpose.
+      putMinute('a', D0 - 5 * DAY + HOUR, { accepted: 1 });
+      putDay('a', D0 - 5 * DAY, { accepted: 70, refused: 7 });
+      // Today, before this boot.
+      putMinute('a', D0 + HOUR, { accepted: 3 });
+      // Thirty days back at 20:00: the minute is still kept, but the prune
+      // has reached 08:00 of that day, so its sum would be short.
+      putMinute('a', D0 - 30 * DAY + 20 * HOUR, { accepted: 8 });
+
+      jest.useFakeTimers({ now: T0 });
+      try {
+        await service.onModuleInit();
+
+        expect(daysOf('a')).toEqual([
+          { day: D0 - 5 * DAY, accepted: 70, refused: 7, exempt: 0 },
+          { day: D0 - 3 * DAY, accepted: 6, refused: 1, exempt: 5 },
+          { day: D0, accepted: 3, refused: 0, exempt: 0 },
+        ]);
+        expect(daysOf('b')).toEqual([
+          { day: D0 - 3 * DAY, accepted: 9, refused: 0, exempt: 0 },
+        ]);
+        expect(minutesOf('a')[0].minute).toBe(D0 - 30 * DAY + 20 * HOUR);
+
+        // What is counted after the boot adds to the rebuilt row.
+        service.check('a', 'visitor', T0 + 1);
+        await service.flush();
+        expect(daysOf('a')[2]).toEqual({
+          day: D0,
+          accepted: 4,
+          refused: 0,
+          exempt: 0,
+        });
+      } finally {
+        await service.onModuleDestroy();
+        jest.useRealTimers();
+      }
+    });
+
+    it('starts and says why when the rebuild fails', async () => {
+      const { service, state, stored } = await make({
+        rows: [{ agentId: 'a', limits: limits({ perHour: 3 }) }],
+      });
+      state.failRebuild = true;
+      const logged = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      jest.useFakeTimers({ now: T0 });
+      try {
+        await service.onModuleInit();
+
+        expect(logged).toHaveBeenCalledWith(
+          expect.stringContaining('rebuild failed'),
+        );
+        expect(service.getLimits('a')).toEqual(limits({ perHour: 3 }));
+        service.check('a', 'visitor', T0);
+        await service.flush();
+        expect(stored('a')[0].accepted).toBe(1);
+      } finally {
+        await service.onModuleDestroy();
+        jest.useRealTimers();
+        logged.mockRestore();
+      }
+    });
+
+    it('prunes minutes older than 30 days and days older than 400, at boot and once a day', async () => {
+      const { service, putMinute, putDay, minutesOf, daysOf } = makeOverDb();
+      putMinute('a', T0 - 30 * DAY - MIN, { accepted: 1 });
+      putMinute('a', T0 - 30 * DAY + 12 * HOUR, { accepted: 1 });
+      putMinute('a', T0 - 29 * DAY + 12 * HOUR, { accepted: 1 });
+      // Another agent, so the rows the boot rebuilds for `a` stay out of it.
+      putDay('old', D0 - 400 * DAY, { accepted: 1 });
+      putDay('old', D0 - 399 * DAY, { accepted: 1 });
+      putDay('old', D0 - 398 * DAY, { accepted: 1 });
+
+      jest.useFakeTimers({ now: T0 });
+      try {
+        await service.onModuleInit();
+        expect(minutesOf('a').map((m) => m.minute)).toEqual([
+          T0 - 30 * DAY + 12 * HOUR,
+          T0 - 29 * DAY + 12 * HOUR,
+        ]);
+        expect(daysOf('old').map((d) => d.day)).toEqual([
+          D0 - 399 * DAY,
+          D0 - 398 * DAY,
+        ]);
+
+        // A day later both boundaries have moved by a day.
+        jest.advanceTimersByTime(DAY);
+        await jest.advanceTimersByTimeAsync(0);
+        expect(minutesOf('a').map((m) => m.minute)).toEqual([
+          T0 - 29 * DAY + 12 * HOUR,
+        ]);
+        expect(daysOf('old').map((d) => d.day)).toEqual([D0 - 398 * DAY]);
+      } finally {
+        await service.onModuleDestroy();
+        jest.useRealTimers();
+      }
     });
   });
 });

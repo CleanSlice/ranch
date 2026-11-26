@@ -1,4 +1,5 @@
 import { Agent } from "../agent/agent/agent"
+import { ChatActivityHour } from "./chatActivity"
 
 // Chat history index. The message CONTENT stays in the agent runtime's
 // append-only JSONL (S3, `agents/{agentId}/data/sessions/{channel}:{userId}.jsonl`);
@@ -30,14 +31,21 @@ model ChatSession {
   summaryAt        DateTime?
   insights         Json?                             // { topics[], sentiment, resolved, language }
   archived         Boolean   @default(false)         // *.archived.jsonl sessions get their own row
+  // When the settle pass last read this conversation's transcript into
+  // ChatActivityHour (CLEAN-261). Null = never; older than lastMessageAt =
+  // there has been activity since, so it is due again once it goes quiet.
+  activityRebuiltAt DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   feedback         ChatFeedback[]
+  activityHours    ChatActivityHour[]
 
   @@unique([agentId, sessionKey])
   @@index([agentId, lastMessageAt])
   @@index([channel, lastMessageAt])
+  // The settle pass looks at every channel and every agent at once.
+  @@index([lastMessageAt])
 }
 
 model ChatFeedback {

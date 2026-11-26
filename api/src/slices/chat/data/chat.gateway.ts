@@ -12,6 +12,7 @@ import {
   IChatReconcileInput,
   IChatSessionData,
   IUpsertChatFeedback,
+  hourOf,
 } from '../domain';
 import { ChatMapper } from './chat.mapper';
 
@@ -84,38 +85,141 @@ export class ChatGateway extends IChatGateway {
     });
   }
 
+  /**
+   * The lifetime totals and the event's hour move together or not at all
+   * (CLEAN-261): one transaction, and the hour is written only when the
+   * event was counted. So for a conversation the hours always add up to the
+   * totals, and a repeated event moves neither.
+   *
+   * A failure rolls both back and reaches the caller, which logs it and does
+   * not wait (the agent socket handler). The settle pass repairs the hour
+   * from the transcript once the conversation has gone quiet.
+   */
   async recordActivity(agentId: string, a: IChatActivity): Promise<void> {
-    // Atomic increment in the DB — no read-modify-write, so concurrent events
-    // for the same session can't lose an increment. The NOT-filter dedups a
-    // redelivered event (eventId watermark).
-    if (await this.incrementActivity(agentId, a)) return;
-
-    // No row matched: either a brand-new session, or a duplicate event on an
-    // existing one. Try to create; a unique violation means the row now exists
-    // (created by a concurrent event, or it's the dup) — re-run the increment,
-    // which applies for a real event and no-ops for a dup.
     try {
-      await this.prisma.chatSession.create({
-        data: this.mapper.toActivityCreate(agentId, a),
-      });
+      await this.recordActivityOnce(agentId, a);
     } catch (err) {
-      if ((err as { code?: string }).code === 'P2002') {
-        await this.incrementActivity(agentId, a);
-      } else {
-        throw err;
-      }
+      // The hour row can appear between this transaction looking for it and
+      // inserting it: the settle pass creates rows too. Postgres has ended
+      // the transaction by then, the increment with it, so the retry is the
+      // whole thing again, and it finds the row. Once: a second collision in
+      // a row is not a race, and is the caller's to log.
+      if ((err as { code?: string }).code !== 'P2002') throw err;
+      await this.recordActivityOnce(agentId, a);
     }
   }
 
+  private async recordActivityOnce(
+    agentId: string,
+    a: IChatActivity,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const counted = await this.countActivity(tx, agentId, a);
+      // A repeated event: the totals did not move, so neither does the hour.
+      if (!counted) return;
+
+      const fromPerson = a.role === 'user';
+      const hour = hourOf(a.ts);
+      await tx.chatActivityHour.upsert({
+        where: { sessionId_hour: { sessionId: counted.id, hour } },
+        create: {
+          sessionId: counted.id,
+          hour,
+          agentId,
+          channel: counted.channel,
+          externalUserId: counted.externalUserId,
+          userMessages: fromPerson ? 1 : 0,
+          agentMessages: fromPerson ? 0 : 1,
+        },
+        update: fromPerson
+          ? { userMessages: { increment: 1 } }
+          : { agentMessages: { increment: 1 } },
+      });
+    });
+  }
+
+  /**
+   * Counts the event in the lifetime totals. Returns the conversation it was
+   * counted in, with the fields an hour row copies, or null for an event
+   * that had been counted already.
+   */
+  private async countActivity(
+    tx: Prisma.TransactionClient,
+    agentId: string,
+    a: IChatActivity,
+  ): Promise<{ id: string; channel: string; externalUserId: string } | null> {
+    // Atomic increment in the DB — no read-modify-write, so concurrent events
+    // for the same session can't lose an increment. The NOT-filter dedups a
+    // redelivered event (eventId watermark).
+    if (await this.incrementActivity(tx, agentId, a)) {
+      return this.activityOwner(tx, agentId, a.sessionKey);
+    }
+
+    // No row matched: either a brand-new session, or a duplicate event on an
+    // existing one. Try to create it. `skipDuplicates` and not a caught
+    // unique violation: inside a transaction Postgres refuses every
+    // statement after an error, so there would be no "then increment".
+    const data = this.mapper.toActivityCreate(agentId, a);
+    const created = await tx.chatSession.createMany({
+      data: [data],
+      skipDuplicates: true,
+    });
+    if (created.count > 0) {
+      return {
+        id: data.id,
+        channel: data.channel,
+        externalUserId: data.externalUserId,
+      };
+    }
+
+    // Nothing was created, so the row exists (created by a concurrent event,
+    // or it's the dup) — re-run the increment, which applies for a real event
+    // and no-ops for a dup. The insert waited for the concurrent creator to
+    // commit, and under read committed, the default, this statement sees
+    // what that one committed.
+    if (await this.incrementActivity(tx, agentId, a)) {
+      return this.activityOwner(tx, agentId, a.sessionKey);
+    }
+    return null;
+  }
+
+  /**
+   * The conversation an increment just applied to. Its own channel and
+   * person, not the event's: every hour of a conversation names the same
+   * ones, the ones the settle pass copies too.
+   */
+  private activityOwner(
+    tx: Prisma.TransactionClient,
+    agentId: string,
+    sessionKey: string,
+  ): Promise<{ id: string; channel: string; externalUserId: string }> {
+    // OrThrow: the increment holds the row's lock until the transaction
+    // ends, so it is there. Were it not, the totals must not move alone.
+    return tx.chatSession.findUniqueOrThrow({
+      where: { agentId_sessionKey: { agentId, sessionKey } },
+      select: { id: true, channel: true, externalUserId: true },
+    });
+  }
+
   private async incrementActivity(
+    tx: Prisma.TransactionClient,
     agentId: string,
     a: IChatActivity,
   ): Promise<boolean> {
-    const res = await this.prisma.chatSession.updateMany({
+    const res = await tx.chatSession.updateMany({
       where: {
         agentId,
         sessionKey: a.sessionKey,
-        NOT: { lastIndexedEventId: a.eventId },
+        // "Any event but the one counted last". Spelled as two branches
+        // because SQL does not find a NULL unequal to anything: the single
+        // `NOT (watermark = id)` this used to be was never true for a row
+        // the reconcile created, which has no watermark, so such a
+        // conversation took no live event at all: totals, preview and
+        // lastMessageAt stood still until the next reconcile (CLEAN-261).
+        OR: [
+          { lastIndexedEventId: null },
+          { lastIndexedEventId: { not: a.eventId } },
+        ],
       },
       data: {
         messageCount: { increment: 1 },

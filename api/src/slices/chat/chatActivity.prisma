@@ -1,0 +1,40 @@
+import { ChatSession } from "./chat"
+
+// How many messages one conversation had in one UTC hour (CLEAN-261). The
+// base of every figure about conversations, messages, people, agents that
+// answered and channels over a period: ChatSession keeps lifetime totals
+// only, and a conversation can last for weeks.
+//
+// Written two ways, both in the chat slice. Live: `recordActivity` adds 1 in
+// the same transaction as the lifetime increment, and only when that
+// increment applied, so an event is counted once in both or in neither.
+// Settle pass: after a conversation has been quiet for an hour its transcript
+// is read once and each hour is raised to the transcript's count where that
+// is higher. Never lowered: compaction shortens a transcript.
+//
+// agentId, channel and externalUserId are copied from the conversation (they
+// never change for one) so one person's rows and one agent's rows are each a
+// single index range, with no join.
+//
+// Counts only. No message text, no message id (spec 038, FR-033). A row exists
+// only for an hour with at least one message; rows older than 400 days are
+// pruned. Goes with its conversation, which goes with its agent.
+model ChatActivityHour {
+  sessionId      String
+  session        ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  // Start of the hour, UTC.
+  hour           DateTime
+  agentId        String
+  channel        String
+  externalUserId String
+  userMessages   Int         @default(0)
+  agentMessages  Int         @default(0)
+
+  @@id([sessionId, hour])
+  // One person's activity in a period.
+  @@index([externalUserId, channel, hour])
+  // An installation's activity in a period, by agent.
+  @@index([agentId, hour])
+  // The daily prune.
+  @@index([hour])
+}

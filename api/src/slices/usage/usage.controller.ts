@@ -68,7 +68,17 @@ export class UsageController {
     @Param('agentId') agentId: string,
     @Body() dto: ReportUsageDto,
   ): Promise<void> {
-    await this.gateway.report(agentId, dto);
+    // The agent's name travels with what it spent, so the spend can still
+    // be shown by name once the agent is deleted (CLEAN-261). Read once for
+    // the whole report. Usage is telemetry: an agent that is not there, or a
+    // lookup that fails, reports without a name rather than not at all.
+    const agent = await this.agentGateway.findById(agentId).catch((err) => {
+      this.logger.warn(
+        `Could not read the name of agent ${agentId} for its usage report: ${(err as Error).message}`,
+      );
+      return null;
+    });
+    await this.gateway.report(agentId, dto, agent?.name ?? null);
   }
 
   @Get('agents/:agentId/usage')

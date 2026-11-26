@@ -1,5 +1,9 @@
 export * from './agentLimit.types';
-export { IAgentLimitGateway, IAgentLimitRow } from './agentLimit.gateway';
+export {
+  IAgentLimitGateway,
+  IAgentLimitRow,
+  IAgentLoadDay,
+} from './agentLimit.gateway';
 export { AgentLimitService, FLUSH_MS, PEAK_DAYS } from './agentLimit.service';
 export {
   LimitRuleError,

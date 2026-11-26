@@ -121,6 +121,38 @@ describe('TranscriptReaderService — bubbles of one turn', () => {
     ]);
   });
 
+  it('gives one message per stored event when bubbles are switched off', async () => {
+    // What a reader that counts asks for (CLEAN-261): the runtime reports one
+    // activity per event, so two bubbles of one turn are one answer, at the
+    // event's own time.
+    const messages = await new TranscriptReaderService(
+      fakeFiles(
+        [
+          question,
+          {
+            id: 'turn-1',
+            type: 'assistant',
+            ts: 5000,
+            data: {
+              text: 'Проверю:Ха! Работает!',
+              messages: [
+                { id: 'wire-1', text: 'Проверю:', ts: 2000 },
+                { id: 'wire-2', text: 'Ха! Работает!', ts: 4000 },
+              ],
+            },
+          },
+        ]
+          .map((e) => JSON.stringify(e))
+          .join('\n'),
+      ),
+    ).read('agent-1', PATH, { bubbles: false });
+
+    expect(messages.map((m) => [m.id, m.role, m.ts])).toEqual([
+      ['q1', 'user', 1000],
+      ['turn-1', 'assistant', 5000],
+    ]);
+  });
+
   it('keeps the order of the file for messages written in the same millisecond', async () => {
     const messages = await read([
       { id: 'a', type: 'user', ts: 1000, data: { text: 'first' } },

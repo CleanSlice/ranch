@@ -18,11 +18,10 @@ import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.servic
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAuthTokenPayload } from '#/user/auth/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
-import { IUsageGateway, costUsd } from '#/usage/domain';
-import type {
-  ICredentialUsageResponse,
-  IUsageDailyEntry,
-  IUsageData,
+import {
+  IUsageGateway,
+  resolveAgentNames,
+  rollUpAcrossAgents,
 } from '#/usage/domain';
 import {
   ILlmGateway,
@@ -190,7 +189,12 @@ export class LlmTool implements IConditionallyListedTool {
     );
     const { last30days, totals, topModel, agentTotals } =
       rollUpAcrossAgents(rows);
-    const byAgent = await this.resolveAgentNames(agentTotals);
+    // The functions GET /llms/:id/usage uses, not a copy of them: this tool
+    // kept its own until CLEAN-261 and would have shown a deleted agent by
+    // its id while the route showed the name stored with its usage.
+    const byAgent = await resolveAgentNames(agentTotals, (agentId) =>
+      this.agents.findById(agentId).catch(() => null),
+    );
     return ok({
       credential: describe(credential),
       days: USAGE_DAYS,
@@ -461,20 +465,6 @@ export class LlmTool implements IConditionallyListedTool {
       credential: describe(credential),
     });
   }
-
-  /** As `UsageController.resolveAgentNames`: a deleted agent keeps its id. */
-  private async resolveAgentNames(
-    agentTotals: IAgentTotals[],
-  ): Promise<ICredentialUsageResponse['byAgent']> {
-    return Promise.all(
-      agentTotals.map(async (entry) => {
-        const agent = await this.agents
-          .findById(entry.agentId)
-          .catch(() => null);
-        return { ...entry, agentName: agent?.name ?? entry.agentId };
-      }),
-    );
-  }
 }
 
 /** The public identity of a credential, for headers and sentences. */
@@ -490,102 +480,4 @@ function describe(c: ILlmCredentialData) {
 
 function displayName(c: ILlmCredentialData): string {
   return `«${c.label ?? `${c.provider}/${c.model}`}»`;
-}
-
-interface IAgentTotals {
-  agentId: string;
-  inputTokens: number;
-  outputTokens: number;
-  callCount: number;
-  costUsd: number;
-}
-
-interface ITotals {
-  inputTokens: number;
-  outputTokens: number;
-  callCount: number;
-  costUsd: number;
-}
-
-/**
- * The same roll-up `UsageController.rollUpAcrossAgents` does for
- * `GET llms/:id/usage`: daily rows at `${date}|${model}` grain, totals, the
- * model with the most tokens, and per-agent totals sorted by cost. Kept in
- * step with the controller by hand — it is private there, and this slice
- * cannot import the usage controller.
- */
-function rollUpAcrossAgents(rows: IUsageData[]): {
-  last30days: IUsageDailyEntry[];
-  totals: ITotals;
-  topModel: string | null;
-  agentTotals: IAgentTotals[];
-} {
-  const daily = new Map<string, IUsageDailyEntry>();
-  const perAgent = new Map<string, IAgentTotals>();
-  const perModelTokens = new Map<string, number>();
-
-  for (const r of rows) {
-    const date = r.date.toISOString().slice(0, 10);
-    const cost = costUsd(r.model, r.inputTokens, r.outputTokens);
-
-    const key = `${date}|${r.model}`;
-    const day = daily.get(key) ?? {
-      date,
-      model: r.model,
-      inputTokens: 0,
-      outputTokens: 0,
-      callCount: 0,
-      costUsd: 0,
-    };
-    day.inputTokens += r.inputTokens;
-    day.outputTokens += r.outputTokens;
-    day.callCount += r.callCount;
-    day.costUsd += cost;
-    daily.set(key, day);
-
-    const agent = perAgent.get(r.agentId) ?? {
-      agentId: r.agentId,
-      inputTokens: 0,
-      outputTokens: 0,
-      callCount: 0,
-      costUsd: 0,
-    };
-    agent.inputTokens += r.inputTokens;
-    agent.outputTokens += r.outputTokens;
-    agent.callCount += r.callCount;
-    agent.costUsd += cost;
-    perAgent.set(r.agentId, agent);
-
-    perModelTokens.set(
-      r.model,
-      (perModelTokens.get(r.model) ?? 0) + r.inputTokens + r.outputTokens,
-    );
-  }
-
-  const last30days = [...daily.values()].sort((a, b) =>
-    b.date.localeCompare(a.date),
-  );
-  const totals = last30days.reduce<ITotals>(
-    (acc, e) => ({
-      inputTokens: acc.inputTokens + e.inputTokens,
-      outputTokens: acc.outputTokens + e.outputTokens,
-      callCount: acc.callCount + e.callCount,
-      costUsd: acc.costUsd + e.costUsd,
-    }),
-    { inputTokens: 0, outputTokens: 0, callCount: 0, costUsd: 0 },
-  );
-
-  let topModel: string | null = null;
-  let topTokens = -1;
-  for (const [model, tokens] of perModelTokens) {
-    if (tokens > topTokens) {
-      topTokens = tokens;
-      topModel = model;
-    }
-  }
-
-  const agentTotals = [...perAgent.values()].sort(
-    (a, b) => b.costUsd - a.costUsd,
-  );
-  return { last30days, totals, topModel, agentTotals };
 }

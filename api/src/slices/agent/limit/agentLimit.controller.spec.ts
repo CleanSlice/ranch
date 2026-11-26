@@ -28,6 +28,10 @@ function make(agents: Array<{ id: string; isPublic: boolean }>) {
     addMinutes: () => Promise.resolve(),
     minutes: () => Promise.resolve([]),
     pruneBefore: () => Promise.resolve(),
+    rebuildMissingDays: () => Promise.resolve(0),
+    pruneDaysBefore: () => Promise.resolve(),
+    findDays: () => Promise.resolve([]),
+    firstDayAt: () => Promise.resolve(null),
   };
   const service = new AgentLimitService(store);
   const agentGateway = {

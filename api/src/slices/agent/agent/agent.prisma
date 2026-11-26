@@ -1,12 +1,11 @@
 import { Template } from "../template/template"
-import { Usage } from "../../usage/usage"
 import { LlmCredential } from "../../llm/llm"
 import { PaddockScenario } from "../../paddock/scenario/scenario"
 import { PaddockEvaluation } from "../../paddock/evaluation/evaluation"
 import { ChatSession } from "../../chat/chat"
 import { AgentShareLink } from "../shareLink/shareLink"
 import { AgentPeer } from "../peer/peer"
-import { AgentLimit, AgentLoadMinute } from "../limit/agentLimit"
+import { AgentLimit, AgentLoadMinute, AgentLoadDay } from "../limit/agentLimit"
 import { AgentDelegation } from "../peer/delegation"
 import { AgentToolListing } from "../toolCatalog/toolCatalog"
 import { FileChangeProposal } from "../file/file"
@@ -68,7 +67,6 @@ model Agent {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  usages             Usage[]
   paddockScenarios   PaddockScenario[]
   paddockEvaluations PaddockEvaluation[]
   chatSessions       ChatSession[]
@@ -78,6 +76,7 @@ model Agent {
   // limits are off. Deliberately not columns here: see agentLimit.prisma.
   limit              AgentLimit?
   loadMinutes        AgentLoadMinute[]
+  loadDays           AgentLoadDay[]
   // Agents this one may delegate to, and the ones that may delegate to it
   // (CLEAN-74). Directed: the two lists are unrelated.
   peers              AgentPeer[]         @relation("AgentPeerCaller")

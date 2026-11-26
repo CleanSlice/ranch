@@ -57,8 +57,8 @@ export class UsageTool implements IConditionallyListedTool {
       "30 days, as the console's Usage overview shows it: `totals` " +
       '(input/output tokens, calls, costUsd), `topModel`, `last30days` ' +
       'rolled up per date and model, and `byAgent` sorted by cost with the ' +
-      'most expensive agent first (a deleted agent shows its id as the ' +
-      'name). Reported usage only — the current day is included once each ' +
+      'most expensive agent first (a deleted agent is still listed, under ' +
+      'the name it had). Reported usage only — the current day is included once each ' +
       'agent has posted its daily report. For one agent in detail, or a ' +
       'different window, call agent_usage.',
     parameters: z.object({}),

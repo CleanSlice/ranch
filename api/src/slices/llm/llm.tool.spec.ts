@@ -39,6 +39,7 @@ const credential = (
 const usageRow = (overrides: Partial<IUsageData> = {}): IUsageData => ({
   id: 'u-1',
   agentId: 'agent-a',
+  agentName: null,
   llmCredentialId: 'llm-1',
   model: 'claude-sonnet-4-6',
   date: new Date('2026-09-20T00:00:00.000Z'),
@@ -304,7 +305,12 @@ describe('LlmTool — reading', () => {
     const { tool, usage, agents } = harness();
     usage.findRecentForCredential.mockResolvedValue([
       usageRow(),
-      usageRow({ id: 'u-2', agentId: 'agent-b', outputTokens: 1_000_000 }),
+      usageRow({
+        id: 'u-2',
+        agentId: 'agent-b',
+        agentName: 'Night Watch',
+        outputTokens: 1_000_000,
+      }),
       usageRow({
         id: 'u-3',
         agentId: 'agent-a',
@@ -344,9 +350,10 @@ describe('LlmTool — reading', () => {
     expect(result.last30days[0].costUsd).toBeCloseTo(21, 6);
     expect(result.totals.callCount).toBe(7);
     expect(result.topModel).toBe('claude-sonnet-4-6');
-    // Sorted by cost, and a deleted agent keeps its id as its name.
+    // Sorted by cost, and a deleted agent keeps the name stored with its
+    // usage (CLEAN-261).
     expect(result.byAgent.map((a) => a.agentName)).toEqual([
-      'agent-b',
+      'Night Watch',
       'Support Bot',
     ]);
     expect(result.byAgent[0].costUsd).toBeCloseTo(18, 6);

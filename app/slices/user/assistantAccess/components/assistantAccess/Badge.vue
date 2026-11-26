@@ -59,12 +59,23 @@ function toggleArea(key: string) {
 const onResize = () => {
   if (open.value) place();
 };
+// A tap anywhere else puts the card away: on a phone it lies over the page,
+// and there is no Esc to press.
+const onPointerDown = (event: PointerEvent) => {
+  if (!open.value || !root.value) return;
+  if (event.target instanceof Node && root.value.contains(event.target)) return;
+  open.value = false;
+};
 
 onMounted(() => {
   void store.ensureMine();
   window.addEventListener('resize', onResize);
+  document.addEventListener('pointerdown', onPointerDown, true);
 });
-onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize);
+  document.removeEventListener('pointerdown', onPointerDown, true);
+});
 </script>
 
 <template>
@@ -106,7 +117,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize));
         <button
           v-if="area.abilities.length"
           type="button"
-          class="-mx-1 flex min-h-9 items-center justify-between gap-3 rounded-md px-1 text-left transition hover:bg-muted"
+          class="-mx-1 flex min-h-10 items-center justify-between gap-3 rounded-md px-1 text-left transition hover:bg-muted"
           :aria-expanded="openAreas.has(area.key)"
           :aria-controls="`assistant-badge-area-${area.key}`"
           @click="toggleArea(area.key)"
@@ -131,7 +142,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize));
           </span>
         </button>
         <!-- An API that sends counts only: the row as it was, nothing to open. -->
-        <span v-else class="flex min-h-9 items-center justify-between gap-3">
+        <span v-else class="flex min-h-10 items-center justify-between gap-3">
           <span class="truncate">{{ area.title }}</span>
           <span class="shrink-0 tabular-nums text-muted-foreground">
             {{
@@ -152,7 +163,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', onResize));
             v-for="ability in area.abilities"
             :key="ability.name"
             class="flex items-start gap-1.5"
-            :class="ability.state === 'not_included' && 'text-muted-foreground/70'"
+            :class="ability.state === 'not_included' && 'text-muted-foreground'"
             :data-ability-state="ability.state"
             role="listitem"
           >

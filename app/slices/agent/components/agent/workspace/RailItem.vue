@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { relativeTime } from '#agent/utils/relativeTime';
 import { canManageAgent } from '#agent/utils/agentAccess';
+import { ownerMark, type IAgentCreatorLike } from '#agent/utils/agentOwnership';
 const props = defineProps<{
   agent: {
     id: string;
@@ -14,6 +15,10 @@ const props = defineProps<{
     pinned?: boolean;
     /** How its tool servers stand (CLEAN-245); null when all answer. */
     toolState?: 'connecting' | 'limited' | null;
+    /** The viewer created it (CLEAN-259): marked on the avatar. */
+    createdByMe?: boolean;
+    /** Who did, for an Owner or Admin; null for everybody else. */
+    createdBy?: IAgentCreatorLike | null;
   };
   active: boolean;
 }>();
@@ -96,11 +101,29 @@ const statusMeta = computed(() => {
 const authStore = useAuthStore();
 const toolMark = computed(() => {
   if (props.agent.status !== 'running' || !props.agent.toolState) return null;
-  if (!canManageAgent(authStore.role, { isAdmin: props.agent.isAdmin === true })) {
+  if (
+    !canManageAgent(authStore.role, {
+      isAdmin: props.agent.isAdmin === true,
+      createdByMe: props.agent.createdByMe === true,
+    })
+  ) {
     return null;
   }
   return props.agent.toolState;
 });
+
+// Whose agent it is, on the avatar's corner (CLEAN-259). The badge is
+// decoration; the row's name says it in words, right after the agent's.
+const mark = computed(() =>
+  ownerMark(
+    {
+      isAdmin: props.agent.isAdmin === true,
+      createdByMe: props.agent.createdByMe === true,
+      createdBy: props.agent.createdBy ?? null,
+    },
+    authStore.role,
+  ),
+);
 
 const updatedRelative = computed(() => relativeTime(props.agent.updatedAt));
 </script>
@@ -109,20 +132,26 @@ const updatedRelative = computed(() => relativeTime(props.agent.updatedAt));
   <button
     type="button"
     class="group relative flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition hover:bg-muted/60"
-    :class="active && 'bg-muted shadow-[inset_2px_0_0_0_var(--primary)]'"
+    :class="active && 'bg-muted shadow-[inset_2px_0_0_0_var(--primary)] [--owner-mark-ring:var(--muted)]'"
     :aria-current="active ? 'true' : undefined"
   >
     <span
-      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-linear-to-br from-[#4a3356] to-[#251b2b] text-xs font-semibold text-foreground shadow-sm transition group-hover:border-primary/30"
+      class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-linear-to-br from-[#4a3356] to-[#251b2b] text-xs font-semibold text-foreground shadow-sm transition group-hover:border-primary/30"
       :class="active && 'border-primary/40'"
     >
       {{ initials }}
+      <AgentOwnerMark :mark="mark" />
     </span>
 
     <span class="min-w-0 flex-1">
       <span class="flex items-center gap-1.5">
         <span class="truncate text-sm font-medium" :title="agent.name">
           {{ agent.name }}
+        </span>
+        <!-- What the badge on the avatar means, for a reader who cannot see
+             it: part of the row's name, right after the agent's. -->
+        <span v-if="mark" class="sr-only" data-owner-name>
+          , {{ mark.kind === 'mine' ? $t('ownership.name_mine') : $t('ownership.name_by', { name: mark.name }) }}
         </span>
         <!-- Labelled on a wrapper with a role, so the mark is announced as
              one image with a name rather than as a bare svg. -->

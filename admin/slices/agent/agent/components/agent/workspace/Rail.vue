@@ -2,6 +2,11 @@
 import { IconPlus, IconSearch } from '@tabler/icons-vue';
 import type { IAgentData, IClusterCapacityData } from '#agent/domain';
 import { useAgentRailEntries } from '#agent/composables/useAgentRailEntries';
+import {
+  effectiveOwnerFilter,
+  ownAgents,
+  type OwnerFilterTypes,
+} from '#agent/utils/agentOwnership';
 
 const props = defineProps<{
   agents: IAgentData[] | null | undefined;
@@ -11,9 +16,12 @@ const props = defineProps<{
   /** Null when Kubernetes is unreachable — the line simply does not render
    *  rather than showing a number nobody can trust. */
   capacity: IClusterCapacityData | null;
+  /** "All" or "Mine" (CLEAN-259). View state of the workspace, which owns
+   *  it, so the rail beside the agent and the one on a phone agree. */
+  ownerFilter: OwnerFilterTypes;
 }>();
 
-defineEmits<{ select: [id: string] }>();
+defineEmits<{ select: [id: string]; 'update:ownerFilter': [value: OwnerFilterTypes] }>();
 
 // Transient by design: a filter that survived a reload would leave someone
 // staring at a rail missing agents with no memory of why.
@@ -27,12 +35,20 @@ const { byAgent: limitsByAgent } = storeToRefs(useAgentLimitStore());
 // "Limited tools" (CLEAN-245) comes off the status stream every row already
 // listens to.
 const { tools: toolsByAgent } = storeToRefs(useAgentStatusStore());
+// "Mine" is read off the store's records (docs/state.md): the count and
+// the rows cannot disagree. The switch is offered only to somebody who has
+// agents of their own.
+const ownCount = computed(() => ownAgents(props.agents ?? []).length);
+const shownFilter = computed(() =>
+  effectiveOwnerFilter(props.ownerFilter, ownCount.value),
+);
 const entries = useAgentRailEntries(
   agentsRef,
   activeIdRef,
   search,
   limitsByAgent,
   toolsByAgent,
+  shownFilter,
 );
 
 const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
@@ -54,6 +70,14 @@ const clusterFull = computed(() => props.capacity?.freeAgentSlots === 0);
         class="h-8 pl-8 text-sm"
       />
     </div>
+
+    <AgentOwnerFilter
+      v-if="ownCount > 0"
+      :model-value="shownFilter"
+      :total="agents?.length ?? 0"
+      :mine="ownCount"
+      @update:model-value="$emit('update:ownerFilter', $event)"
+    />
 
     <!-- Placeholder rows rather than an empty column while the list loads,
          matching the treatment the table used (FR-027). -->

@@ -4,6 +4,8 @@ import type { IBridleConversation } from '#bridle/domain';
 import { agentInitials, agentStatusMeta } from '#agent/utils/agentStatus';
 import { relativeTime } from '#agent/utils/relativeTime';
 import { counterLabel, type PanelView } from '#agent/utils/panelView';
+import { agentCreator, ownerMark, ownershipNote } from '#agent/utils/agentOwnership';
+import { agentAbilitiesThroughAssistant } from '#assistantAccess/utils/assistantAccess';
 
 /**
  * The character sheet: who the open agent is and what can be done to it,
@@ -95,6 +97,41 @@ const closedCount = computed(() =>
 );
 const historyCounter = computed(() => counterLabel(closedCount.value));
 
+// Whose agent this is (CLEAN-259): the badge on the avatar, the class line,
+// the words beside "Created" and the one note under the rows all come from
+// the store's record through one module, so they cannot tell different
+// stories. A User is told about their own agents only.
+const authStore = useAuthStore();
+const mark = computed(() => (props.agent ? ownerMark(props.agent, authStore.role) : null));
+const creator = computed(() =>
+  props.agent ? agentCreator(props.agent, authStore.role) : null,
+);
+// Copy decided in script travels as a key (docs/i18n.md).
+const classKey = computed(() => {
+  if (props.agent?.isAdmin) return 'sheet.class_admin';
+  return props.agent?.createdByMe ? 'sheet.class_mine' : 'sheet.class_agent';
+});
+
+// What the assistant may do to an agent somebody else runs, for this
+// person: their own record in the assistantAccess store, read once per
+// account. Asked for only where the note could name it.
+const assistantStore = useAssistantAccessStore();
+const assistantAbilities = computed(() =>
+  agentAbilitiesThroughAssistant(assistantStore.mine),
+);
+const note = computed(() =>
+  props.agent
+    ? ownershipNote(props.agent, authStore.role, assistantAbilities.value)
+    : null,
+);
+watch(
+  () => note.value !== null && note.value.kind !== 'mine',
+  (wanted) => {
+    if (wanted) void assistantStore.ensureMine();
+  },
+  { immediate: true },
+);
+
 const failedKey = computed(() => {
   switch (controls.failed.value?.action) {
     case 'restart':
@@ -122,21 +159,30 @@ const failedKey = computed(() => {
          (CLEAN-248). `relative` anchors the New chat confirmation when the
          sheet is narrow. -->
     <div class="relative flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
-      <div class="flex min-w-0 flex-[1_1_0%] items-center gap-3">
+      <div class="agent-sheet__identity flex min-w-0 flex-[1_1_0%] items-center gap-3">
       <div
-        class="flex shrink-0 items-center justify-center rounded-[14px] border bg-linear-to-br from-[#4a3356] to-[#251b2b] font-semibold text-foreground transition-[width,height] duration-300"
+        class="relative flex shrink-0 items-center justify-center rounded-[14px] border bg-linear-to-br from-[#4a3356] to-[#251b2b] font-semibold text-foreground transition-[width,height] duration-300"
         :class="open ? 'h-12 w-12 text-base' : 'h-9 w-9 text-xs'"
         :style="{ borderColor: agent ? meta.color : undefined }"
       >
         {{ agent ? initials : '·' }}
+        <AgentOwnerMark :mark="mark" :large="open" />
       </div>
 
       <div class="min-w-0 flex-1">
-        <div class="flex min-w-0 items-center gap-2">
-          <h1 class="truncate text-sm font-semibold">
+        <!-- The name gets the room first (CLEAN-259): when it and the marks
+             beside it do not fit one line, the marks go to a line of their
+             own, and only a name longer than the whole line is cut. -->
+        <div class="agent-sheet__name flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <h1 class="min-w-0 max-w-full truncate text-sm font-semibold" :title="agent?.name">
             <template v-if="agent">{{ agent.name }}</template>
             <template v-else-if="pending">{{ $t('chat.loading') }}</template>
             <template v-else>{{ $t('chat.not_found') }}</template>
+            <!-- An operator's badge names somebody else; the words for it.
+                 One's own agent is said by the class line below. -->
+            <span v-if="mark?.kind === 'other'" class="sr-only">
+              , {{ $t('ownership.name_by', { name: mark.name }) }}
+            </span>
           </h1>
           <!-- On the assistant: the level this person uses it at (CLEAN-240). -->
           <AssistantAccessBadge v-if="agent?.isAdmin" />
@@ -179,8 +225,10 @@ const failedKey = computed(() => {
         <p
           v-if="agent"
           class="agent-sheet__class mt-0.5 truncate text-[12px] uppercase tracking-[0.08em] text-primary"
+          :class="classKey === 'sheet.class_mine' && 'agent-sheet__class--mine'"
+          :data-agent-class="agent.isAdmin ? 'admin' : agent.createdByMe ? 'mine' : 'agent'"
         >
-          {{ $t(agent.isAdmin ? 'sheet.class_admin' : 'sheet.class_agent') }}
+          {{ $t(classKey) }}
         </p>
       </div>
       </div>
@@ -244,7 +292,7 @@ const failedKey = computed(() => {
       <!-- Actions sit in the fold line, by the toggle, so they are one click away
            whether the sheet is open or not (owner review). `relative` anchors the
            share popover. In a narrow column the row drops under the name. -->
-      <div class="flex flex-[1_1_0%] items-center justify-end gap-1.5 @max-[520px]:contents">
+      <div class="agent-sheet__actions flex flex-[1_1_0%] items-center justify-end gap-1.5 @max-[520px]:contents">
       <div v-if="agent" class="agent-sheet__tools relative flex shrink-0 flex-wrap items-center justify-end gap-1.5 @max-[520px]:order-last @max-[520px]:basis-full @max-[520px]:justify-start">
         <template v-if="canManage">
           <button
@@ -328,6 +376,7 @@ const failedKey = computed(() => {
         class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground transition hover:bg-muted hover:text-foreground"
         :aria-expanded="open"
         :aria-label="$t(open ? 'sheet.fold' : 'sheet.unfold')"
+        data-sheet-toggle
         @click="toggle"
       >
         <Icon
@@ -379,11 +428,24 @@ const failedKey = computed(() => {
             </template>
           </dd>
         </div>
-        <div v-if="created || updated">
+        <div v-if="created || updated || creator">
           <dt>{{ $t('sheet.age') }}</dt>
-          <dd class="font-mono text-[11.5px]">
+          <!-- Three facts on one row: it may take a second line on a phone
+               rather than lose the last of them to an ellipsis. -->
+          <dd class="agent-sheet__wrap font-mono text-[11.5px]" :data-creator="creator?.kind">
             <template v-if="created">{{ created }}</template>
-            <template v-if="created && updated"> · </template>
+            <!-- Who created it (CLEAN-259): "by you" for one's own; a name,
+                 or that none is recorded, for an Owner or Admin; nothing for
+                 a User on somebody else's agent. -->
+            <template v-if="creator">
+              <template v-if="created"> · </template>
+              <span v-if="creator.kind === 'mine'" class="text-primary">{{ $t('sheet.created_by_you') }}</span>
+              <template v-else-if="creator.kind === 'other'">{{ creator.name }}</template>
+              <span v-else class="text-muted-foreground">
+                {{ $t(creator.kind === 'removed' ? 'sheet.creator_removed' : 'sheet.creator_unknown') }}
+              </span>
+            </template>
+            <template v-if="(created || creator) && updated"> · </template>
             <template v-if="updated">
               {{ $t('sheet.updated', { when: $t(updated.key, { count: updated.count }) }) }}
             </template>
@@ -391,6 +453,34 @@ const failedKey = computed(() => {
         </div>
       </dl>
 
+      <!-- Why this person may, or may not, restart this agent (CLEAN-259).
+           One note or none: theirs, theirs to act on through the assistant,
+           or run by an administrator. The ability titles are the server's,
+           shown as received. -->
+      <p
+        v-if="note"
+        class="agent-sheet__note"
+        :class="note.kind === 'mine' && 'agent-sheet__note--mine'"
+        :data-ownership-note="note.kind"
+      >
+        <Icon :name="note.kind === 'mine' ? 'key-round' : 'handshake'" :size="15" aria-hidden="true" />
+        <span v-if="note.kind === 'mine'">
+          <b>{{ $t('ownership.note_mine_title') }}</b>
+          {{ $t(note.byRoleToo ? 'ownership.note_mine' : 'ownership.note_mine_user') }}
+        </span>
+        <span v-else-if="note.kind === 'assistant'">
+          <b>{{ $t('ownership.note_available_title') }}</b>
+          {{ $t('ownership.note_assistant') }}
+          <template v-for="(ability, i) in note.abilities" :key="ability">
+            <template v-if="i > 0">, </template>
+            <span class="text-foreground" data-note-ability>{{ ability }}</span>
+          </template>
+        </span>
+        <span v-else>
+          <b>{{ $t('ownership.note_available_title') }}</b>
+          {{ $t('ownership.note_available') }}
+        </span>
+      </p>
     </div>
   </section>
 </template>
@@ -416,6 +506,40 @@ const failedKey = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
+}
+.agent-sheet__rows dd.agent-sheet__wrap {
+  white-space: normal;
+  text-wrap: balance;
+}
+
+/* ── The ownership note (CLEAN-259) ─────────────────────────────────── */
+.agent-sheet__note {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+.agent-sheet__note svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--muted-foreground);
+}
+.agent-sheet__note b {
+  font-weight: 600;
+  color: var(--foreground);
+}
+.agent-sheet__note--mine {
+  border-color: color-mix(in oklab, var(--primary) 34%, transparent);
+  background: color-mix(in oklab, var(--primary) 7%, transparent);
+}
+.agent-sheet__note--mine svg {
+  color: var(--primary);
 }
 .agent-sheet__btn {
   display: inline-flex;
@@ -521,6 +645,20 @@ const failedKey = computed(() => {
   }
   .agent-sheet__class {
     display: none;
+  }
+  /* "Your agent" stays: it is the words for the badge on the avatar, and
+     it says why the controls are here (CLEAN-259). */
+  .agent-sheet__class.agent-sheet__class--mine {
+    display: block;
+  }
+  /* In a narrow column the name is what has to be read (CLEAN-259): the
+     actions take what their buttons need and the identity all the rest,
+     instead of half each. Half was less than the buttons need once an agent
+     has all four, and they ran over the conversation group. With room to
+     spare both sides grow alike, which keeps that group on the axis of the
+     feed (CLEAN-248). Below 520 px the actions are not a box at all. */
+  .agent-sheet__actions {
+    flex: 0 0 auto;
   }
   /* The confirmation is anchored to the whole line here: under a button in
      the middle of a narrow sheet it would run off the left edge. */

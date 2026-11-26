@@ -20,9 +20,18 @@ describe('canManageAgent', () => {
     expect(canManageAgent('Admin', ordinary)).toBe(true);
   });
 
-  test('a User manages no agent, as before', () => {
+  test('a User manages no agent somebody else created', () => {
     expect(canManageAgent('User', ordinary)).toBe(false);
     expect(canManageAgent('User', ranchAdmin)).toBe(false);
+    expect(canManageAgent('User', { isAdmin: false, createdByMe: false })).toBe(false);
+  });
+
+  test('a User manages the agent they created, but never the Ranch admin agent', () => {
+    expect(canManageAgent('User', { isAdmin: false, createdByMe: true })).toBe(true);
+    expect(canManageAgent('User', { isAdmin: true, createdByMe: true })).toBe(false);
+    expect(canManageAgent('Admin', { isAdmin: true, createdByMe: true })).toBe(false);
+    // Nobody signed in created nothing.
+    expect(canManageAgent(null, { isAdmin: false, createdByMe: true })).toBe(false);
   });
 
   test('nobody signed in manages no agent', () => {

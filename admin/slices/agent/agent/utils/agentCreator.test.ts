@@ -5,12 +5,26 @@ describe('agentCreatorView', () => {
   test('a known account: its name and its email', () => {
     expect(
       agentCreatorView({ id: 'u-1', name: 'Ada Admin', email: 'ada@example.test' }),
-    ).toEqual({ state: 'known', name: 'Ada Admin', email: 'ada@example.test' });
+    ).toEqual({ state: 'known', you: false, name: 'Ada Admin', email: 'ada@example.test' });
   });
 
-  test('nobody recorded reads Unknown', () => {
-    expect(agentCreatorView(null)).toEqual({ state: 'unknown', text: 'Unknown' });
-    expect(agentCreatorView(undefined)).toEqual({ state: 'unknown', text: 'Unknown' });
+  test('the viewer’s own account is marked as theirs (CLEAN-259)', () => {
+    expect(
+      agentCreatorView({ id: 'u-1', name: 'Ada Admin', email: 'ada@example.test' }, true),
+    ).toEqual({ state: 'known', you: true, name: 'Ada Admin', email: 'ada@example.test' });
+    // Theirs even when no name came with the record.
+    expect(agentCreatorView(null, true)).toEqual({ state: 'known', you: true, name: '', email: null });
+    expect(agentCreatorView({ id: 'u-1', name: null, email: null }, true)).toEqual({
+      state: 'known',
+      you: true,
+      name: '',
+      email: null,
+    });
+  });
+
+  test('nobody recorded says so', () => {
+    expect(agentCreatorView(null)).toEqual({ state: 'unknown', text: 'Creator not recorded' });
+    expect(agentCreatorView(undefined)).toEqual({ state: 'unknown', text: 'Creator not recorded' });
   });
 
   test('an account that is gone reads Removed account', () => {
@@ -27,15 +41,16 @@ describe('agentCreatorView', () => {
   test('an account with only an email is named by it, once', () => {
     expect(
       agentCreatorView({ id: 'u-2', name: null, email: 'bob@example.test' }),
-    ).toEqual({ state: 'known', name: 'bob@example.test', email: null });
+    ).toEqual({ state: 'known', you: false, name: 'bob@example.test', email: null });
     expect(
       agentCreatorView({ id: 'u-2', name: 'bob@example.test', email: 'bob@example.test' }),
-    ).toEqual({ state: 'known', name: 'bob@example.test', email: null });
+    ).toEqual({ state: 'known', you: false, name: 'bob@example.test', email: null });
   });
 
   test('an account with only a name has no email to show', () => {
     expect(agentCreatorView({ id: 'u-3', name: 'Cy', email: null })).toEqual({
       state: 'known',
+      you: false,
       name: 'Cy',
       email: null,
     });
@@ -48,14 +63,37 @@ describe('keepKnownCreator', () => {
     id: string;
     status: string;
     createdBy?: typeof ada | null;
+    createdByMe?: boolean;
   }
-  const row = (createdBy?: typeof ada | null): IRow => ({ id: 'agent-1', status: 'running', createdBy });
+  /** A record from a route that resolves creators: it says both. */
+  const row = (createdBy?: typeof ada | null, createdByMe = false): IRow => ({
+    id: 'agent-1',
+    status: 'running',
+    createdBy,
+    createdByMe,
+  });
   /** A record decoded from a frame that does not carry the field. */
   const frame = (status: string): IRow => ({ id: 'agent-1', status });
 
   test('a frame that does not say keeps the creator the store holds', () => {
     const next = keepKnownCreator(frame('failed'), row(ada));
-    expect(next).toEqual({ id: 'agent-1', status: 'failed', createdBy: ada });
+    expect(next).toEqual({ id: 'agent-1', status: 'failed', createdBy: ada, createdByMe: false });
+  });
+
+  test('and whether it is the viewer’s own (CLEAN-259)', () => {
+    expect(keepKnownCreator(frame('failed'), row(ada, true)).createdByMe).toBe(true);
+    // A first sighting with nothing said is not theirs, never undefined.
+    expect(keepKnownCreator(frame('running'), undefined).createdByMe).toBe(false);
+  });
+
+  test('a status snapshot says whose it is and not who made it: each field on its own', () => {
+    const snapshot: IRow = { id: 'agent-1', status: 'running', createdByMe: true };
+    expect(keepKnownCreator(snapshot, row(ada, false))).toEqual({
+      id: 'agent-1',
+      status: 'running',
+      createdBy: ada,
+      createdByMe: true,
+    });
   });
 
   test('and keeps "nobody" when that is what the store holds', () => {

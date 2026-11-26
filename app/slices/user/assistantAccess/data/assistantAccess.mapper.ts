@@ -71,6 +71,7 @@ export class AssistantAccessMapper {
         name: o.name,
         title: typeof o.title === 'string' && o.title ? o.title : o.name,
         state: state ?? 'not_included',
+        onAgent: o.onAgent === true,
       });
     }
     const rank = (state: AssistantAbilityStateTypes) =>

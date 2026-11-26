@@ -57,6 +57,15 @@ describe('AgentMapper.toEntity: who created the agent (CLEAN-232)', () => {
     expect(decoded?.createdBy).toBe(undefined);
   });
 
+  test('whether the viewer created it: the API’s word, and nothing when it does not say (CLEAN-259)', () => {
+    expect(mapper.toEntity(row({ createdByMe: true }))?.createdByMe).toBe(true);
+    expect(mapper.toEntity(row({ createdByMe: false }))?.createdByMe).toBe(false);
+    // Anything but `true` is not a yes.
+    expect(mapper.toEntity(row({ createdByMe: 'yes' }))?.createdByMe).toBe(false);
+    // A status-stream frame: the store keeps what it knew for `undefined`.
+    expect(mapper.toEntity(row({}))?.createdByMe).toBe(undefined);
+  });
+
   test('a creator without an id is nobody, and a bare id never passes for one', () => {
     expect(mapper.toEntity(row({ createdBy: { name: 'Ada' } }))?.createdBy).toBe(null);
     expect(mapper.toEntity(row({ createdBy: 'u-1' }))?.createdBy).toBe(null);

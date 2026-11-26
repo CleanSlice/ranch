@@ -2,6 +2,7 @@
 import type { IAgentData } from '#agent/domain';
 import { orbitLayout, orbitLinks } from '#agent/utils/orbitLayout';
 import { agentInitials, agentStatusMeta } from '#agent/utils/agentStatus';
+import { ownerMark, type OwnerMarkTypes } from '#agent/utils/agentOwnership';
 
 /**
  * The orbit map: every agent is a node on a ring around the RANCH hub, and
@@ -22,12 +23,17 @@ const props = defineProps<{
   pending: boolean;
   /** Dims every node that does not match; empty shows all. */
   search: string;
+  /** "Mine" is chosen (CLEAN-259): dims every agent the viewer did not
+   *  create, like a search that does not match. */
+  mineOnly?: boolean;
   /** Agent-to-agent connections. Empty for everyone but operators, and the
    *  map is complete without them. */
   links?: ReadonlyArray<{ agentId: string; peerAgentId: string }>;
 }>();
 
 const emit = defineEmits<{ select: [id: string] }>();
+
+const authStore = useAuthStore();
 
 const el = ref<HTMLElement | null>(null);
 const size = ref({ w: 0, h: 0 });
@@ -80,6 +86,8 @@ interface PlacedNode {
   meta: ReturnType<typeof agentStatusMeta>;
   active: boolean;
   match: boolean;
+  /** Whose agent it is, on the node's corner (CLEAN-259). */
+  mark: OwnerMarkTypes | null;
   labelStyle: Record<string, string>;
   labelAlign: 'left' | 'right' | 'center';
 }
@@ -124,7 +132,9 @@ const nodes = computed<PlacedNode[]>(() => {
       labelAlign = 'right';
       transform = 'translate(-100%, -50%)';
     }
-    const match = !term.value || node.agent.name.toLowerCase().includes(term.value);
+    const match =
+      (!term.value || node.agent.name.toLowerCase().includes(term.value)) &&
+      (!props.mineOnly || node.agent.createdByMe);
     return {
       id: node.agent.id,
       agent: node.agent,
@@ -137,6 +147,7 @@ const nodes = computed<PlacedNode[]>(() => {
       meta: agentStatusMeta(node.agent.status),
       active,
       match,
+      mark: ownerMark(node.agent, authStore.role),
       labelStyle: { left: `${ax}px`, top: `${ay}px`, transform },
       labelAlign,
     };
@@ -339,7 +350,7 @@ function onKeydown(event: KeyboardEvent) {
           '--node-delay': `${Math.min(index, 24) * 28}ms`,
         }"
         :aria-current="node.active ? 'true' : undefined"
-        :aria-label="`${node.agent.name} — ${node.meta.labelKey ? $t(node.meta.labelKey) : node.agent.status}${node.agent.pinned ? ` · ${$t('sheet.pinned')}` : ''}`"
+        :aria-label="`${node.agent.name} — ${node.meta.labelKey ? $t(node.meta.labelKey) : node.agent.status}${node.agent.pinned ? ` · ${$t('sheet.pinned')}` : ''}${node.mark ? ` · ${node.mark.kind === 'mine' ? $t('ownership.name_mine') : $t('ownership.name_by', { name: node.mark.name })}` : ''}`"
         :title="node.agent.name"
         :data-pinned="node.agent.pinned ? '' : undefined"
         @click="emit('select', node.id)"
@@ -360,6 +371,10 @@ function onKeydown(event: KeyboardEvent) {
         >
           <Icon name="pin" :size="9" />
         </span>
+        <!-- Whose agent it is, bottom-left: the corner the pin (top-left),
+             the admin dot (top-right) and the pulse (bottom-right) leave
+             free. The aria-label above carries the words (CLEAN-259). -->
+        <AgentOwnerMark :mark="node.mark" />
         <span
           v-if="node.meta.pulse"
           class="absolute -bottom-1 -right-1 h-2.5 w-2.5 animate-ping rounded-full opacity-70"
@@ -453,14 +468,18 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 /* Tailwind's -translate-* classes use the `translate` property, so the
-   keyframe may own `transform` without undoing the centring. */
+   keyframe may own `transform` without undoing the centring.
+
+   No opacity in `to`: the animation fills forwards, and an opacity kept
+   there held every node at 1 for good, over the class that dims a node the
+   search or the "Mine" filter does not match (CLEAN-259). Without it the
+   node fades in to whatever its own opacity is. */
 @keyframes agent-orbit-in {
   from {
     opacity: 0;
     transform: scale(0.6);
   }
   to {
-    opacity: 1;
     transform: scale(1);
   }
 }

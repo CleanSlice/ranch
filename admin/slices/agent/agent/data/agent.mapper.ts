@@ -93,6 +93,8 @@ export class AgentMapper {
       // the field at all, and decoding that as "nobody" would wipe what
       // GET /agents said. The store keeps the known creator for `undefined`.
       createdBy: 'createdBy' in o ? this.toCreator(o.createdBy) : undefined,
+      // The same rule: a frame that does not say leaves what the store knew.
+      createdByMe: 'createdByMe' in o ? o.createdByMe === true : undefined,
       createdAt: typeof o.createdAt === 'string' ? o.createdAt : '',
       updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : '',
     };

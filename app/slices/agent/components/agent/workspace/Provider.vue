@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { canManageAgent } from '#agent/utils/agentAccess';
 import { agentStatusMeta, LEGEND_STATUSES } from '#agent/utils/agentStatus';
+import {
+  effectiveOwnerFilter,
+  filterByOwner,
+  ownAgents,
+  type OwnerFilterTypes,
+} from '#agent/utils/agentOwnership';
 
 const props = defineProps<{ id: string }>();
 
@@ -117,9 +123,19 @@ function setView(next: View) {
 const search = ref('');
 const searchEl = ref<HTMLInputElement | null>(null);
 
+// "All" or "Mine" (CLEAN-259). View state, transient like the search and
+// for the same reason; which agents are "mine" is read off the store's
+// records. One value for the map and for both lists, so switching between
+// them does not change what is shown.
+const ownerFilter = ref<OwnerFilterTypes>('all');
+const ownCount = computed(() => ownAgents(agents.value ?? []).length);
+const shownOwnerFilter = computed(() =>
+  effectiveOwnerFilter(ownerFilter.value, ownCount.value),
+);
+
 const matches = computed(() => {
   const term = search.value.trim().toLowerCase();
-  const list = agents.value ?? [];
+  const list = filterByOwner(agents.value ?? [], shownOwnerFilter.value);
   return term ? list.filter((a) => a.name.toLowerCase().includes(term)) : list;
 });
 
@@ -222,6 +238,15 @@ function onSelect(id: string) {
           </kbd>
         </div>
 
+        <!-- On the map nothing is taken away: the agents that are not the
+             viewer's are dimmed, the way a search dims what it does not
+             match, so every node keeps its place. -->
+        <AgentOwnerFilter
+          v-if="ownCount > 0"
+          v-model="ownerFilter"
+          :total="agents?.length ?? 0"
+          :mine="ownCount"
+        />
       </div>
 
       <div class="relative z-10 shrink-0 px-4 pt-2">
@@ -249,6 +274,7 @@ function onSelect(id: string) {
           :active-id="id"
           :pending="pending"
           :search="search"
+          :mine-only="shownOwnerFilter === 'mine'"
           @select="onSelect"
         />
       </div>
@@ -314,6 +340,7 @@ function onSelect(id: string) {
           :pending="pending"
           :can-create="canCreate"
           :capacity="capacity"
+          v-model:owner-filter="ownerFilter"
           @select="onSelect"
         />
       </div>
@@ -330,6 +357,7 @@ function onSelect(id: string) {
         <button
           type="button"
           class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
+          data-rail-open
           @click="railOverlayOpen = true"
         >
           <Icon name="list" :size="13" />
@@ -397,6 +425,7 @@ function onSelect(id: string) {
           :pending="pending"
           :can-create="canCreate"
           :capacity="capacity"
+          v-model:owner-filter="ownerFilter"
           @select="onSelect"
         />
       </div>

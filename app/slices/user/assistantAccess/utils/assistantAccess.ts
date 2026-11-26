@@ -2,6 +2,34 @@
 // purpose: no Pinia, no Nuxt. The management console has the same function
 // in its own `assistantAccess` utils; the two cards hang the same way.
 
+/**
+ * What the assistant may do, for this person, to an agent somebody else
+ * made (CLEAN-259): the abilities that act on an agent and are included for
+ * them, by title, in the order received. Empty when the assistant is off
+ * for them, and while nothing has been read.
+ *
+ * Which abilities act on an agent is the server's word (`onAgent`); this
+ * console keeps no list of them.
+ */
+export function agentAbilitiesThroughAssistant(
+  mine:
+    | {
+        enabled: boolean;
+        areas: readonly {
+          abilities: readonly { title: string; state: string; onAgent: boolean }[];
+        }[];
+      }
+    | null
+    | undefined,
+): string[] {
+  if (!mine?.enabled) return [];
+  return mine.areas.flatMap((area) =>
+    area.abilities
+      .filter((ability) => ability.onAgent && ability.state === 'included')
+      .map((ability) => ability.title),
+  );
+}
+
 /** The card beside the person's level: as wide as this, at most. */
 export const BADGE_CARD_WIDTH = 288;
 /** The room kept between that card and the edge of the screen. */

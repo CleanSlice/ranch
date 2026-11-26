@@ -96,6 +96,10 @@
     "unfold": "Unfold the sheet",
     "class_admin": "ADMIN · AGENT",
     "class_agent": "AGENT",
+    "class_mine": "YOUR AGENT",
+    "created_by_you": "by you",
+    "creator_unknown": "creator not recorded",
+    "creator_removed": "created by a removed account",
     "template": "Template",
     "resources": "Resources",
     "access": "Access",
@@ -120,6 +124,21 @@
     "view_chat": "Chat",
     "view_history": "History",
     "view_history_count": "History, no closed conversations | History, {count} closed conversation | History, {count} closed conversations"
+  },
+  "ownership": {
+    "mine": "Created by you",
+    "by": "Created by {name}",
+    "name_mine": "created by you",
+    "name_by": "created by {name}",
+    "filter_label": "Which agents",
+    "filter_all": "All",
+    "filter_mine": "Mine",
+    "note_mine_title": "This is your agent.",
+    "note_mine": "You created it, so you can restart, stop and set it up.",
+    "note_mine_user": "You created it, so you can restart, stop and set it up, even though your role has none of that for other agents.",
+    "note_available_title": "This agent is available to you.",
+    "note_available": "An administrator runs it: you can talk to it and share it.",
+    "note_assistant": "An administrator runs it. Through the assistant you can:"
   },
   "create_stub": {
     "badge": "In progress",

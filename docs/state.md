@@ -71,7 +71,13 @@ patch(id, partial): () => void            // partial change, returns a rollback
   that resolve creators (`GET /agents`, `GET /agents/:id` and the routes
   that return one agent): a record that does not say keeps the creator the
   store already holds (`keepKnownCreator`), and `null` means "nobody is
-  recorded".
+  recorded". Whether the viewer is that creator (`createdByMe`, CLEAN-259)
+  comes with every agent the API returns, the status snapshot included, and
+  for every role; a stream frame does not say and is completed the same way.
+  "My agents" is never a second list: the mark on an avatar, the "All / Mine"
+  filter and its count are all read off these records
+  (`utils/agentOwnership.ts` in each console), and the filter itself is view
+  state of the workspace, like the search.
 - The rail (`workspace/Provider.vue`), the header (`workspace/Main.vue`), the
   Overview card, the edit page and the Files tab all read `agentStore.agents`
   / `agentStore.byId(id)`.

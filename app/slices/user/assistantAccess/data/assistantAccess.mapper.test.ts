@@ -36,18 +36,20 @@ describe('AssistantAccessMapper.toMine', () => {
             { name: 'import_agent', title: 'Import an agent', state: 'not_included' },
             { name: 'list_agents', title: 'List agents', state: 'included' },
             { name: 'pin_agent', title: 'Pin an agent', state: 'included' },
-            { name: 'restart_agent', title: 'Restart an agent', state: 'own_agents_only' },
+            { name: 'restart_agent', title: 'Restart an agent', state: 'own_agents_only', onAgent: true },
           ],
         },
       ],
     });
     // Grouped by state; the server's order, by title, kept inside a group.
     expect(mine?.areas[0]?.abilities).toEqual([
-      { name: 'list_agents', title: 'List agents', state: 'included' },
-      { name: 'pin_agent', title: 'Pin an agent', state: 'included' },
-      { name: 'delete_agent', title: 'Delete an agent', state: 'own_agents_only' },
-      { name: 'restart_agent', title: 'Restart an agent', state: 'own_agents_only' },
-      { name: 'import_agent', title: 'Import an agent', state: 'not_included' },
+      { name: 'list_agents', title: 'List agents', state: 'included', onAgent: false },
+      { name: 'pin_agent', title: 'Pin an agent', state: 'included', onAgent: false },
+      { name: 'delete_agent', title: 'Delete an agent', state: 'own_agents_only', onAgent: false },
+      // Which abilities act on an agent is the server's word (CLEAN-259);
+      // one that does not say, from an older API, does not.
+      { name: 'restart_agent', title: 'Restart an agent', state: 'own_agents_only', onAgent: true },
+      { name: 'import_agent', title: 'Import an agent', state: 'not_included', onAgent: false },
     ]);
   });
 
@@ -68,8 +70,8 @@ describe('AssistantAccessMapper.toMine', () => {
       ],
     });
     expect(mine?.areas[0]?.abilities).toEqual([
-      { name: 'b', title: 'b', state: 'included' },
-      { name: 'a', title: 'A', state: 'not_included' },
+      { name: 'b', title: 'b', state: 'included', onAgent: false },
+      { name: 'a', title: 'A', state: 'not_included', onAgent: false },
     ]);
   });
 

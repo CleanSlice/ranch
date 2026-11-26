@@ -1,5 +1,36 @@
 import { describe, expect, test } from 'bun:test';
-import { badgeCardShift } from './assistantAccess';
+import { agentAbilitiesThroughAssistant, badgeCardShift } from './assistantAccess';
+
+describe('what the assistant may do to an agent somebody else made (CLEAN-259)', () => {
+  const ability = (title: string, state: string, onAgent: boolean) => ({ title, state, onAgent });
+  const mine = (enabled: boolean) => ({
+    enabled,
+    areas: [
+      {
+        abilities: [
+          ability('List agents', 'included', false),
+          ability('Restart an agent', 'included', true),
+          ability('Show an agent’s logs', 'own_agents_only', true),
+          ability('Delete an agent', 'not_included', true),
+        ],
+      },
+      { abilities: [ability('Connect two agents', 'included', true)] },
+    ],
+  });
+
+  test('the included abilities that act on an agent, by title, in the order received', () => {
+    expect(agentAbilitiesThroughAssistant(mine(true))).toEqual([
+      'Restart an agent',
+      'Connect two agents',
+    ]);
+  });
+
+  test('nothing while the assistant is off for them, or nothing has been read', () => {
+    expect(agentAbilitiesThroughAssistant(mine(false))).toEqual([]);
+    expect(agentAbilitiesThroughAssistant(null)).toEqual([]);
+    expect(agentAbilitiesThroughAssistant(undefined)).toEqual([]);
+  });
+});
 
 describe('where the person’s own card hangs', () => {
   test('from the badge while it fits', () => {

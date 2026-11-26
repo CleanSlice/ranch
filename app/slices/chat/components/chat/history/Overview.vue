@@ -9,9 +9,15 @@ import { useFormat } from '#common/composables/useFormat';
  * export. The side block of the old conversation page, whole; where it
  * stands — beside the messages or over them — is the reading view's choice.
  */
-defineProps<{
+const props = defineProps<{
   session: IChatSession;
   navItems: INavMapItem[];
+  /**
+   * The messages are still on their way, so there is nothing to navigate
+   * yet. Navigation keeps its place as a placeholder rather than being
+   * absent and then pushing Export down when it arrives (CLEAN-253).
+   */
+  navPending?: boolean;
 }>();
 defineEmits<{
   jump: [messageId: string];
@@ -19,6 +25,20 @@ defineEmits<{
 }>();
 
 const format = useFormat();
+
+// The outline of Navigation while the messages load: one line per message
+// the conversation is known to have, up to the nine that fill the real
+// block's height (it scrolls beyond 16 rem). Sized this way the outline is as
+// tall as what replaces it, and Export below does not move.
+const NAV_PLACEHOLDER_MAX = 9;
+const NAV_PLACEHOLDER_WIDTHS = ['w-4/5', 'w-3/5', 'w-11/12', 'w-2/3', 'w-3/4'];
+const navPlaceholder = computed(() => {
+  const rows = Math.min(NAV_PLACEHOLDER_MAX, Math.max(1, props.session.messageCount));
+  return Array.from(
+    { length: rows },
+    (_, i) => NAV_PLACEHOLDER_WIDTHS[i % NAV_PLACEHOLDER_WIDTHS.length]!,
+  );
+});
 
 const EXPORT_FORMATS: ChatExportFormat[] = ['json', 'markdown', 'csv'];
 
@@ -102,7 +122,33 @@ const sentimentVariant: Record<string, 'default' | 'secondary' | 'outline' | 'de
       </div>
     </div>
 
-    <ChatHistoryNavMap :items="navItems" @jump="(id: string) => $emit('jump', id)" />
+    <!-- Navigation, or its outline while the messages load: the same frame
+         and heading as the real block. -->
+    <div
+      v-if="navPending && !navItems.length"
+      class="flex flex-col gap-2 rounded-xl border border-border/70 bg-card px-4 pb-2 pt-3.5"
+      role="status"
+      aria-busy="true"
+      data-overview-nav="loading"
+    >
+      <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+        {{ $t('session.navigation') }}
+      </span>
+      <span class="sr-only">{{ $t('session.loading') }}</span>
+      <!-- Rows of the real list's height (padding and one line of text),
+           with no gap between them, as there. -->
+      <div class="flex max-h-64 flex-col overflow-hidden" aria-hidden="true">
+        <div
+          v-for="(width, i) in navPlaceholder"
+          :key="i"
+          class="flex h-7 shrink-0 items-center gap-2"
+        >
+          <span class="size-[7px] shrink-0 rounded-full bg-muted" />
+          <span class="h-3 animate-pulse rounded bg-muted" :class="width" />
+        </div>
+      </div>
+    </div>
+    <ChatHistoryNavMap v-else :items="navItems" @jump="(id: string) => $emit('jump', id)" />
 
     <!-- Export -->
     <div class="flex items-center gap-1.5 px-1">

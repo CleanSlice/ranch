@@ -413,6 +413,47 @@ export function manageCaller(httpRequest: Request): ICallerParty {
 }
 
 /**
+ * Whether this caller manages `agent` for one reason only: the assistant
+ * setting gave them the tool being called (CLEAN-254). Asked after
+ * `manageable` let the call through. An operator got there by role and the
+ * creator by having made the agent; anybody else below Admin got there by
+ * the grant.
+ *
+ * Such a person is not an operator. They may do to the agent what the tool
+ * is named for, and no more: nothing that binds it to a resource they have
+ * no route to (a model credential, a knowledge base, a bot, an outside
+ * address), and nothing in the reply that the reader view keeps from them.
+ * Those parts of a tool ask here, and refuse with `operatorOnly`.
+ */
+export function managesByGrantOnly(
+  httpRequest: Request,
+  agent: { createdById?: string | null },
+): boolean {
+  if (callerIsOperator(httpRequest)) return false;
+  const person = callerPerson(httpRequest);
+  if (!person) return false;
+  return !agent.createdById || agent.createdById !== person.userId;
+}
+
+/**
+ * The refusal for a part of a `manage-agent` tool that stays an operator's,
+ * or null when this caller may use it. `what` is the part, as the person
+ * would read it: "Changing the model credential (llmCredentialId)".
+ */
+export function operatorOnly(
+  httpRequest: Request,
+  agent: { createdById?: string | null },
+  what: string,
+): ToolResult | null {
+  if (!managesByGrantOnly(httpRequest, agent)) return null;
+  return err(
+    `${what} is for an Owner or Admin, and is not part of what was ` +
+      'included for this account. Nothing was done. Say so to the ' +
+      'person in one sentence; do not try it another way.',
+  );
+}
+
+/**
  * The single answer to "may this caller use a tool of that audience". The
  * catalogue, tools/call and the listing hooks all ask here. An audience
  * nobody declared allows nobody.

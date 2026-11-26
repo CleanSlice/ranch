@@ -16,6 +16,8 @@ import {
   callerHoldsManageTools,
   callerManagesAgents,
   manageCaller,
+  managesByGrantOnly,
+  operatorOnly,
   setCalledTool,
   setCallerAssistantGrant,
   setCallerManagesAgents,
@@ -186,5 +188,59 @@ describe('callerHoldsManageTools: what a manage-agent class answers its listing 
       callerHoldsManageTools(asPerson(assistantToken(), UserRoleTypes.User)),
     ).toBe(false);
     expect(callerHoldsManageTools(asGuest(assistantToken()))).toBe(false);
+  });
+});
+
+describe('managesByGrantOnly / operatorOnly: a grant is not an operator’s power', () => {
+  const agent = { createdById: 'user-maker' };
+
+  it('true for a person below Admin who did not make the agent', () => {
+    const req = granted(['update_agent'], 'update_agent');
+    expect(managesByGrantOnly(req, agent)).toBe(true);
+    expect(managesByGrantOnly(req, { createdById: null })).toBe(true);
+    expect(managesByGrantOnly(req, {})).toBe(true);
+  });
+
+  it('false for whoever manages by role, and for the agent acting for itself', () => {
+    for (const role of [UserRoleTypes.Admin, UserRoleTypes.Owner]) {
+      expect(managesByGrantOnly(asPerson(assistantToken(), role), agent)).toBe(
+        false,
+      );
+      expect(managesByGrantOnly(consoleToken(role), agent)).toBe(false);
+    }
+    expect(managesByGrantOnly(asTrustedAgent(assistantToken()), agent)).toBe(
+      false,
+    );
+  });
+
+  it('false for the person who made the agent: theirs by the creator line', () => {
+    const maker = asPerson(assistantToken(), UserRoleTypes.User, 'user-maker');
+    expect(managesByGrantOnly(maker, agent)).toBe(false);
+    expect(managesByGrantOnly(maker, { createdById: 'someone-else' })).toBe(
+      true,
+    );
+    // An empty id on either side is no creator at all.
+    expect(managesByGrantOnly(maker, { createdById: '' })).toBe(true);
+  });
+
+  it('operatorOnly refuses such a person, naming the part, and nobody else', () => {
+    const refusal = operatorOnly(
+      granted(['update_agent'], 'update_agent'),
+      agent,
+      'Changing the model credential of an agent (llmCredentialId)',
+    );
+    expect(refusal?.isError).toBe(true);
+    expect(refusal?.content[0].text).toBe(
+      'Changing the model credential of an agent (llmCredentialId) is for ' +
+        'an Owner or Admin, and is not part of what was included for this ' +
+        'account. Nothing was done. Say so to the person in one sentence; ' +
+        'do not try it another way.',
+    );
+    expect(
+      operatorOnly(asPerson(assistantToken(), UserRoleTypes.Admin), agent, 'x'),
+    ).toBeNull();
+    expect(
+      operatorOnly(asTrustedAgent(assistantToken()), agent, 'x'),
+    ).toBeNull();
   });
 });

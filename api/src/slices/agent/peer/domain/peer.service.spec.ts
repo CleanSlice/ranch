@@ -1704,3 +1704,116 @@ describe('PeerService: a connection exists for a person only when they reach the
     });
   });
 });
+
+/**
+ * A person who manages an agent only because the assistant setting gave
+ * them a tool (CLEAN-254) is held to the other end of a connection like
+ * anybody: it has to be an agent they reach, and it is never the Ranch
+ * admin agent, which they reach like everybody the assistant is switched on
+ * for. `manageCaller` marks such a party; the rules are here.
+ */
+describe('PeerService: a person the assistant setting let in', () => {
+  const agents = [
+    { id: 'a', name: 'Caller', status: 'running' },
+    { id: 'b', name: 'Support Bot', status: 'running' },
+    { id: 'c', name: 'Third', status: 'running' },
+    { id: 'ranch', name: 'Ranch', status: 'running', isAdmin: true },
+  ];
+  const granted: ICallerParty = {
+    kind: 'person',
+    userId: 'user-user',
+    role: UserRoleTypes.User,
+    grantedThroughAssistant: true,
+  };
+  /** The User is denied `c`, and reaches `a`, `b` and the assistant. */
+  const world: IPeerWorld = { denied: { 'user-user': ['c'] } };
+  const notFound = { status: 404, response: { code: 'PEER_NOT_FOUND' } };
+
+  it('connects an agent they reach, and no other: not one out of reach, not the Ranch admin agent', async () => {
+    const { service, rows } = makeHarness({ agents, world });
+
+    await service.connect('a', 'b', granted);
+    expect(Object.keys(rows)).toHaveLength(1);
+
+    for (const peer of ['c', 'ranch', 'ghost']) {
+      await expect(service.connect('a', peer, granted)).rejects.toMatchObject({
+        ...notFound,
+        response: { code: 'PEER_NOT_FOUND', message: 'Agent not found' },
+      });
+    }
+    expect(Object.keys(rows)).toHaveLength(1);
+  });
+
+  it('the Owner’s connection to the Ranch admin agent is not theirs to remove, re-read or open', async () => {
+    const { service, rows, fetchCard } = makeHarness({ agents, world });
+    const toRanch = await service.connect('a', 'ranch', OWNER);
+    fetchCard.mockClear();
+
+    await expect(
+      service.remove('a', toRanch.id, granted),
+    ).rejects.toMatchObject(notFound);
+    await expect(
+      service.refresh('a', toRanch.id, granted),
+    ).rejects.toMatchObject(notFound);
+    await expect(
+      service.setVisitors('a', toRanch.id, true, granted),
+    ).rejects.toMatchObject(notFound);
+
+    expect(rows[toRanch.id]).toBeDefined();
+    expect(rows[toRanch.id].openToVisitors).toBe(false);
+    expect(fetchCard).not.toHaveBeenCalled();
+    // In the words of a connection that does not exist.
+    await expect(
+      service.remove('a', 'peer-ghost', granted),
+    ).rejects.toMatchObject(notFound);
+  });
+
+  it('a connection to an agent out of their reach does not exist for them', async () => {
+    const { service, rows } = makeHarness({ agents, world });
+    const toHidden = await service.connect('a', 'c', OWNER);
+
+    await expect(
+      service.remove('a', toHidden.id, granted),
+    ).rejects.toMatchObject(notFound);
+    await expect(
+      service.refresh('a', toHidden.id, granted),
+    ).rejects.toMatchObject(notFound);
+    await expect(
+      service.setVisitors('a', toHidden.id, true, granted),
+    ).rejects.toMatchObject(notFound);
+    expect(rows[toHidden.id]).toBeDefined();
+  });
+
+  it('one to an agent they reach is theirs to re-read, open and remove', async () => {
+    const { service, rows } = makeHarness({ agents, world });
+    const toB = await service.connect('a', 'b', OWNER);
+
+    await service.refresh('a', toB.id, granted);
+    await service.setVisitors('a', toB.id, true, granted);
+    expect(rows[toB.id].openToVisitors).toBe(true);
+    await service.remove('a', toB.id, granted);
+    expect(rows[toB.id]).toBeUndefined();
+  });
+
+  it('the same User without the mark manages nothing here, as before', async () => {
+    const { service, rows } = makeHarness({ agents, world });
+    const toB = await service.connect('a', 'b', OWNER);
+
+    await expect(service.remove('a', toB.id, USER)).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(
+      service.setVisitors('a', toB.id, true, USER),
+    ).rejects.toMatchObject(notFound);
+    expect(rows[toB.id]).toBeDefined();
+  });
+
+  it('an Admin still removes the connection to the Ranch admin agent they are shown', async () => {
+    // Unchanged by CLEAN-254: the rule added there is about the grant.
+    const { service, rows } = makeHarness({ agents, world });
+    const toRanch = await service.connect('a', 'ranch', OWNER);
+
+    await service.remove('a', toRanch.id, ADMIN);
+    expect(rows[toRanch.id]).toBeUndefined();
+  });
+});

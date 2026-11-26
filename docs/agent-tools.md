@@ -283,6 +283,36 @@ So a class that holds only `manage-agent` tools answers its listing hook with
 setting gave them at least one such tool. The audience has already decided
 about the tool at hand by the time the hook runs.
 
+**A grant is not an operator's power.** A person let in by the fourth line
+may do to the agent what the tool is named for, and is still not an Owner or
+Admin. Three things follow, and a `manage-agent` tool has to hold all three
+(`managesByGrantOnly(httpRequest, agent)` says whether the caller is such a
+person; `operatorOnly(httpRequest, agent, what)` is the refusal):
+
+- It binds the agent to nothing that person has no route to read or decide:
+  not a model credential, not a knowledge base, not a messenger bot, not an
+  address outside the Ranch, not who may reach the agent. A parameter that
+  names such a thing is refused by name, and the call saves nothing.
+- Another agent it names is one the person reaches, and never the Ranch
+  admin agent (`PeerService.connect`, `locate`, `setVisitors`).
+- Its reply holds no more than a reader gets: `toGrantedView(agent)` in
+  place of the row, and nothing from inside the pod.
+
+| Tool | For a person the setting let in |
+|---|---|
+| `update_agent` | `name` and `description` only; `llmCredentialId` and `knowledgeIds` are refused by name. Reply: reader view |
+| `stop_agent`, `start_agent` | allowed. Reply: reader view |
+| `get_agent_status` | `status` and the pod's `phase`, `ready`, `restartCount`, `containerWaitingReason`: what `GET agents/status` gives every account. No reason, deploy time, metrics or tool-server state |
+| `get_agent_env`, `list_agent_mcps`, `get_agent_logs` | refused: the inside of the pod, and the names of servers only an operator can list |
+| `set_agent_channels` | refused: a bot token decides who talks to the agent from outside |
+| `set_agent_visibility` | refused: public or private, and for which sites, is access |
+| `import_external_agent`, `import_agent_from_card` | refused: an outside peer added by a manager serves everybody who talks to the agent. Their own is `import_my_peer_by_address` |
+| `connect_agent_peer`, `refresh_agent_peer`, `remove_agent_peer`, `set_agent_peer_visitors` | allowed for a peer they reach; the Ranch admin agent at the other end is not found |
+
+The refused tools stay listed for a person whose setting holds them, and
+answer with the refusal; nothing in the editor marks them yet. An operator,
+and the person who created the agent, are not affected by any of this.
+
 **What this opens, by level.** The levels are a rule over area and effect
 (see "What the assistant offers a person"), and `manage-agent` tools are
 within a User's ceiling. Basic holds every tool that only reads, so a User

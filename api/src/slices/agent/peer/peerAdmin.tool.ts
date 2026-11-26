@@ -14,8 +14,10 @@ import {
   CONFIRM_SENTENCE,
   confirmed,
   manageCaller,
+  operatorOnly,
   PERSON_REFUSAL,
 } from '#/mcp/tooling';
+import type { IAgentData } from '#/agent/agent/domain/agent.types';
 import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { PeerService } from './domain/peer.service';
@@ -345,7 +347,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    return this.guard(httpRequest, agentId, async () => {
+    return this.guard(httpRequest, agentId, async (agent) => {
+      const refusal = operatorOnly(httpRequest, agent, OUTSIDE_PEER);
+      if (refusal) return refusal;
       const hadPeers = await this.hadPeers(httpRequest, agentId);
       const peer = await this.peers.connectByUrl(
         agentId,
@@ -402,7 +406,9 @@ export class PeerAdminTool implements IConditionallyListedTool {
     _context: unknown,
     httpRequest: Request,
   ): Promise<ToolResult> {
-    return this.guard(httpRequest, agentId, async () => {
+    return this.guard(httpRequest, agentId, async (agent) => {
+      const refusal = operatorOnly(httpRequest, agent, OUTSIDE_PEER);
+      if (refusal) return refusal;
       const hadPeers = await this.hadPeers(httpRequest, agentId);
       const peer = await this.peers.connectByCard(
         agentId,
@@ -592,7 +598,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
   private guard(
     httpRequest: Request,
     agentId: string,
-    run: () => Promise<ToolResult>,
+    run: (agent: IAgentData) => Promise<ToolResult>,
   ): Promise<ToolResult> {
     return withRefusalAdvice(async () => {
       if (callerPerson(httpRequest) === null) {
@@ -608,10 +614,23 @@ export class PeerAdminTool implements IConditionallyListedTool {
           message: 'Agent not found',
         });
       }
-      return run();
+      return run(agent);
     }, hintsFor(httpRequest));
   }
 }
+
+/**
+ * A peer outside the Ranch added by whoever manages the agent serves
+ * everybody who talks to it (`PeerService.externalAudience`): it is where
+ * their questions leave the installation, and its card is text in front of
+ * the agent on every turn. The address is vetted either way
+ * (`assertPublicPeerAddress`, `assertResolvesPublic`, `vetExternalCard`);
+ * who decides it for everybody is the point, and that is not a person the
+ * assistant setting let in (CLEAN-254). Their own outside colleague is
+ * `import_my_peer_by_address`, in the chat with that agent.
+ */
+const OUTSIDE_PEER =
+  'Connecting an agent outside this Ranch for everybody who talks to this agent';
 
 /**
  * What to try next, in the vocabulary of this tool set. Per caller: the

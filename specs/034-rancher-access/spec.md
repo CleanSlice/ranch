@@ -95,6 +95,15 @@ The rule since:
   (status, files, logs, secret names, connections); Standard adds changing
   them. Before this, both were empty for a User where agents are concerned.
 
+- An ability given this way is not an operator's power. It does not change
+  which model credential or knowledge bases an agent uses, connect it to a
+  messenger bot or to an agent outside the Ranch for everybody, or make it
+  public; and what the assistant says back about the agent is what a reader
+  of it sees. Abilities that are only that (the pod's environment, its log,
+  its tool servers, channels, visibility, importing an outside agent) answer
+  a User that they are for an Owner or Admin. `docs/agent-tools.md` has the
+  table.
+
 Read the passages marked "(amended, CLEAN-254)" below with this in place of
 "an agent the User created". The text is left as it was written.
 

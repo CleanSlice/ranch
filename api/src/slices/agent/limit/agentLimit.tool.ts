@@ -10,6 +10,7 @@ import {
   confirmed,
   manageCaller,
   ok,
+  operatorOnly,
   requireOperator,
   type ToolResult,
   callerParty,
@@ -446,6 +447,15 @@ export class AgentLimitTool implements IConditionallyListedTool {
     const found = await this.resolveAgent(args.agent, httpRequest);
     if ('refusal' in found) return found.refusal;
     const { agent } = found;
+    // Public, and for which sites: who can talk to the agent without
+    // signing in. That is a decision about access, and the assistant
+    // setting gives abilities, never access (CLEAN-254).
+    const notTheirs = operatorOnly(
+      httpRequest,
+      agent,
+      'Making an agent public or private, and choosing the sites that may embed it',
+    );
+    if (notTheirs) return notTheirs;
     const current = this.limits.getLimits(agent.id);
     const asItIs = {
       agentId: agent.id,

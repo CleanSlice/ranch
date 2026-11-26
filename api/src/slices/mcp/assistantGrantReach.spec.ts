@@ -102,14 +102,14 @@ const agent = (id: string, name: string, isAdmin = false): IAgentData =>
     templateId: 'tpl-1',
     llmCredentialId: 'llm-1',
     status: 'running',
-    statusReason: null,
-    workflowId: null,
+    workflowId: `wf-of-${name}`,
     config: { note: `config-of-${name}` },
     resources: { cpu: '1', memory: '1Gi' },
     isPublic: false,
     isAdmin,
     allowedOrigins: [],
-    knowledgeIds: [],
+    knowledgeIds: ['kb-1'],
+    statusReason: `why-${name}-failed`,
     debugEnabled: false,
     pinned: false,
     createdById: null,
@@ -145,10 +145,42 @@ const agents = {
   findById: (id: string) =>
     Promise.resolve(AGENTS.find((a) => a.id === id) ?? null),
   hasCreatedBy: () => Promise.resolve(false),
-} as unknown as IAgentGateway;
+  update: jest.fn((id: string, patch: Record<string, unknown>) => {
+    const row = AGENTS.find((a) => a.id === id)!;
+    const given = Object.fromEntries(
+      Object.entries(patch).filter(([, value]) => value !== undefined),
+    );
+    return Promise.resolve({ ...row, ...given });
+  }),
+} as unknown as IAgentGateway & { update: jest.Mock };
 
 const permission = new AgentPermissionService(agents, access);
-const agentDeploy = { restartAgent: jest.fn(() => Promise.resolve()) };
+const agentDeploy = {
+  restartAgent: jest.fn(() => Promise.resolve()),
+  stopAgent: jest.fn(() => Promise.resolve()),
+  deploy: jest.fn(() => Promise.resolve()),
+};
+/** What an operator is told about a pod; most of it is nobody else's. */
+const pods = {
+  list: () =>
+    Promise.resolve([
+      {
+        agentId: A,
+        phase: 'Running',
+        ready: true,
+        startedAt: '2026-11-26T09:00:00.000Z',
+        restartCount: 2,
+        terminating: false,
+        lastTerminationReason: 'OOMKilled',
+        containerWaitingReason: null,
+        message: 'node-7 pressure',
+      },
+    ]),
+  getMetrics: () => Promise.resolve({ node: 'node-7', cpu: '120m' }),
+};
+const toolState = {
+  detail: () => ({ phase: 'limited', servers: [{ name: 'crm-server' }] }),
+};
 const secretStore = {
   list: jest.fn(() => Promise.resolve({ provider: 'file', secrets: [] })),
 };
@@ -206,16 +238,16 @@ const instances = new Map<unknown, object>([
     AgentAdminTool,
     new AgentAdminTool(
       agents,
-      never('agentDeploy'),
+      agentDeploy as never,
       never('agentStatus'),
-      never('pods'),
+      pods as never,
       never('workflows'),
       never('files'),
       never('mcpResolver'),
       permission,
       access,
       never('pins'),
-      never('toolState'),
+      toolState as never,
     ),
   ],
   [
@@ -396,6 +428,9 @@ beforeEach(() => {
   assistantSettings.clear();
   roleSettings.clear();
   agentDeploy.restartAgent.mockClear();
+  agentDeploy.stopAgent.mockClear();
+  agentDeploy.deploy.mockClear();
+  agents.update.mockClear();
   secretStore.list.mockClear();
 });
 
@@ -692,4 +727,191 @@ describe('everybody else, as before', () => {
     });
     expect(manageOnly(await own.list())).toEqual(MANAGE_AGENT);
   });
+});
+
+/**
+ * A person who manages an agent only because the setting gave them a tool is
+ * not an operator. The tool does to the agent what it is named for. It does
+ * not bind the agent to something that person has no route to (a model
+ * credential, a knowledge base, a bot, an address outside the Ranch), it
+ * does not change who reaches the agent, and it answers with no more than a
+ * reader gets.
+ */
+describe('a tool the setting gave is not an operator’s power', () => {
+  /** What only an operator is told about an agent. */
+  const OPERATOR_ONLY = [
+    'config-of-alpha',
+    'llm-1',
+    'kb-1',
+    'wf-of-alpha',
+    'why-alpha-failed',
+    'createdById',
+  ];
+  const withNone = (text: string) =>
+    OPERATOR_ONLY.filter((secret) => text.includes(secret));
+
+  describe('update_agent', () => {
+    beforeEach(() => pick(USER.id, ['update_agent']));
+
+    it('renames and describes, and answers with the reader’s view of the agent', async () => {
+      const said = await session().call(
+        'update_agent',
+        { id: A, name: 'alpha-two', description: 'Answers orders.' },
+        as('user'),
+      );
+      expect(agents.update).toHaveBeenCalledTimes(1);
+      expect(agents.update.mock.calls[0][1]).toMatchObject({
+        name: 'alpha-two',
+        llmCredentialId: undefined,
+        knowledgeIds: undefined,
+      });
+      expect(said).toContain('alpha-two');
+      expect(withNone(said)).toEqual([]);
+    });
+
+    it.each([
+      ['llmCredentialId', { llmCredentialId: 'llm-of-somebody' }],
+      ['llmCredentialId', { llmCredentialId: null }],
+      ['knowledgeIds', { knowledgeIds: ['kb-of-somebody'] }],
+      ['knowledgeIds', { knowledgeIds: [] }],
+    ])(
+      'refuses %s by name, and saves nothing of the call',
+      async (field, patch) => {
+        const said = await session().call(
+          'update_agent',
+          { id: A, name: 'alpha-two', ...patch },
+          as('user'),
+        );
+        expect(said).toContain(`(${field})`);
+        expect(said).toContain('is for an Owner or Admin');
+        expect(agents.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('an agent out of reach is still not found, whatever the call names', async () => {
+      const said = await session().call(
+        'update_agent',
+        { id: B, llmCredentialId: 'llm-of-somebody' },
+        as('user'),
+      );
+      expect(said).toMatch(/not found/i);
+      expect(said).not.toContain('Owner or Admin');
+    });
+
+    it('an Admin changes both bindings and gets the row whole', async () => {
+      const said = await session().call(
+        'update_agent',
+        { id: A, llmCredentialId: 'llm-2', knowledgeIds: ['kb-2'] },
+        as('admin'),
+      );
+      expect(agents.update.mock.calls[0][1]).toMatchObject({
+        llmCredentialId: 'llm-2',
+        knowledgeIds: ['kb-2'],
+      });
+      expect(said).toContain('config-of-alpha');
+      expect(said).toContain('llm-2');
+    });
+  });
+
+  describe('what a reply holds', () => {
+    it.each([
+      ['stop_agent', { id: A, confirm: true }],
+      ['start_agent', { id: A }],
+    ])(
+      '%s hands back the reader’s view, to an Admin the row',
+      async (name, args) => {
+        pick(USER.id, [name]);
+        const { call } = session();
+
+        const forUser = await call(name, args, as('user'));
+        expect(forUser).toContain('alpha');
+        expect(withNone(forUser)).toEqual([]);
+
+        const forAdmin = await call(name, args, as('admin'));
+        expect(forAdmin).toContain('config-of-alpha');
+        expect(forAdmin).toContain('llm-1');
+      },
+    );
+
+    it('get_agent_status says whether it is up, and nothing about the inside of the pod', async () => {
+      pick(USER.id, ['get_agent_status']);
+      const { call } = session();
+
+      const forUser = JSON.parse(
+        await call('get_agent_status', { id: A }, as('user')),
+      ) as Record<string, unknown>;
+      expect(forUser).toEqual({
+        id: A,
+        name: 'alpha',
+        status: 'running',
+        pod: {
+          phase: 'Running',
+          ready: true,
+          restartCount: 2,
+          containerWaitingReason: null,
+        },
+      });
+
+      const forAdmin = await call('get_agent_status', { id: A }, as('admin'));
+      for (const inside of [
+        'why-alpha-failed',
+        'OOMKilled',
+        'node-7',
+        'crm-server',
+      ]) {
+        expect(forAdmin).toContain(inside);
+      }
+    });
+  });
+
+  // Each of these stays listed for the person: the setting holds it. What
+  // it would do is an operator's, so it answers with that and touches
+  // nothing. `never(...)` stands behind every one of them.
+  const REFUSED: Array<[string, Record<string, unknown>]> = [
+    ['get_agent_env', { id: A }],
+    ['list_agent_mcps', { id: A }],
+    ['get_agent_logs', { agentId: A }],
+    ['set_agent_channels', { agentId: A, channels: [] }],
+    ['set_agent_visibility', { agent: A, isPublic: true, confirm: true }],
+    ['import_external_agent', { agentId: A, url: 'https://other.example' }],
+    ['import_agent_from_card', { agentId: A, card: '{}' }],
+  ];
+
+  it.each(REFUSED)(
+    '%s is refused as an operator’s, with nothing reached',
+    async (name, args) => {
+      pick(USER.id, [name]);
+      const { list, call } = session();
+      expect(await list(as('user'))).toContain(name);
+
+      const said = await call(name, args, as('user'));
+      expect(said).toContain('is for an Owner or Admin');
+      expect(said).not.toContain('was reached');
+    },
+  );
+
+  it.each(REFUSED)(
+    '%s: an agent out of reach is not found first, in the usual words',
+    async (name, args) => {
+      pick(USER.id, [name]);
+      const elsewhere = Object.fromEntries(
+        Object.entries(args).map(([key, value]) => [
+          key,
+          value === A ? B : value,
+        ]),
+      );
+      const said = await session().call(name, elsewhere, as('user'));
+      expect(said).toMatch(/not found/i);
+      expect(said).not.toContain('Owner or Admin');
+    },
+  );
+
+  it.each(REFUSED)(
+    '%s still gets to its service for an Admin',
+    async (name, args) => {
+      const said = await session().call(name, args, as('admin'));
+      expect(said).not.toContain('is for an Owner or Admin');
+      expect(said).toContain('was reached');
+    },
+  );
 });

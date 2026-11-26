@@ -7,6 +7,7 @@ import {
   callerHoldsManageTools,
   manageCaller,
   ok,
+  operatorOnly,
   type ToolResult,
 } from '#/mcp/tooling';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
@@ -86,6 +87,14 @@ export class LogTool implements IConditionallyListedTool {
       args.agentId,
     );
     if (!agent) return agentNotFound(httpRequest, args.agentId);
+    // A pod log is the inside of the pod: addresses, errors of the
+    // installation's services, and lines about other people's turns.
+    const refusal = operatorOnly(
+      httpRequest,
+      agent,
+      'The log of an agent’s pod',
+    );
+    if (refusal) return refusal;
 
     const lines = this.logService.parseTail(args.lines ?? DEFAULT_TOOL_TAIL);
     const read = await this.logService.readPodLogs(

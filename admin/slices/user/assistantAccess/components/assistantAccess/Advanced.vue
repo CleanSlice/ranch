@@ -20,11 +20,13 @@ import {
 } from '#assistantAccess/domain';
 import {
   LEVEL_LABELS,
+  OWN_AGENTS_ONLY_LABEL,
   applyLevel,
   areaState,
   ceilingNames,
   filterAreas,
   isAbove,
+  isOwnAgentsOnly,
   matchingLevel,
   offeredNames,
   setArea,
@@ -338,7 +340,19 @@ function save() {
                 :disabled="lockedReason(ability) !== null"
                 @update:model-value="(value: boolean | 'indeterminate') => toggleAbility(ability, value === true)"
               />
-              <span class="min-w-0 flex-1 break-words">{{ ability.title }}</span>
+              <span class="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                <span class="max-w-full break-words">{{ ability.title }}</span>
+                <!-- Tickable and counted: the person who made an agent uses
+                     it there. The tick opens it on no other agent
+                     (CLEAN-257). -->
+                <span
+                  v-if="isOwnAgentsOnly(ability, role)"
+                  class="rounded-full border px-1.5 text-[11px] text-muted-foreground"
+                  data-ability-own-agents
+                >
+                  {{ OWN_AGENTS_ONLY_LABEL }}
+                </span>
+              </span>
               <span class="flex shrink-0 flex-wrap justify-end gap-1 text-[11px] text-muted-foreground">
                 <span v-if="freshNames.has(ability.name)" class="rounded-full bg-primary/10 px-1.5 text-primary">new</span>
                 <span v-if="lockedReason(ability)" class="rounded-full border px-1.5">{{ lockedReason(ability) }}</span>

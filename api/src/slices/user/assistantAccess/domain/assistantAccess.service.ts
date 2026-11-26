@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { McpRegistryService } from '#/mcp/services/mcp-registry.service';
 import { TOOL_TOPIC_INFO, type ToolTopic } from '#/mcp/decorators/topics';
 import { isToolAudience } from '#/mcp/decorators';
+import { CREATOR_OR_OPERATOR_TOOLS } from '#/mcp/tooling';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { IUserGateway } from '#/user/user/domain';
 import { UserRoleTypes } from '#/user/user/domain/user.types';
@@ -112,6 +113,11 @@ export interface IAssistantCatalogAbility {
   destructive: boolean;
   minRole: UserRoleTypes;
   levels: AssistantLevel[];
+  /**
+   * For a person below Admin this works on agents they created and on no
+   * other, also when it was ticked for them (CLEAN-254, CLEAN-257).
+   */
+  ownAgentsOnly: boolean;
 }
 
 export interface IAssistantCatalogArea {
@@ -133,11 +139,34 @@ export interface IAssistantLoss {
   byArea: { area: string; abilities: number }[];
 }
 
+/**
+ * How one ability of a person's role stands for them (CLEAN-257): theirs to
+ * ask for, theirs on agents they created only, or not theirs.
+ */
+export type AssistantAbilityStateTypes =
+  | 'included'
+  | 'own_agents_only'
+  | 'not_included';
+
+export interface IAssistantMyAbility {
+  name: string;
+  title: string;
+  area: ToolTopic;
+  state: AssistantAbilityStateTypes;
+}
+
 export interface IAssistantMine {
   enabled: boolean;
   level: AssistantLevelOrCustom | 'owner';
   matchesLevel: AssistantLevel | null;
   areas: IAssistantAreaCount[];
+  /**
+   * Every ability of the person's role with how it stands for them
+   * (CLEAN-257). `areas`, `leftOut` and `ownAgentsOnly` are read off this
+   * one list, so a count and a name cannot disagree. Nothing above the
+   * role, and nobody else's.
+   */
+  abilities: IAssistantMyAbility[];
   /** What the person's role has and their setting leaves out. */
   leftOut: { name: string; title: string; area: ToolTopic }[];
   /**
@@ -597,6 +626,7 @@ export class AssistantAccessService {
       destructive: ability.destructive,
       minRole: ability.minRole,
       levels: ability.governed ? levelsOf(ability) : [],
+      ownAgentsOnly: CREATOR_OR_OPERATOR_TOOLS.has(ability.name),
     });
     const areas = new Map<ToolTopic, IAssistantCatalogArea>();
     for (const ability of abilities.filter((a) => a.governed)) {
@@ -796,9 +826,7 @@ export class AssistantAccessService {
         enabled: true,
         level: 'owner',
         matchesLevel: null,
-        areas: this.areaCounts(role, all),
-        leftOut: [],
-        ownAgentsOnly: [],
+        ...this.mineOf(role, all, new Set()),
       };
     }
     const effective = await this.effectiveFor(party.userId, role);
@@ -808,27 +836,58 @@ export class AssistantAccessService {
         level: effective.level,
         matchesLevel: null,
         areas: [],
+        abilities: [],
         leftOut: [],
         ownAgentsOnly: [],
       };
     }
-    const offered = this.offeredNames(role, effective);
-    const describe = (a: IAbility) => ({
-      name: a.name,
-      title: a.title,
-      area: a.area,
-    });
     return {
       enabled: true,
       level: effective.level,
       matchesLevel: this.resolved(role, effective).matchesLevel,
       // Counted as theirs: what they can ask for about the agents they are
       // shown. An ability good for their own agents only is named apart.
-      areas: this.areaCounts(role, this.usableNames(role, effective)),
-      leftOut: this.ceilingOf(role)
-        .filter((a) => !offered.has(a.name))
-        .map(describe),
-      ownAgentsOnly: this.ownAgentsOnly(role, effective).map(describe),
+      ...this.mineOf(
+        role,
+        this.usableNames(role, effective),
+        new Set(this.ownAgentsOnly(role, effective).map((a) => a.name)),
+      ),
+    };
+  }
+
+  /**
+   * One pass over the role's ceiling: each ability is the person's, theirs
+   * on agents they created only, or not theirs. The counts, the two lists
+   * the assistant explains from and the list the console draws all come
+   * out of it (CLEAN-257).
+   */
+  private mineOf(
+    role: UserRoleTypes,
+    usable: ReadonlySet<string>,
+    ownOnly: ReadonlySet<string>,
+  ): Pick<IAssistantMine, 'areas' | 'abilities' | 'leftOut' | 'ownAgentsOnly'> {
+    const abilities: IAssistantMyAbility[] = this.ceilingOf(role).map((a) => ({
+      name: a.name,
+      title: a.title,
+      area: a.area,
+      state: usable.has(a.name)
+        ? 'included'
+        : ownOnly.has(a.name)
+          ? 'own_agents_only'
+          : 'not_included',
+    }));
+    const named = (state: AssistantAbilityStateTypes) =>
+      abilities
+        .filter((a) => a.state === state)
+        .map(({ name, title, area }) => ({ name, title, area }));
+    return {
+      areas: this.areaCounts(
+        role,
+        new Set(named('included').map((a) => a.name)),
+      ),
+      abilities,
+      leftOut: named('not_included'),
+      ownAgentsOnly: named('own_agents_only'),
     };
   }
 

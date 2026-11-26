@@ -36,7 +36,36 @@ function build(
       level: 'basic',
       matchesLevel: null,
       areas: [{ key: 'agents', title: 'Agents', offered: 2, available: 4 }],
+      abilities: [
+        {
+          name: 'restart_agent',
+          title: 'Restart an agent',
+          area: 'agents',
+          state: 'own_agents_only',
+        },
+        {
+          name: 'list_agents',
+          title: 'List agents',
+          area: 'agents',
+          state: 'included',
+        },
+        {
+          name: 'delete_agent',
+          title: 'Delete an agent',
+          area: 'agents',
+          state: 'not_included',
+        },
+        {
+          name: 'list_skills',
+          title: 'List skills',
+          area: 'skills',
+          state: 'included',
+        },
+      ],
       leftOut: [
+        { name: 'delete_agent', title: 'Delete an agent', area: 'agents' },
+      ],
+      ownAgentsOnly: [
         { name: 'restart_agent', title: 'Restart an agent', area: 'agents' },
       ],
     })),
@@ -159,14 +188,36 @@ describe('AssistantAccessController: refusals', () => {
 });
 
 describe('AssistantAccessController: what a person is told about themselves', () => {
-  it('level and counts, not the names of what was left out', async () => {
+  it('level, counts, and each area’s abilities by title with how they stand', async () => {
     const { controller, service } = build();
     const mine = await controller.mine(as('user-1', 'User'));
+    // Exactly this: the two lists the assistant explains from stay with the
+    // tool, and an ability of an area the answer does not carry is dropped.
     expect(mine).toEqual({
       enabled: true,
       level: 'basic',
       matchesLevel: null,
-      areas: [{ key: 'agents', title: 'Agents', offered: 2, available: 4 }],
+      areas: [
+        {
+          key: 'agents',
+          title: 'Agents',
+          offered: 2,
+          available: 4,
+          abilities: [
+            {
+              name: 'delete_agent',
+              title: 'Delete an agent',
+              state: 'not_included',
+            },
+            { name: 'list_agents', title: 'List agents', state: 'included' },
+            {
+              name: 'restart_agent',
+              title: 'Restart an agent',
+              state: 'own_agents_only',
+            },
+          ],
+        },
+      ],
     });
     expect(service.myAccess).toHaveBeenCalledWith({
       kind: 'person',

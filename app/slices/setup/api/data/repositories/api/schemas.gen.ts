@@ -5122,6 +5122,11 @@ export const AbilityDtoSchema = {
         enum: ["basic", "standard", "full"],
       },
     },
+    ownAgentsOnly: {
+      type: "boolean",
+      description:
+        "For a person below Admin this works on agents they created and on no other, also when it is ticked for them.",
+    },
   },
   required: [
     "name",
@@ -5131,6 +5136,7 @@ export const AbilityDtoSchema = {
     "destructive",
     "minRole",
     "levels",
+    "ownAgentsOnly",
   ],
 } as const;
 
@@ -5351,6 +5357,27 @@ export const AssistantAccountDtoSchema = {
   ],
 } as const;
 
+export const MyAssistantAbilityDtoSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      description: "The ability’s name: stable, never shown.",
+    },
+    title: {
+      type: "string",
+      description: "What it is, in words. Shown as received.",
+    },
+    state: {
+      type: "string",
+      enum: ["included", "own_agents_only", "not_included"],
+      description:
+        "included: the assistant does this for the caller. own_agents_only: only on agents the caller created. not_included: the caller’s role could have it and their setting leaves it out.",
+    },
+  },
+  required: ["name", "title", "state"],
+} as const;
+
 export const AssistantAreaCountDtoSchema = {
   type: "object",
   properties: {
@@ -5362,12 +5389,22 @@ export const AssistantAreaCountDtoSchema = {
     },
     offered: {
       type: "number",
+      description: "How many of `abilities` are `included`.",
     },
     available: {
       type: "number",
+      description: "How many abilities the caller’s role has here.",
+    },
+    abilities: {
+      description:
+        "Every ability of the caller’s role in this area, by title. Nothing above their role and nothing about anybody else.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/MyAssistantAbilityDto",
+      },
     },
   },
-  required: ["key", "title", "offered", "available"],
+  required: ["key", "title", "offered", "available", "abilities"],
 } as const;
 
 export const MyAssistantAccessDtoSchema = {

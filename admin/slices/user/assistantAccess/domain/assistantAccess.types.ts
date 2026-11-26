@@ -78,7 +78,36 @@ export interface IMyAssistantAccess {
   enabled: boolean;
   level: AssistantLevelOrCustom | 'owner';
   matchesLevel: AssistantLevel | null;
-  areas: { key: string; title: string; offered: number; available: number }[];
+  areas: IMyAssistantArea[];
+}
+
+/** How one ability of the person's role stands for them. */
+export type AssistantAbilityState = 'included' | 'own_agents_only' | 'not_included';
+
+/** The order a card lists them in: theirs, theirs on own agents, not theirs. */
+export const ASSISTANT_ABILITY_STATES: readonly AssistantAbilityState[] = [
+  'included',
+  'own_agents_only',
+  'not_included',
+];
+
+export interface IMyAbility {
+  name: string;
+  /** From the server, shown as received. */
+  title: string;
+  state: AssistantAbilityState;
+}
+
+export interface IMyAssistantArea {
+  key: string;
+  title: string;
+  offered: number;
+  available: number;
+  /**
+   * Every ability of the person's role here, in the order of
+   * `ASSISTANT_ABILITY_STATES`. Empty from an API that sends counts only.
+   */
+  abilities: IMyAbility[];
 }
 
 /** One thing the assistant can do for a person. */
@@ -92,6 +121,11 @@ export interface IAbility {
   minRole: PersonRole;
   /** The levels it belongs to, lowest first. */
   levels: AssistantLevel[];
+  /**
+   * For a person below Admin it works on agents they created and on no
+   * other, also when it is ticked for them (CLEAN-257).
+   */
+  ownAgentsOnly: boolean;
 }
 
 export interface IAbilityArea {

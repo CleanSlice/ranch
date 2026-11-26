@@ -3793,7 +3793,7 @@ export class AssistantAccessService {
   }
 
   /**
-   * What the assistant offers the person asking: whether it is on, their level, and how much of each area it covers. Nothing about any other account, and not who set it.
+   * What the assistant offers the person asking: whether it is on, their level, and area by area every ability of their role by title: included, working only on agents they created, or not included. Nothing about any other account, nothing above their role, and not who set it.
    */
   public static getMyAssistantAccess<ThrowOnError extends boolean = false>(
     options?: Options<GetMyAssistantAccessData, ThrowOnError>,

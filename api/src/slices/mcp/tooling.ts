@@ -454,6 +454,26 @@ export function operatorOnly(
 }
 
 /**
+ * The `manage-agent` tools that refuse with `operatorOnly` before doing
+ * anything at all, as opposed to those that refuse one argument or shorten
+ * a reply. For a person below Admin each of these works on agents they
+ * created and on no other, whether or not it was ticked for them, and the
+ * console that hands abilities out says so beside each (CLEAN-257).
+ *
+ * A tool that starts refusing whole this way is added here in the same
+ * change.
+ */
+export const CREATOR_OR_OPERATOR_TOOLS: ReadonlySet<string> = new Set([
+  'get_agent_env',
+  'get_agent_logs',
+  'import_agent_from_card',
+  'import_external_agent',
+  'list_agent_mcps',
+  'set_agent_channels',
+  'set_agent_visibility',
+]);
+
+/**
  * The single answer to "may this caller use a tool of that audience". The
  * catalogue, tools/call and the listing hooks all ask here. An audience
  * nobody declared allows nobody.

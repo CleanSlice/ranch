@@ -245,8 +245,10 @@ export class AssistantAccessController {
     operationId: 'getMyAssistantAccess',
     summary:
       'What the assistant offers the person asking: whether it is on, ' +
-      'their level, and how much of each area it covers. Nothing about any ' +
-      'other account, and not who set it.',
+      'their level, and area by area every ability of their role by title: ' +
+      'included, working only on agents they created, or not included. ' +
+      'Nothing about any other account, nothing above their role, and not ' +
+      'who set it.',
   })
   @ApiOkResponse({ type: MyAssistantAccessDto })
   async mine(@Req() req: AuthedRequest): Promise<MyAssistantAccessDto> {
@@ -254,13 +256,20 @@ export class AssistantAccessController {
     const mine = await this.access.myAccess(
       editor.kind === 'person' ? editor : null,
     );
-    // The names of what is left out are for the assistant's own explanation
-    // (the tool); the console shows counts.
+    // A count tells nobody what they may ask for (CLEAN-257): each area
+    // carries its abilities by title. The same list the assistant explains
+    // from (`get_my_assistant_access`), so the card and the chat agree.
     return {
       enabled: mine.enabled,
       level: mine.level,
       matchesLevel: mine.matchesLevel,
-      areas: mine.areas,
+      areas: mine.areas.map((area) => ({
+        ...area,
+        abilities: mine.abilities
+          .filter((ability) => ability.area === area.key)
+          .map(({ name, title, state }) => ({ name, title, state }))
+          .sort((a, b) => a.title.localeCompare(b.title)),
+      })),
     };
   }
 }

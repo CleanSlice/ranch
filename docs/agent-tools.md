@@ -317,8 +317,17 @@ person; `operatorOnly(httpRequest, agent, what)` is the refusal):
 | `connect_agent_peer`, `refresh_agent_peer`, `remove_agent_peer`, `set_agent_peer_visitors` | allowed for a peer they reach; the Ranch admin agent at the other end is not found |
 
 The refused tools stay listed for a person whose setting holds them, and
-answer with the refusal; nothing in the editor marks them yet. An operator,
-and the person who created the agent, are not affected by any of this.
+answer with the refusal. An operator, and the person who created the agent,
+are not affected by any of this: so the seven stay within a User's role
+(`minRole` is still User, they are tickable and counted), and the editor
+writes "Only on agents they created" beside each when the pick is for a
+User (CLEAN-257). The seven are named once, in `CREATOR_OR_OPERATOR_TOOLS`
+(`#/mcp/tooling`); the catalogue answers `ownAgentsOnly: true` for them. A
+tool that starts refusing whole with `operatorOnly` is added to that list in
+the same change, and `creatorOrOperatorTools.spec.ts` fails until it is.
+
+The person's own card and `get_my_assistant_access` do not use that list
+yet: a User whose custom pick holds one of the seven is told it is included.
 
 **What a level means for a User.** The levels are a rule over area and
 effect (see "What the assistant offers a person"), and by that rule Basic

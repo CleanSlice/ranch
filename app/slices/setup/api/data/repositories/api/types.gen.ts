@@ -2319,6 +2319,10 @@ export type AbilityDto = {
    */
   minRole: "Owner" | "Admin" | "User";
   levels: Array<"basic" | "standard" | "full">;
+  /**
+   * For a person below Admin this works on agents they created and on no other, also when it is ticked for them.
+   */
+  ownAgentsOnly: boolean;
 };
 
 export type AbilityAreaDto = {
@@ -2415,11 +2419,36 @@ export type AssistantAccountDto = {
   ceiling: Array<string> | null;
 };
 
+export type MyAssistantAbilityDto = {
+  /**
+   * The ability’s name: stable, never shown.
+   */
+  name: string;
+  /**
+   * What it is, in words. Shown as received.
+   */
+  title: string;
+  /**
+   * included: the assistant does this for the caller. own_agents_only: only on agents the caller created. not_included: the caller’s role could have it and their setting leaves it out.
+   */
+  state: "included" | "own_agents_only" | "not_included";
+};
+
 export type AssistantAreaCountDto = {
   key: string;
   title: string;
+  /**
+   * How many of `abilities` are `included`.
+   */
   offered: number;
+  /**
+   * How many abilities the caller’s role has here.
+   */
   available: number;
+  /**
+   * Every ability of the caller’s role in this area, by title. Nothing above their role and nothing about anybody else.
+   */
+  abilities: Array<MyAssistantAbilityDto>;
 };
 
 export type MyAssistantAccessDto = {

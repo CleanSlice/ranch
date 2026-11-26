@@ -706,6 +706,163 @@ describe('what a person is told about themselves', () => {
   });
 });
 
+describe('each ability of a person’s role, and how it stands for them', () => {
+  const states = (mine: { abilities: { name: string; state: string }[] }) =>
+    Object.fromEntries(mine.abilities.map((a) => [a.name, a.state]));
+
+  /** The counts are the list counted, area by area: never a second rule. */
+  const expectCountsToFollow = (mine: {
+    areas: { key: string; offered: number; available: number }[];
+    abilities: { area: string; state: string }[];
+  }) => {
+    for (const area of mine.areas) {
+      const here = mine.abilities.filter((a) => a.area === area.key);
+      expect(area.available).toBe(here.length);
+      expect(area.offered).toBe(
+        here.filter((a) => a.state === 'included').length,
+      );
+    }
+    expect(new Set(mine.abilities.map((a) => a.area))).toEqual(
+      new Set(mine.areas.map((a) => a.key)),
+    );
+  };
+
+  it('a User on Basic: what reads and what is personal, the rest not included', async () => {
+    const { service } = harness();
+    const mine = await service.myAccess(person(USER));
+    expect(mine.level).toBe('basic');
+    expect(states(mine)).toEqual({
+      list_agents: 'included',
+      pin_agent: 'included',
+      restart_agent: 'not_included',
+      delete_agent: 'not_included',
+    });
+    expect(mine.abilities[0]).toEqual({
+      name: 'list_agents',
+      title: 'Title of list_agents',
+      area: 'agents',
+      state: 'included',
+    });
+    expectCountsToFollow(mine);
+  });
+
+  it('a User on a built-in level above Basic: agent abilities on their own agents only', async () => {
+    const { service } = harness();
+    await service.setRole(asOwner, UserRoleTypes.User, { level: 'standard' });
+    const mine = await service.myAccess(person(USER));
+    expect(states(mine)).toEqual({
+      list_agents: 'included',
+      pin_agent: 'included',
+      restart_agent: 'own_agents_only',
+      delete_agent: 'own_agents_only',
+    });
+    expectCountsToFollow(mine);
+  });
+
+  it('a User with a custom pick: what was ticked is included, the rest is not', async () => {
+    const { service } = harness();
+    await service.setAccount(asOwner, USER.id, {
+      level: 'custom',
+      on: ['list_agents', 'restart_agent'],
+    });
+    const mine = await service.myAccess(person(USER));
+    expect(states(mine)).toEqual({
+      list_agents: 'included',
+      pin_agent: 'not_included',
+      restart_agent: 'included',
+      delete_agent: 'not_included',
+    });
+    expectCountsToFollow(mine);
+  });
+
+  it('never names what is above the role, or not a setting’s to give', async () => {
+    const { service } = harness();
+    await service.setRole(asOwner, UserRoleTypes.User, { level: 'full' });
+    const user = await service.myAccess(person(USER));
+    expect(user.abilities.map((a) => a.name).sort()).toEqual([
+      'delete_agent',
+      'list_agents',
+      'pin_agent',
+      'restart_agent',
+    ]);
+    const admin = await service.myAccess(person(ADMIN));
+    const adminNames = admin.abilities.map((a) => a.name);
+    expect(adminNames).not.toContain('delete_user');
+    expect(adminNames).not.toContain('query_knowledge');
+    expect(adminNames).not.toContain('ask_agent');
+  });
+
+  it('an Admin: everything an Admin can have, nothing held back to their own agents', async () => {
+    const { service } = harness();
+    const full = await service.myAccess(person(ADMIN));
+    expect(new Set(Object.values(states(full)))).toEqual(new Set(['included']));
+    expect(full.abilities).toHaveLength(8);
+    expectCountsToFollow(full);
+
+    await service.setRole(asOwner, UserRoleTypes.Admin, { level: 'standard' });
+    const standard = await service.myAccess(person(ADMIN));
+    expect(states(standard)).toEqual({
+      list_agents: 'included',
+      pin_agent: 'included',
+      restart_agent: 'included',
+      delete_agent: 'included',
+      list_knowledges: 'included',
+      create_knowledge: 'included',
+      list_users: 'included',
+      create_user: 'not_included',
+    });
+    expectCountsToFollow(standard);
+  });
+
+  it('the Owner: every governed ability, all included', async () => {
+    const { service } = harness();
+    const mine = await service.myAccess(person(OWNER));
+    expect(mine.abilities).toHaveLength(9);
+    expect(states(mine).delete_user).toBe('included');
+    expect(new Set(Object.values(states(mine)))).toEqual(new Set(['included']));
+    expectCountsToFollow(mine);
+  });
+
+  it('the two lists the assistant explains from are this list, told apart', async () => {
+    const { service } = harness();
+    await service.setRole(asOwner, UserRoleTypes.User, { level: 'standard' });
+    await service.setRole(asOwner, UserRoleTypes.Admin, { level: 'basic' });
+    for (const who of [USER, ADMIN]) {
+      const mine = await service.myAccess(person(who));
+      const of = (state: string) =>
+        mine.abilities.filter((a) => a.state === state).map((a) => a.name);
+      expect(mine.leftOut.map((a) => a.name)).toEqual(of('not_included'));
+      expect(mine.ownAgentsOnly.map((a) => a.name)).toEqual(
+        of('own_agents_only'),
+      );
+    }
+  });
+
+  it('off is off: nothing is listed', async () => {
+    const { service } = harness();
+    await service.setRole(asOwner, UserRoleTypes.User, { enabled: false });
+    expect((await service.myAccess(person(USER))).abilities).toEqual([]);
+  });
+});
+
+describe('the catalogue says which abilities stay with the agent’s creator', () => {
+  it('marks the tools that refuse a person who was only given them', () => {
+    const { service } = harness([
+      ...TOOLS,
+      ['get_agent_logs', 'agents', 'read', 'manage-agent'],
+    ]);
+    const agents = service.catalog().areas.find((a) => a.key === 'agents')!;
+    const marked = (name: string) =>
+      agents.abilities.find((a) => a.name === name)?.ownAgentsOnly;
+    expect(marked('get_agent_logs')).toBe(true);
+    expect(marked('restart_agent')).toBe(false);
+    // Still a User's: the creator uses it, so the role's ceiling keeps it.
+    expect(
+      agents.abilities.find((a) => a.name === 'get_agent_logs')?.minRole,
+    ).toBe(UserRoleTypes.User);
+  });
+});
+
 describe('the level the hub says beside an acting token', () => {
   it('only for the assistant', async () => {
     const { service } = harness();

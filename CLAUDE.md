@@ -38,6 +38,25 @@ poll the gitops `main` for the new `chore(images)` commit, give the rollout a
 few minutes more, and only then re-test on dev. A check before that runs
 against the old image and proves nothing.
 
+**Running tests:** while you work, run only the tests you touched; run the whole
+suite once, before the PR, and leave the rest to CI, which runs everything on
+every pull request. In `api`:
+`cd api && NODE_OPTIONS=--experimental-vm-modules npx jest <path>` — a spec
+file, a slice (`src/slices/agent`), or `--changedSince=origin/main` for whatever
+your branch changed; the same command with no path is the whole suite. In a
+console: `bun test slices/<slice>`. Never `bun run test` while a dev API is
+running: its `pretest` regenerates the Prisma client under it. The api suite is
+capped at four workers (`maxWorkers` in `api/package.json`), and the number has
+a reason: every jest worker type-checks the whole API, holds 1.5 GB from its
+first file and about 3 GB by the end of a run. Four workers finish the suite in
+43 s and peak at 12 GB; jest's default of one worker per logical CPU, less one,
+is 23 of them on a 24-thread machine with 31 GB, and agents finishing at the
+same time multiplied it (CLEAN-251). A task list that sends every checkpoint to
+the full suite brings that back: name the affected specs there instead. The
+speckit tasks template says the same, in
+`.specify/templates/overrides/tasks-template.md` — an override, so that a
+speckit reinstall, which restores the core templates, keeps it.
+
 **i18n (`app` console):** read `docs/i18n.md` before adding any user-visible
 string. `en.json` per slice is the source, `bun run i18n:sync` generates `ru`,
 templates use the injected `$t`, and copy decided in script travels as a key.

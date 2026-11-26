@@ -7,6 +7,9 @@
     "badge_title": "Your level with the assistant",
     "areas_title": "What the assistant can do for you",
     "area_count": "{offered} of {available}",
+    "ability_included": "included",
+    "ability_own_agents": "only on agents you created",
+    "ability_not_included": "not included",
     "who_decides": "The Owner decides what the assistant can do for you."
   }
 }

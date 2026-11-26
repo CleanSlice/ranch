@@ -57,7 +57,23 @@ function fake(over: Partial<AssistantAccessService> = {}) {
       return account({ userId: id, level: 'basic', source: 'account', version: 'a2' });
     },
     resetAccount: async (id: string) => (calls.push(`reset ${id}`), account({ userId: id })),
-    mine: async () => ({ enabled: true, level: 'basic', matchesLevel: null, areas: [] }),
+    mine: async () => ({
+      enabled: true,
+      level: 'basic',
+      matchesLevel: null,
+      areas: [
+        {
+          key: 'agents',
+          title: 'Agents',
+          offered: 1,
+          available: 2,
+          abilities: [
+            { name: 'list_agents', title: 'List agents', state: 'included' },
+            { name: 'restart_agent', title: 'Restart an agent', state: 'not_included' },
+          ],
+        },
+      ],
+    }),
     ...over,
   } as unknown as AssistantAccessService;
   return { store: assistantAccessStoreSetup(() => service), calls };
@@ -96,6 +112,11 @@ describe('the assistant access store', () => {
     const { store } = fake();
     await store.fetchMine();
     expect(store.mine.value?.level).toBe('basic');
+    // The card draws the abilities from this record, never from a fetch of its own.
+    expect(store.mine.value?.areas[0]?.abilities.map((a) => a.state)).toEqual([
+      'included',
+      'not_included',
+    ]);
     store.resetForAccount();
     expect(store.mine.value).toBe(null);
   });

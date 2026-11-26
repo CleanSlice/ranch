@@ -7,6 +7,9 @@
     "badge_title": "Ваш уровень доступа к ассистенту",
     "areas_title": "Что ассистент может для вас сделать",
     "area_count": "{offered} из {available}",
+    "ability_included": "включено",
+    "ability_own_agents": "только для созданных вами агентов",
+    "ability_not_included": "не включено",
     "who_decides": "Владелец определяет, что ассистент может для вас делать."
   }
 }

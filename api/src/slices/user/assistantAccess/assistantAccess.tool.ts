@@ -63,6 +63,16 @@ const OWN_AGENTS_ONLY =
   'account. Do not say it is not included, and do not stop at "the Owner ' +
   'decides".';
 
+const NEVER_ON_OTHER_AGENTS =
+  'These work only on agents this person created themselves, the ones in ' +
+  '`agentsYouCreated` (empty: they have created no agent), and no setting ' +
+  'opens them for any other agent. They are not counted in `areas`. When ' +
+  'the person asks for one of them on an agent that is not in ' +
+  '`agentsYouCreated`, answer in one sentence: this works only on agents ' +
+  'you created, and this agent was not created by you; for other agents ' +
+  'it is done by an Owner or Admin. Do not say the Owner can tick it for ' +
+  'them, and do not say it is not included.';
+
 const WHO_DECIDES =
   'The Owner of this installation decides what the assistant can do for ' +
   'each person.';
@@ -360,7 +370,13 @@ export class AssistantAccessTool {
       'works only on agents you created, and this agent was not created ' +
       'by you; the Owner can allow it for other agents by ticking it for ' +
       'your account. That is the answer for these abilities, not "it is ' +
-      'not included". Never describe what other people have.',
+      'not included". `neverOnOtherAgents`, when present, is a different ' +
+      'list: what works on agents they created and cannot be opened for ' +
+      'any other agent. For one of those on an agent that is not in ' +
+      '`agentsYouCreated`, say in one sentence: this works only on agents ' +
+      'you created, and this agent was not created by you; for other ' +
+      'agents it is done by an Owner or Admin. Never offer a tick for ' +
+      'those. Never describe what other people have.',
     parameters: z.object({}),
   })
   async getMyAssistantAccess(
@@ -381,23 +397,34 @@ export class AssistantAccessTool {
           (agent) => agent.id,
         )
       : [];
+    const byTick = mine.ownAgentsOnly.filter((a) => a.openedByTick);
+    const never = mine.ownAgentsOnly.filter((a) => !a.openedByTick);
+    const titled = (a: { title: string; area: string }) => ({
+      title: a.title,
+      area: a.area,
+    });
     return ok({
       enabled: mine.enabled,
       level: mine.level,
       ...(mine.matchesLevel ? { sameAs: mine.matchesLevel } : {}),
       areas: mine.areas,
       notIncluded: mine.leftOut.map((a) => ({ title: a.title, area: a.area })),
-      // Only when there is something to say: a User on a built-in level.
-      ...(mine.ownAgentsOnly.length
+      // Only when there is something to say, and as two lists, because the
+      // answer differs: what a tick for their account opens for other
+      // agents (a User on a built-in level), and what no setting opens.
+      ...(byTick.length
         ? {
-            onlyOnAgentsYouCreated: mine.ownAgentsOnly.map((a) => ({
-              title: a.title,
-              area: a.area,
-            })),
-            agentsYouCreated: created,
+            onlyOnAgentsYouCreated: byTick.map(titled),
             onlyOnAgentsYouCreatedNote: OWN_AGENTS_ONLY,
           }
         : {}),
+      ...(never.length
+        ? {
+            neverOnOtherAgents: never.map(titled),
+            neverOnOtherAgentsNote: NEVER_ON_OTHER_AGENTS,
+          }
+        : {}),
+      ...(mine.ownAgentsOnly.length ? { agentsYouCreated: created } : {}),
       whoDecides: WHO_DECIDES,
       // Their own role only: what a level means for them.
       levels: this.access.levelsFor(person.role),

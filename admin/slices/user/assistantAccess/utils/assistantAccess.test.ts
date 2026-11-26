@@ -4,9 +4,11 @@ import {
   accountCaption,
   applyLevel,
   areaState,
+  badgeCardShift,
   ceilingNames,
   filterAreas,
   isAbove,
+  isOwnAgentsOnly,
   levelsFor,
   lossSummary,
   matchingLevel,
@@ -23,7 +25,17 @@ const ability = (
   minRole: 'Owner' | 'Admin' | 'User',
   levels: ('basic' | 'standard' | 'full')[],
   destructive = false,
-): IAbility => ({ name, title: `Title of ${name}`, area, effect, destructive, minRole, levels });
+  ownAgentsOnly = false,
+): IAbility => ({
+  name,
+  title: `Title of ${name}`,
+  area,
+  effect,
+  destructive,
+  minRole,
+  levels,
+  ownAgentsOnly,
+});
 
 const ALL = ['basic', 'standard', 'full'] as const;
 const CATALOG: IAssistantCatalog = {
@@ -187,5 +199,56 @@ describe('the line under an account’s assistant setting', () => {
     expect(accountCaption({ role: 'Admin', source: 'account' }, true)).toBe('Set for this account');
     expect(accountCaption({ role: 'Owner', source: 'owner' }, true)).toBe('The Owner always has everything.');
     expect(accountCaption({ role: 'Admin', source: 'role' }, false)).toBe('No assistant yet.');
+  });
+});
+
+describe('an ability that stays with the agent’s creator', () => {
+  const logs = ability('get_agent_logs', 'agents', 'read', 'User', [...ALL], false, true);
+  const restart = ability('restart_agent', 'agents', 'write', 'User', ['standard', 'full']);
+
+  test('is marked for a User, who gets it on agents they created only', () => {
+    expect(isOwnAgentsOnly(logs, 'User')).toBe(true);
+    expect(isOwnAgentsOnly(restart, 'User')).toBe(false);
+  });
+
+  test('is not marked for an Admin or the Owner, who manage by role', () => {
+    expect(isOwnAgentsOnly(logs, 'Admin')).toBe(false);
+    expect(isOwnAgentsOnly(logs, 'Owner')).toBe(false);
+  });
+
+  test('stays tickable and counted: the creator uses it', () => {
+    const catalog: IAssistantCatalog = {
+      areas: [{ key: 'agents', title: 'Agents', order: 10, abilities: [logs, restart] }],
+      alwaysOn: [],
+    };
+    expect(isAbove(logs, 'User')).toBe(false);
+    expect(ceilingNames(catalog, 'User')).toEqual(['get_agent_logs', 'restart_agent']);
+    expect(areaState(catalog.areas[0]!, 'User', new Set(['get_agent_logs']))).toEqual({
+      state: 'mixed',
+      offered: 1,
+      available: 2,
+      above: 0,
+    });
+  });
+});
+
+describe('where the person’s own card hangs', () => {
+  test('from the badge while it fits', () => {
+    expect(badgeCardShift(24, 1440, 288)).toBe(0);
+    expect(badgeCardShift(16, 390, 288)).toBe(0);
+  });
+
+  test('moved left on a phone, as far as it takes and no further', () => {
+    // 390 wide, badge at 200: the card would end at 488.
+    const shift = badgeCardShift(200, 390, 288);
+    expect(shift).toBe(-114);
+    expect(200 + shift + 288).toBe(390 - 16);
+  });
+
+  test('never past the left gutter, on a screen narrower than the card', () => {
+    const width = 320 - 32;
+    const shift = badgeCardShift(250, 320, width);
+    expect(250 + shift).toBe(16);
+    expect(250 + shift + width).toBe(320 - 16);
   });
 });

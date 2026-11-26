@@ -1,5 +1,7 @@
 import {
+  ASSISTANT_ABILITY_STATES,
   ASSISTANT_LEVELS,
+  type AssistantAbilityState,
   type AssistantLevel,
   type AssistantLevelOrCustom,
   type IAbility,
@@ -11,6 +13,7 @@ import {
   type IAssistantPick,
   type IAssistantResolved,
   type IAssistantRoleData,
+  type IMyAbility,
   type IMyAssistantAccess,
   type ISetAssistantInput,
   type PersonRole,
@@ -127,8 +130,34 @@ export class AssistantAccessMapper {
           title: text(item.title) || (item.key as string),
           offered: count(item.offered),
           available: count(item.available),
+          abilities: this.toMyAbilities(item.abilities),
         })),
     };
+  }
+
+  /**
+   * An area's abilities for the person's own card: theirs first, then the
+   * ones good for agents they created, then what was left out. Within each
+   * the server's order, which is by title. A state this console does not
+   * know reads as not included: showing less is the safe way to be wrong.
+   */
+  private toMyAbilities(raw: unknown): IMyAbility[] {
+    if (!Array.isArray(raw)) return [];
+    const out: IMyAbility[] = [];
+    for (const item of raw) {
+      const o = record(item);
+      if (!o || typeof o.name !== 'string' || !o.name) continue;
+      const state = ASSISTANT_ABILITY_STATES.find((s) => s === o.state);
+      out.push({
+        name: o.name,
+        title: text(o.title) || o.name,
+        state: state ?? 'not_included',
+      });
+    }
+    const rank = (state: AssistantAbilityState) =>
+      ASSISTANT_ABILITY_STATES.indexOf(state);
+    // Array.prototype.sort is stable: the received order survives in a group.
+    return out.sort((a, b) => rank(a.state) - rank(b.state));
   }
 
   private toNotice(raw: unknown): { usersManagingAgents: number } | null {
@@ -202,6 +231,7 @@ export class AssistantAccessMapper {
         // Unreadable reads as the Owner's: shown, never tickable.
         minRole: this.toPersonRole(o.minRole, 'Owner'),
         levels: Array.isArray(o.levels) ? o.levels.filter(isLevel) : [],
+        ownAgentsOnly: o.ownAgentsOnly === true,
       });
     }
     return out;

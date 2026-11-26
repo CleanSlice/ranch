@@ -234,6 +234,13 @@ export class AbilityDto {
 
   @ApiProperty({ enum: NAMED_LEVELS, isArray: true })
   levels: string[];
+
+  @ApiProperty({
+    description:
+      'For a person below Admin this works on agents they created and on ' +
+      'no other, also when it is ticked for them.',
+  })
+  ownAgentsOnly: boolean;
 }
 
 export class AbilityAreaDto {
@@ -263,6 +270,26 @@ export class AssistantCatalogDto {
   alwaysOn: AbilityDto[];
 }
 
+const ABILITY_STATES = ['included', 'own_agents_only', 'not_included'] as const;
+
+/** One ability of the caller's role, and how it stands for the caller. */
+export class MyAssistantAbilityDto {
+  @ApiProperty({ description: 'The ability’s name: stable, never shown.' })
+  name: string;
+
+  @ApiProperty({ description: 'What it is, in words. Shown as received.' })
+  title: string;
+
+  @ApiProperty({
+    enum: ABILITY_STATES,
+    description:
+      'included: the assistant does this for the caller. own_agents_only: ' +
+      'only on agents the caller created. not_included: the caller’s role ' +
+      'could have it and their setting leaves it out.',
+  })
+  state: (typeof ABILITY_STATES)[number];
+}
+
 export class AssistantAreaCountDto {
   @ApiProperty()
   key: string;
@@ -270,11 +297,21 @@ export class AssistantAreaCountDto {
   @ApiProperty()
   title: string;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'How many of `abilities` are `included`.' })
   offered: number;
 
-  @ApiProperty()
+  @ApiProperty({
+    description: 'How many abilities the caller’s role has here.',
+  })
   available: number;
+
+  @ApiProperty({
+    type: [MyAssistantAbilityDto],
+    description:
+      'Every ability of the caller’s role in this area, by title. Nothing ' +
+      'above their role and nothing about anybody else.',
+  })
+  abilities: MyAssistantAbilityDto[];
 }
 
 /** What a person is told about themselves. Nothing about anybody else. */

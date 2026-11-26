@@ -317,8 +317,26 @@ person; `operatorOnly(httpRequest, agent, what)` is the refusal):
 | `connect_agent_peer`, `refresh_agent_peer`, `remove_agent_peer`, `set_agent_peer_visitors` | allowed for a peer they reach; the Ranch admin agent at the other end is not found |
 
 The refused tools stay listed for a person whose setting holds them, and
-answer with the refusal; nothing in the editor marks them yet. An operator,
-and the person who created the agent, are not affected by any of this.
+answer with the refusal. An operator, and the person who created the agent,
+are not affected by any of this: so the seven stay within a User's role
+(`minRole` is still User, they are tickable and counted), and the editor
+writes "Only on agents they created" beside each when the pick is for a
+User (CLEAN-257). The seven are named once, in `CREATOR_OR_OPERATOR_TOOLS`
+(`#/mcp/tooling`); the catalogue answers `ownAgentsOnly: true` for them. A
+tool that starts refusing whole with `operatorOnly` is added to that list in
+the same change, and `creatorOrOperatorTools.spec.ts` fails until it is.
+
+The person is told the same (CLEAN-257). For a User the seven are never
+"included", on a built-in level or ticked: the card
+(`GET /me/assistant-access`) gives them the state `own_agents_only` and
+leaves them out of the count, and `get_my_assistant_access` names them in
+`neverOnOtherAgents`, apart from `onlyOnAgentsYouCreated`. The two lists
+have two answers. What a level holds for a User's own agents can be opened
+for other agents by a tick, and the assistant says so; the seven cannot,
+and for those it says that an Owner or Admin does it. So the editor's
+"N of M" for a User counts ticks, and the person's card counts what they
+can ask for about any agent they are shown: the two differ by exactly the
+abilities marked "only on agents you created".
 
 **What a level means for a User.** The levels are a rule over area and
 effect (see "What the assistant offers a person"), and by that rule Basic

@@ -631,6 +631,70 @@ describe('get_my_assistant_access: abilities that work only on agents the person
     expect(out.agentsYouCreated).toEqual([]);
   });
 
+  const NEVER_NOTE =
+    'These work only on agents this person created themselves, the ones in ' +
+    '`agentsYouCreated` (empty: they have created no agent), and no setting ' +
+    'opens them for any other agent. They are not counted in `areas`. When ' +
+    'the person asks for one of them on an agent that is not in ' +
+    '`agentsYouCreated`, answer in one sentence: this works only on agents ' +
+    'you created, and this agent was not created by you; for other agents ' +
+    'it is done by an Owner or Admin. Do not say the Owner can tick it for ' +
+    'them, and do not say it is not included.';
+  const WITH_LOGS: typeof TOOLS = [
+    ...TOOLS,
+    ['get_agent_logs', 'agents', 'read', 'manage-agent'],
+  ];
+
+  it('a ticked tool that no setting opens for other agents is a list of its own, with its own sentence (CLEAN-257)', async () => {
+    const { tool, service } = harness(WITH_LOGS);
+    await service.setAccount({ kind: 'trusted' }, USER_2.id, {
+      level: 'custom',
+      on: ['restart_agent', 'get_agent_logs'],
+    });
+    const out = json(
+      await tool.getMyAssistantAccess({}, null, forPerson(USER_2)),
+    );
+
+    expect(out.neverOnOtherAgents).toEqual([
+      { title: 'Title of get_agent_logs', area: 'agents' },
+    ]);
+    expect(out.neverOnOtherAgentsNote).toBe(NEVER_NOTE);
+    // This person created no agent.
+    expect(out.agentsYouCreated).toEqual([]);
+    // Nothing here is opened by a tick: the other sentence must not be sent.
+    expect(out).not.toHaveProperty('onlyOnAgentsYouCreated');
+    expect(out).not.toHaveProperty('onlyOnAgentsYouCreatedNote');
+    // `restart_agent` was ticked and is theirs: counted. The log is not.
+    expect(
+      out.areas.find((a: { key: string }) => a.key === 'agents'),
+    ).toMatchObject({ offered: 1, available: 5 });
+    expect(
+      out.notIncluded.map((a: { title: string }) => a.title),
+    ).not.toContain('Title of get_agent_logs');
+  });
+
+  it('on a built-in level the two kinds are two lists, each with its sentence', async () => {
+    const { tool, service } = harness(WITH_LOGS);
+    await service.setRole(
+      { kind: 'trusted' },
+      UserRoleTypes.User as AssistantRole,
+      { level: 'standard' },
+    );
+    const out = json(
+      await tool.getMyAssistantAccess({}, null, forPerson(USER)),
+    );
+    expect(out.onlyOnAgentsYouCreated).toEqual([
+      { title: 'Title of restart_agent', area: 'agents' },
+      { title: 'Title of delete_agent', area: 'agents' },
+    ]);
+    expect(out.onlyOnAgentsYouCreatedNote).toBe(NOTE);
+    expect(out.neverOnOtherAgents).toEqual([
+      { title: 'Title of get_agent_logs', area: 'agents' },
+    ]);
+    expect(out.neverOnOtherAgentsNote).toBe(NEVER_NOTE);
+    expect(out.agentsYouCreated).toEqual([{ id: 'agent-1', name: 'Orders' }]);
+  });
+
   it('says nothing of the kind where nothing is held back: a custom pick, an Admin, the Owner', async () => {
     const { tool, service } = harness();
     await service.setAccount({ kind: 'trusted' }, USER.id, {
@@ -644,6 +708,8 @@ describe('get_my_assistant_access: abilities that work only on agents the person
       expect(out).not.toHaveProperty('onlyOnAgentsYouCreated');
       expect(out).not.toHaveProperty('agentsYouCreated');
       expect(out).not.toHaveProperty('onlyOnAgentsYouCreatedNote');
+      expect(out).not.toHaveProperty('neverOnOtherAgents');
+      expect(out).not.toHaveProperty('neverOnOtherAgentsNote');
     }
   });
 
@@ -655,6 +721,12 @@ describe('get_my_assistant_access: abilities that work only on agents the person
         'it for your account',
     );
     expect(description).toContain('an empty list means they have created none');
+    // The other kind has another sentence, and no tick is offered for it.
+    expect(description).toContain(
+      'this works only on agents you created, and this agent was not ' +
+        'created by you; for other agents it is done by an Owner or Admin',
+    );
+    expect(description).toContain('Never offer a tick for those.');
     expect(description).toContain('Never describe what other people have.');
     expect(description).not.toMatch(/new chat|new session|start over/i);
   });

@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IAgentGateway } from './agent.gateway';
-import { IAgentData, ICreateAgentData } from './agent.types';
+import {
+  IAgentData,
+  ICreateAgentData,
+  LaunchContextTypes,
+} from './agent.types';
 import { IFileGateway } from '#/agent/file/domain';
 import { ITemplateGateway } from '#/agent/template/domain';
 import { WorkflowService } from '#/workflow/domain/workflow.service';
@@ -179,8 +183,16 @@ export class AgentDeployService {
     this.deployTracker.mark(agentId);
     // 'initial' iff this agent has never been deployed — persisted so the UI
     // can tell a first start from a restart even after a page reload.
-    const launchContext =
-      agent.firstDeployedAt === null ? 'initial' : 'restart';
+    // 'start' when it held no instance at this moment (stopped or failed):
+    // nothing is being replaced, so the consoles show no "previous instance
+    // stopped" step (CLEAN-247). `agent` was read before anything below
+    // writes a status, so this is the status the launch found.
+    const launchContext: LaunchContextTypes =
+      agent.firstDeployedAt === null
+        ? 'initial'
+        : agent.status === 'stopped' || agent.status === 'failed'
+          ? 'start'
+          : 'restart';
     // Mark deploying BEFORE submitting the workflow. Submit + getStatus take
     // seconds — long enough for the pod to come up and AgentStatusService to
     // flip status to 'running'. If we wrote status here after submit we'd

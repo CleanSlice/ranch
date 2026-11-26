@@ -201,9 +201,9 @@ export type AgentDto = {
    */
   lastDeployStartedAt: string | null;
   /**
-   * Why the current/last deploy ran: 'initial' = first-ever start, 'restart' = any subsequent deploy (restart, start after stop, config-change redeploy). Null only for agents never deployed since this field existed.
+   * Why the current/last deploy ran: 'initial' = first-ever start, 'start' = a later start of an agent that held no instance (stopped or failed), 'restart' = a deploy that replaces a live instance (restart, config-change redeploy). Null only for agents never deployed since this field existed.
    */
-  launchContext: "initial" | "restart";
+  launchContext: "initial" | "start" | "restart";
   /**
    * When the running pod last pulled its working copy of the agent files from S3 (recorded at runtime boot). Null ⇒ agent not restarted since this field shipped. Files-tab freshness hint + sync-conflict baseline.
    */

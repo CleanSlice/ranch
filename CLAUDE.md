@@ -102,6 +102,17 @@ that names an agent also checks that party reaches it), `confirm` on anything de
 The API refuses to boot a tool without that metadata; the reviewer checks the
 rest against the checklist at the end of that doc.
 
+**Statistics (`api`):** read `docs/statistics.md` before adding a number to a
+page or changing how one is counted. A fact is kept once, by time, by the slice
+that owns it: what already exists as a row with a time (a rating, a citation, a
+hand-over, an incident, a day of spend) is read where it is and never copied
+into a counter; only what nothing keeps by time gets a table (`ChatActivityHour`,
+`AgentLoadDay`), written in the same transaction as its fact and repaired by a
+pass that only ever raises. A page view never counts conversations and never
+opens a transcript. A new figure is one definition in
+`api/src/slices/stats/domain/figures/`, and its interval, cap or retention
+carries the reason where it is defined.
+
 **Plans (`SpecKit`):** `.specify/memory/constitution.md` holds the principles a
 plan is checked against at its Constitution Check gate — slice boundaries, twin
 consoles, secrets behind `api/`, one entity per store, an agent tool per console

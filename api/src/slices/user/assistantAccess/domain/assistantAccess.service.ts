@@ -772,6 +772,19 @@ export class AssistantAccessService {
     }));
   }
 
+  /**
+   * The agents a person created, by id and name (CLEAN-254): what tells
+   * "this works on agents you created" from "and this one is not yours".
+   * Never the Ranch admin agent, which is the Owner's whoever made it.
+   * Whether the person still reaches each is the caller's to ask.
+   */
+  async createdAgents(userId: string): Promise<{ id: string; name: string }[]> {
+    if (!userId) return [];
+    return (await this.agents.findAll())
+      .filter((agent) => agent.createdById === userId && !agent.isAdmin)
+      .map((agent) => ({ id: agent.id, name: agent.name }));
+  }
+
   /** What a person is told about themselves. Nothing about anybody else. */
   async myAccess(
     party: ICallerParty | null | undefined,

@@ -12,6 +12,7 @@ import {
   requirePerson,
   type ToolResult,
 } from '#/mcp/tooling';
+import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { UserRoleTypes } from '#/user/user/domain';
 import {
   AssistantAccessError,
@@ -53,9 +54,14 @@ const confirmSchema = z
   .describe('Set true only after the person confirmed in the chat.');
 
 const OWN_AGENTS_ONLY =
-  'These are part of the level for agents this person created themselves, ' +
-  'and not counted in `areas`. On any other agent they are not included: ' +
-  'the Owner can include one by choosing it for this account.';
+  'These work only on agents this person created themselves, the ones in ' +
+  '`agentsYouCreated` (empty: they have created no agent). They are not ' +
+  'counted in `areas`. When the person asks for one of them on an agent ' +
+  'that is not in `agentsYouCreated`, answer in one sentence: this works ' +
+  'only on agents you created, and this agent was not created by you; ' +
+  'the Owner can allow it for other agents by ticking it for your ' +
+  'account. Do not say it is not included, and do not stop at "the Owner ' +
+  'decides".';
 
 const WHO_DECIDES =
   'The Owner of this installation decides what the assistant can do for ' +
@@ -76,7 +82,10 @@ const WHO_DECIDES =
 export class AssistantAccessTool {
   private readonly logger = new Logger(AssistantAccessTool.name);
 
-  constructor(private readonly access: AssistantAccessService) {}
+  constructor(
+    private readonly access: AssistantAccessService,
+    private readonly reach: AgentAccessService,
+  ) {}
 
   @ToolAudience('owner')
   @Tool({
@@ -344,9 +353,14 @@ export class AssistantAccessTool {
       'another way. Also call it when they ask what you can do for them ' +
       'or what their level means, and answer from `levels`. ' +
       '`onlyOnAgentsYouCreated`, when present, lists what their level ' +
-      'holds for agents they created themselves and for no other agent: ' +
-      'for any other agent treat it as not included, and say the Owner ' +
-      'can include it for them. Never describe what other people have.',
+      'holds for agents they created themselves and for no other agent, ' +
+      'and `agentsYouCreated` names those agents (an empty list means ' +
+      'they have created none). When they ask for one of these on an ' +
+      'agent that is not in `agentsYouCreated`, say in one sentence: this ' +
+      'works only on agents you created, and this agent was not created ' +
+      'by you; the Owner can allow it for other agents by ticking it for ' +
+      'your account. That is the answer for these abilities, not "it is ' +
+      'not included". Never describe what other people have.',
     parameters: z.object({}),
   })
   async getMyAssistantAccess(
@@ -356,6 +370,17 @@ export class AssistantAccessTool {
   ): Promise<ToolResult> {
     const person = requirePerson(httpRequest);
     const mine = await this.access.myAccess({ kind: 'person', ...person });
+    // The agents those abilities do work on: the ones this person made and
+    // still reaches. Asked only when there is something to tell apart.
+    const reach = mine.ownAgentsOnly.length
+      ? await this.reach.reachableIds(callerParty(httpRequest))
+      : null;
+    const created = reach
+      ? reach.filter(
+          await this.access.createdAgents(person.userId),
+          (agent) => agent.id,
+        )
+      : [];
     return ok({
       enabled: mine.enabled,
       level: mine.level,
@@ -369,6 +394,7 @@ export class AssistantAccessTool {
               title: a.title,
               area: a.area,
             })),
+            agentsYouCreated: created,
             onlyOnAgentsYouCreatedNote: OWN_AGENTS_ONLY,
           }
         : {}),

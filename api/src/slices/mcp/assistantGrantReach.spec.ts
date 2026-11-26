@@ -274,7 +274,7 @@ const instances = new Map<unknown, object>([
   [PeerAdminTool, new PeerAdminTool(never('peers'), permission)],
   [SecretTool, new SecretTool(agents, secretStore as never, permission)],
   [LogTool, new LogTool(agents, never('logService'), permission)],
-  [AssistantAccessTool, new AssistantAccessTool(assistant)],
+  [AssistantAccessTool, new AssistantAccessTool(assistant, access)],
 ]);
 
 for (const [toolClass] of instances) {
@@ -471,6 +471,13 @@ describe('a User given "Restart an agent", who created nothing (CLEAN-254)', () 
     );
     expect(hidden).not.toContain('bravo');
     expect(ranch).not.toContain('rancher');
+    // Plain not-found: nothing that says the agent exists, or that the
+    // ability is missing, withheld or needs another conversation.
+    for (const said of [hidden, unknown, ranch]) {
+      expect(said).not.toMatch(
+        /not included|Owner|created|not available|new chat|new session/i,
+      );
+    }
     expect(agentDeploy.restartAgent).not.toHaveBeenCalled();
   });
 
@@ -720,6 +727,7 @@ describe('get_my_assistant_access says what the person can actually ask for', ()
       areas: { key: string; offered: number; available: number }[];
       notIncluded: { title: string }[];
       onlyOnAgentsYouCreated?: { title: string }[];
+      agentsYouCreated?: { id: string; name: string }[];
       onlyOnAgentsYouCreatedNote?: string;
       levels: {
         key: string;
@@ -750,6 +758,8 @@ describe('get_my_assistant_access says what the person can actually ask for', ()
     expect(ownOnly).toContain(titleOf('restart_agent'));
     expect(ownOnly).toContain(titleOf('read_agent_file'));
     expect(out.onlyOnAgentsYouCreatedNote).toMatch(/created themselves/);
+    // This User created none: the list is there, and empty.
+    expect(out.agentsYouCreated).toEqual([]);
     // Not presented as left out of the level either.
     expect(out.notIncluded.map((a) => a.title)).not.toContain(
       titleOf('restart_agent'),

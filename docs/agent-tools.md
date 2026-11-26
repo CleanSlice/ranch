@@ -328,8 +328,13 @@ created, of which there are none while only an Owner or Admin can create
 one. So a User on Basic, Standard or Full who created nothing is listed no
 `manage-agent` tool. `get_my_assistant_access` says so: it leaves those
 abilities out of the area counts, of the person's own level and of the level
-definitions alike, and names them under `onlyOnAgentsYouCreated`; with a
-custom pick there is nothing to hold back and the field is absent. The
+definitions alike, and names them under `onlyOnAgentsYouCreated`, next to
+`agentsYouCreated`: the agents that person made and still reaches, an empty
+list when there are none. Asked for such an ability on any other agent, the
+assistant says that it works only on agents the person created, that this
+one was not created by them, and that the Owner can allow it for other
+agents by ticking it for their account; not "it is not included". With a
+custom pick there is nothing to hold back and the fields are absent. The
 console's editor still counts them in a User's level, which is the rule's
 answer and not what that User can ask for.
 

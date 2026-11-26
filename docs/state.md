@@ -55,9 +55,12 @@ patch(id, partial): () => void            // partial change, returns a rollback
   header) do not flip anything themselves. The rollback restores a field only
   if it still holds the optimistic value, so a fresher server write that
   landed in between survives.
-- The status stream (`stores/agentStatus.ts`) patches the status each frame
-  carries into this store's record and keeps only what exists nowhere else:
-  pod state and hub connectivity. The stream is public (an EventSource cannot
+- The status stream (`stores/agentStatus.ts`, in both consoles since
+  CLEAN-247: the launch step list is read from it) patches the status each
+  frame carries into this store's record and keeps only what exists nowhere
+  else: pod state and hub connectivity. In `app` the patch is applied only
+  when the frame is strictly newer than the row, so a frame as old as the
+  row cannot undo an optimistic flip. The stream is public (an EventSource cannot
   send a token), so a frame carries status facts only, never the row
   (CLEAN-232): the agent's `id`, `status` and `updatedAt`. When
   `updatedAt` is later than the record's, or the store has never held that

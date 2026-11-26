@@ -65,15 +65,17 @@ const { toolView } = useAgentToolState(agent, canManage);
 const restarting = ref(false);
 const restartError = ref<string | null>(null);
 const restartFailed = ref(false);
-/** Wallclock the user clicked Restart — used to compute progress / time. */
-const restartStartedAt = ref<number | null>(null);
 
-const TRANSITIONAL_STATUSES = new Set(['pending', 'deploying']);
-const isTransitioning = computed(
-  () =>
-    restarting.value ||
-    (agent.value ? TRANSITIONAL_STATUSES.has(agent.value.status) : false),
-);
+// The launch as a list of steps (CLEAN-247): which one the agent is really
+// on, read from reported facts, in place of a sentence picked by how many
+// seconds had gone by. `isTransitioning` is the same signal as before, the
+// restart call out or the status on its way, now owned by the composable.
+const {
+  launch,
+  visible: launchVisible,
+  transitioning: isTransitioning,
+  expectLaunch,
+} = useAgentLaunch(props.id, agent, restarting);
 
 /**
  * What the chat's queue is told about the agent (CLEAN-245): on its way up
@@ -89,10 +91,11 @@ const queueAgentState = computed(() => {
 
 async function onRestart() {
   if (!agent.value || restarting.value) return;
+  // Read before the store flips the status optimistically.
+  expectLaunch(agent.value.status);
   restarting.value = true;
   restartError.value = null;
   restartFailed.value = false;
-  restartStartedAt.value = Date.now();
   // The optimistic 'deploying' flip — overlay appears immediately, status
   // pill animates — and its rollback happen inside `agentStore.restart`, on
   // the one store record, so the rail row flips with this header.
@@ -109,7 +112,6 @@ async function onRestart() {
       ?.response?.status;
     restartError.value =
       status === 401 ? null : (err as Error).message || null;
-    restartStartedAt.value = null;
   } finally {
     restarting.value = false;
   }
@@ -128,13 +130,11 @@ function clearStatusTimer() {
 
 watch(
   isTransitioning,
-  (active, prev) => {
+  (active) => {
     if (active) {
       if (!statusTimer) statusTimer = setInterval(() => refresh(), 3000);
     } else {
       clearStatusTimer();
-      // Reset the start time when we leave transitional state.
-      if (prev) restartStartedAt.value = null;
     }
   },
   { immediate: true },
@@ -161,59 +161,6 @@ const statusMeta = computed(() => {
       // No wording for a status the runtime invented — show it as received.
       return { labelKey: null, label: status ?? '', dot: 'bg-muted-foreground', pulse: false };
   }
-});
-
-// Multi-stage label for the overlay — derived from elapsed time so the user
-// can see *something* progressing even though we only have coarse statuses.
-const elapsedSec = ref(0);
-let elapsedTimer: ReturnType<typeof setInterval> | null = null;
-
-watch(isTransitioning, (active) => {
-  if (active) {
-    elapsedSec.value = restartStartedAt.value
-      ? Math.floor((Date.now() - restartStartedAt.value) / 1000)
-      : 0;
-    if (!elapsedTimer) {
-      elapsedTimer = setInterval(() => {
-        elapsedSec.value = restartStartedAt.value
-          ? Math.floor((Date.now() - restartStartedAt.value) / 1000)
-          : elapsedSec.value + 1;
-      }, 1000);
-    }
-  } else if (elapsedTimer) {
-    clearInterval(elapsedTimer);
-    elapsedTimer = null;
-  }
-});
-onBeforeUnmount(() => {
-  if (elapsedTimer) clearInterval(elapsedTimer);
-});
-
-const overlayStage = computed<{ titleKey: string; bodyKey: string }>(() => {
-  const sec = elapsedSec.value;
-  // Stages chosen by feel — a typical k8s pod restart is 10–25s.
-  if (sec < 3) {
-    return {
-      titleKey: 'restart_stage.stopping_title',
-      bodyKey: 'restart_stage.stopping_body',
-    };
-  }
-  if (sec < 10) {
-    return {
-      titleKey: 'restart_stage.deploying_title',
-      bodyKey: 'restart_stage.deploying_body',
-    };
-  }
-  if (sec < 20) {
-    return {
-      titleKey: 'restart_stage.starting_title',
-      bodyKey: 'restart_stage.starting_body',
-    };
-  }
-  return {
-    titleKey: 'restart_stage.almost_title',
-    bodyKey: 'restart_stage.almost_body',
-  };
 });
 
 const initials = computed(() => {
@@ -357,10 +304,12 @@ const initials = computed(() => {
         :tool-view="toolView"
         :agent-state="queueAgentState"
       >
-      <!-- Restart overlay — covers the transcript while the pod is bouncing,
+      <!-- Launch overlay — covers the transcript while the pod is bouncing,
            never the composer: what is written meanwhile waits in the queue
-           (CLEAN-245). Shown both during the API call and while the status
-           is in a transitional state (deploying/pending). -->
+           (CLEAN-245). Shown during the API call and while the status is in
+           a transitional state (deploying/pending), as before; it now holds
+           the launch's step list (CLEAN-247), stays a moment on the completed
+           list, and stays on a launch that failed. -->
       <template #overlay>
       <Transition
         enter-active-class="transition-all duration-300 ease-out"
@@ -371,43 +320,16 @@ const initials = computed(() => {
         leave-to-class="opacity-0"
       >
         <div
-          v-if="agent && isTransitioning"
+          v-if="launch && launchVisible"
+          :data-chat-overlay="launch.view.outcome === 'failed' ? 'failed' : 'starting'"
           class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/85 backdrop-blur-sm"
-          aria-live="polite"
         >
-          <div
-            class="flex w-full max-w-sm flex-col items-center rounded-2xl border bg-card/95 px-6 py-7 text-center shadow-lg"
-          >
-            <!-- Concentric pulsing rings around the agent avatar -->
-            <div class="relative mb-5 flex h-16 w-16 items-center justify-center">
-              <span
-                class="absolute inline-flex h-full w-full rounded-full bg-amber-500/20 animate-ping"
-              />
-              <span
-                class="absolute inline-flex h-12 w-12 rounded-full bg-amber-500/30 animate-ping [animation-delay:200ms]"
-              />
-              <span
-                class="relative flex h-12 w-12 items-center justify-center rounded-full bg-linear-to-br from-amber-500/30 to-amber-500/10 text-base font-semibold text-amber-700 dark:text-amber-400"
-              >
-                {{ initials }}
-              </span>
-            </div>
-
-            <h3 class="text-sm font-semibold">{{ $t(overlayStage.titleKey) }}</h3>
-            <p class="mt-1.5 text-xs text-muted-foreground">
-              {{ $t(overlayStage.bodyKey) }}
-            </p>
-
-            <!-- Indeterminate progress bar — visual only, since k8s doesn't
-                 give us percentage. -->
-            <div class="mt-5 w-full overflow-hidden rounded-full bg-muted">
-              <div class="h-1 w-1/3 rounded-full bg-amber-500 chat-restart-bar" />
-            </div>
-
-            <p class="mt-3 text-[11px] text-muted-foreground/70">
-              {{ $t('chat.elapsed', { seconds: elapsedSec }) }}
-            </p>
-          </div>
+          <AgentLaunchSteps
+            :launch="launch"
+            :can-manage="canManage"
+            :restarting="isTransitioning"
+            @restart="onRestart"
+          />
         </div>
       </Transition>
       </template>
@@ -415,17 +337,3 @@ const initials = computed(() => {
     </div>
   </div>
 </template>
-
-<style scoped>
-@keyframes chat-restart-bar {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(300%);
-  }
-}
-.chat-restart-bar {
-  animation: chat-restart-bar 1.6s ease-in-out infinite;
-}
-</style>

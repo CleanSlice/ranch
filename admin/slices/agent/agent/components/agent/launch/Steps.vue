@@ -95,12 +95,12 @@ watch(
 
 <template>
   <div
-    class="flex w-full max-w-sm flex-col items-center gap-2"
+    class="flex w-full max-w-sm flex-col items-center gap-3"
     :data-launch="view.kind"
     :data-launch-outcome="view.outcome"
     :data-launch-stale="launch.stale ? '' : undefined"
   >
-    <p class="text-sm font-medium">{{ heading }}</p>
+    <p class="text-base font-semibold">{{ heading }}</p>
     <div class="relative h-64 w-full">
       <MultiStepLoader
         contained

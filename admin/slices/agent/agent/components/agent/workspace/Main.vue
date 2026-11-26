@@ -337,15 +337,19 @@ async function onDeleted() {
           public without limits
         </button>
 
+        <!-- On a phone the header is two rows, and each row ends at the right
+             edge: the name with the tabs across from it, the usage line with
+             Stop, pin and the menu across from it (CLEAN-252). From `md` up
+             it is the one row it always was. -->
         <AgentWorkspaceTabs
-          class="ml-2"
+          class="ml-auto md:ml-2"
           :tabs="workspaceTabs"
           :active="workspaceTabOf(tab)"
           @select="onSelectWorkspaceTab"
           @prefetch="onPrefetchWorkspaceTab"
         />
 
-        <div class="flex-1" />
+        <div class="hidden flex-1 md:block" />
 
         <!-- One line of usage; the figures open on click (specs/017, R3).
              Below ~900px it wraps under the tabs (`order-last basis-full`)
@@ -371,7 +375,7 @@ async function onDeleted() {
         <!-- The row is drawn for every viewer: the pin in it is the viewer's
              own, so it is offered on an agent they may not manage too
              (CLEAN-231). Stop/Start and the menu stay with `canManage`. -->
-        <div class="flex shrink-0 items-center gap-2">
+        <div class="flex shrink-0 items-center gap-2 max-md:ml-auto">
           <Button
             v-if="canManage"
             variant="outline"

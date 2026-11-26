@@ -66,12 +66,12 @@ watch(
 
 <template>
   <div
-    class="flex w-full max-w-sm flex-col items-center gap-2"
+    class="flex w-full max-w-sm flex-col items-center gap-3"
     :data-launch="view.kind"
     :data-launch-outcome="view.outcome"
     :data-launch-stale="launch.stale ? '' : undefined"
   >
-    <h3 class="text-sm font-semibold">{{ $t(headingKey) }}</h3>
+    <h3 class="text-base font-semibold">{{ $t(headingKey) }}</h3>
     <div class="relative h-64 w-full">
       <MultiStepLoader
         contained

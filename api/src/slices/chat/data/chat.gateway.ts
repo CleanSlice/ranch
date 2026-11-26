@@ -238,8 +238,16 @@ export class ChatGateway extends IChatGateway {
       where.OR = [
         { title: { contains: filter.search, mode: 'insensitive' } },
         { preview: { contains: filter.search, mode: 'insensitive' } },
-        { externalUserId: { contains: filter.search, mode: 'insensitive' } },
       ];
+      // Finding a visitor by id is for a list across people. In one
+      // person's own list the id matches every row or none, so a search
+      // that happens to be a piece of it would return everything
+      // (CLEAN-248).
+      if (!filter.externalUserId) {
+        where.OR.push({
+          externalUserId: { contains: filter.search, mode: 'insensitive' },
+        });
+      }
     }
     return where;
   }

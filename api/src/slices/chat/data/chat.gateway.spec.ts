@@ -205,7 +205,7 @@ function newGateway() {
     prisma as unknown as ConstructorParameters<typeof ChatGateway>[0],
     new ChatMapper(),
   );
-  return { gw, rows };
+  return { gw, rows, prisma };
 }
 
 describe('ChatGateway.reconcileUpsert', () => {
@@ -401,6 +401,35 @@ describe('ChatGateway.list', () => {
 
     const all = await gw.list({ agentId: 'agent-1', includeInternal: true });
     expect(all.total).toBe(3);
+  });
+
+  // What the list was asked for, as Prisma saw it.
+  const searchedFields = (
+    prisma: ReturnType<typeof makePrismaStub>['prisma'],
+  ) => {
+    const calls = prisma.chatSession.findMany.mock.calls as unknown as [
+      { where: { OR?: Record<string, unknown>[] } },
+    ][];
+    const where = calls[calls.length - 1][0].where;
+    return (where.OR ?? []).map((condition) => Object.keys(condition)[0]);
+  };
+
+  it('searches title, preview and the end user’s id across everyone’s chats', async () => {
+    const { gw, prisma } = newGateway();
+    await gw.list({ search: 'anna' });
+    expect(searchedFields(prisma)).toEqual([
+      'title',
+      'preview',
+      'externalUserId',
+    ]);
+  });
+
+  // CLEAN-248. In one person's own list the id matches every row or none:
+  // a search that is a fragment of their id would return the whole list.
+  it('leaves the id out of the search when the list is one end user’s', async () => {
+    const { gw, prisma } = newGateway();
+    await gw.list({ externalUserId: 'user-1', search: 'user' });
+    expect(searchedFields(prisma)).toEqual(['title', 'preview']);
   });
 });
 

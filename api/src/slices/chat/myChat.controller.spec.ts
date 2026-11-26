@@ -1,6 +1,9 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { Request } from 'express';
 import { MyChatController } from './myChat.controller';
+import { MyChatsQueryDto } from './dtos';
 import { IChatGateway, IChatSessionData, ChatSyncService } from './domain';
 import { TranscriptReaderService } from '#/agent/file/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
@@ -123,6 +126,78 @@ describe('MyChatController.list', () => {
     await expect(ctrl.list({}, req(undefined))).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+
+  // CLEAN-248. History lives inside one agent, so the own list can be
+  // narrowed to it. That the caller reaches the agent is the guard's check
+  // (`@AgentScoped('query.agentId')`, pinned in agentScopedRoutes.spec.ts).
+  it('narrows to one agent, still inside the caller’s own rows', async () => {
+    const { ctrl, list } = makeController(jest.fn());
+    await ctrl.list({ agentId: 'a1', archived: true }, req(SUB));
+    expect(list).toHaveBeenCalledWith({
+      agentId: 'a1',
+      agentScope: undefined,
+      channel: 'bridle',
+      externalUserId: SUB,
+      archived: true,
+      page: 1,
+      perPage: 50,
+    });
+  });
+
+  it('passes a search on, beside the caller’s own scope', async () => {
+    const { ctrl, list } = makeController(jest.fn());
+    await ctrl.list({ agentId: 'a1', search: 'pods' }, req(SUB));
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: 'a1',
+        search: 'pods',
+        channel: 'bridle',
+        externalUserId: SUB,
+      }),
+    );
+  });
+
+  it('asks the gateway exactly as before when neither is given', async () => {
+    const { ctrl, list } = makeController(jest.fn());
+    await ctrl.list({}, req(SUB));
+    const [filter] = list.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(Object.keys(filter).sort()).toEqual([
+      'agentScope',
+      'archived',
+      'channel',
+      'externalUserId',
+      'page',
+      'perPage',
+    ]);
+  });
+});
+
+describe('MyChatsQueryDto', () => {
+  const parse = (raw: Record<string, unknown>) =>
+    plainToInstance(MyChatsQueryDto, raw);
+
+  it('trims the search', async () => {
+    const dto = parse({ search: '  pods  ' });
+    expect(dto.search).toBe('pods');
+    expect(await validate(dto)).toEqual([]);
+  });
+
+  it('treats a search of spaces as no search', async () => {
+    const dto = parse({ search: '   ' });
+    expect(dto.search).toBeUndefined();
+    expect(await validate(dto)).toEqual([]);
+  });
+
+  it('refuses a search longer than 100 characters', async () => {
+    const errors = await validate(parse({ search: 'x'.repeat(101) }));
+    expect(errors.map((e) => e.property)).toEqual(['search']);
+  });
+
+  it('takes an agent id', async () => {
+    const dto = parse({ agentId: 'a1' });
+    expect(dto.agentId).toBe('a1');
+    expect(await validate(dto)).toEqual([]);
   });
 });
 

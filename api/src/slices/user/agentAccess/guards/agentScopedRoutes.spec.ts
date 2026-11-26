@@ -106,6 +106,7 @@ const SCOPED: Record<string, string> = {
   'GET /agent-events': 'query.agentId',
   'GET /agent-incidents': 'query.agentId',
   'GET /chats': 'query.agentId',
+  'GET /me/chats': 'query.agentId',
   'GET /paddock-evaluations': 'query.agentId',
   'GET /paddock-scenarios': 'query.agentId',
   // The agent in the body.

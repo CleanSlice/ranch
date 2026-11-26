@@ -89,11 +89,15 @@ export class MyChatController {
   ) {}
 
   @ApiOperation({
-    description: "List the current user's own chat sessions, newest first.",
+    description:
+      "List the current user's own chat sessions, newest first. `agentId` " +
+      'keeps the ones with that agent; `search` keeps those whose title or ' +
+      'last message contains the text.',
     operationId: 'getMyChats',
   })
   @ApiOkResponse({ type: ChatListResponseDto })
   @Get()
+  @AgentScoped('query.agentId')
   async list(
     @Query() q: MyChatsQueryDto,
     @Req() req: AuthedRequest,
@@ -105,6 +109,11 @@ export class MyChatController {
     // with the access.
     const reach = await this.access.reachableIds(accessCallerOf(req));
     const { items, total } = await this.chats.list({
+      // One agent's conversations, or a search (CLEAN-248). The guard has
+      // already answered 404 for an agent the caller does not reach, so the
+      // id may stand in for the scope below it.
+      ...(q.agentId ? { agentId: q.agentId } : {}),
+      ...(q.search ? { search: q.search } : {}),
       agentScope: reach.where(),
       channel: OWN_CHANNEL,
       externalUserId: this.ownExternalId(req),

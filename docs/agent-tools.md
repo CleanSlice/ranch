@@ -172,7 +172,7 @@ One per tool, declared with `@ToolAudience`:
 | `agent` | an agent runtime, for itself (the token names the agent, whoever it is answering) | `requireAgent(httpRequest)` |
 | `person` | a signed-in person of any role | `const { userId } = requirePerson(httpRequest)` |
 | `reader` | a signed-in person of any role, or whoever `admin` admits (so the Ranch admin agent on its own schedule keeps the tool) | `requirePersonOrOperator(httpRequest)`, then only what `AgentAccessService` says the caller reaches |
-| `manage-agent` | whoever may manage at least one agent: an Owner or Admin, an agent with an Owner token acting for itself, a person who created an agent | `const agent = await this.permission.manageable(manageCaller(httpRequest), id)` and the tool's own "not found" when it is null |
+| `manage-agent` | whoever may manage at least one agent: an Owner or Admin, an agent with an Owner token acting for itself, a person who created an agent. And, tool by tool, a person the assistant setting gave that tool, when they talk through the assistant (CLEAN-254) | `const agent = await this.permission.manageable(manageCaller(httpRequest), id)` and the tool's own "not found" when it is null |
 | `admin` | an Owner or Admin; an agent with an Owner token acting for itself | `requireOperator(httpRequest)` |
 | `owner` | the Owner; an agent with an Owner token acting for itself | `requireOwner(httpRequest)` |
 
@@ -239,6 +239,19 @@ agent slice once per call and notes on the call's request
 (`callerManagesAgents`). A plain agent's token manages nothing, whoever it
 names.
 
+One more caller is listed single tools of this audience (CLEAN-254): a person
+below Admin who talks **through the assistant** and whose assistant setting
+holds the tool. The Owner or an Admin gives a User "Restart an agent" in the
+setting; that User created no agent and never will, so without this the
+switch did nothing. The handler asks the assistantAccess slice once per call
+(`ASSISTANT_GRANT_RESOLVER`), keeps the names whose audience is
+`manage-agent`, and notes them on the call's request; `audienceAllows` is
+asked with the tool's name and answers for that tool alone
+(`callerGrantedTool`). Holding `restart_agent` lists `restart_agent`, not
+`delete_agent`. It is true for nobody else: not through another agent, not
+with the person's own console token, not for a guest, not with the assistant
+switched off for them.
+
 Whether this call may touch the agent it names: one rule,
 `AgentPermissionService.canManage`, the same one the console routes marked
 `@ManagesAgent('id' | 'agentId')` go through.
@@ -248,10 +261,39 @@ canManage(caller, agent) =
      caller is the Owner
   OR (agent is not the Ranch admin agent AND caller is an Admin AND caller reaches the agent)
   OR (agent is not the Ranch admin agent AND caller created the agent AND caller reaches the agent)
+  OR (agent is not the Ranch admin agent AND the tool this call runs was given
+      to the caller through the assistant setting AND caller reaches the agent)
 ```
 
-A trusted party is allowed, a guest never. `reaches` answers yes for
-everybody until the access lists of CLEAN-231 replace it (`IAgentReach`).
+A trusted party is allowed, a guest never. `reaches` is the access lists of
+CLEAN-231 (`IAgentReach`, provided by `AgentAccessService`).
+
+The fourth line exists for tools only. `manageCaller(httpRequest)` puts
+`grantedThroughAssistant` on the party when the tool the handler is running
+is one of the names it noted for this call, so the line is about that tool:
+a User given `restart_agent` who gets `delete_agent` called for them by any
+route is refused at the audience, and would be refused here too. A console
+request builds its caller with `AgentPermissionService.callerOfBearer`,
+which never sets it: a User manages nothing on the management routes by
+having been given an ability in the chat. Which agents is not widened either:
+they are the ones the person reaches, and never the Ranch admin agent.
+
+So a class that holds only `manage-agent` tools answers its listing hook with
+`callerHoldsManageTools(httpRequest)`: the caller manages an agent, or the
+setting gave them at least one such tool. The audience has already decided
+about the tool at hand by the time the hook runs.
+
+**What this opens, by level.** The levels are a rule over area and effect
+(see "What the assistant offers a person"), and `manage-agent` tools are
+within a User's ceiling. Basic holds every tool that only reads, so a User
+on Basic, which is what a User has with nothing configured, is answered by
+the reading tools of this audience about every agent they reach: status,
+environment preview (credential values masked), configured tool servers,
+channels (no bot tokens), workspace files and their export, secret names
+(never values), limits, pod logs, connections. Standard adds the tools that
+change an agent. An installation that does not want that for Users narrows
+the Users' setting with a custom pick; the access lists decide which agents
+either way.
 
 **The Ranch admin agent is the Owner's alone.** Its workspace files are its
 instructions, and its secrets, schedule and restart are Owner power for
@@ -349,7 +391,13 @@ level or a custom pick.
 - It only takes away. The audience filters first; `AssistantToolPolicyService`
   is a `CallerToolPolicy` the catalogue asks afterwards, for `tools/list` and
   `tools/call` alike. Nothing in a setting can give a role what it does not
-  have.
+  have. The policy is registered on the application's one `ToolCatalogService`
+  at start, and the MCP handler lists from that same instance: a catalogue
+  built anywhere else knows no policy and narrows nothing.
+- One thing it does open, inside the role's ceiling (CLEAN-254): a
+  `manage-agent` tool the setting holds works for a person who manages no
+  agent, on the agents they reach. See "Managing one agent". A setting never
+  decides which agents; the access lists do.
 - A level is a rule over a tool's `topic`, `effect` and audience
   (`assistantLevels.ts`): **Basic** = every `read` plus every `person` tool;
   **Standard** = Basic plus `write` in agents, agent workspace, knowledge,

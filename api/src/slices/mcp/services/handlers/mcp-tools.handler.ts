@@ -26,6 +26,10 @@ import {
   type IAgentManagerResolver,
 } from '../../interfaces/agent-manager.interface';
 import {
+  ASSISTANT_GRANT_RESOLVER,
+  type IAssistantGrantResolver,
+} from '../../interfaces/assistant-grant.interface';
+import {
   PEER_PARTY_RESOLVER,
   TURN_META_KEY,
   type IPeerPartyResolver,
@@ -37,6 +41,8 @@ import {
   callerIsOperator,
   callerParty,
   callerPerson,
+  setCalledTool,
+  setCallerAssistantGrant,
   setCallerManagesAgents,
   setCallerTurnClient,
   withCallerParty,
@@ -57,9 +63,23 @@ export class McpToolsHandler extends McpHandlerBase {
 
   constructor(moduleRef: ModuleRef, registry: McpRegistryService) {
     super(moduleRef, registry, McpToolsHandler.name);
-    // Constructed rather than injected: the executor builds this handler by
-    // hand, and the service is stateless over the same two dependencies.
-    this.catalog = new ToolCatalogService(moduleRef, registry);
+    // The executor builds this handler by hand, so the catalogue is looked
+    // up rather than injected. It has to be the application's one catalogue:
+    // slices register their caller tool policies on it at start (CLEAN-240),
+    // and a catalogue built here would know none of them, so what a setting
+    // took away would still be listed and run (CLEAN-254). Built by hand
+    // only where no application provides one, as in a unit spec.
+    this.catalog =
+      this.sharedCatalog() ?? new ToolCatalogService(moduleRef, registry);
+  }
+
+  private sharedCatalog(): ToolCatalogService | undefined {
+    try {
+      const shared = this.moduleRef.get(ToolCatalogService, { strict: false });
+      return shared instanceof ToolCatalogService ? shared : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -85,10 +105,15 @@ export class McpToolsHandler extends McpHandlerBase {
    * `_meta["ranch/turn"]` says which conversation of the runtime the call
    * belongs to. It is noted on the view for `ask_agent` to route its
    * progress step by, and grants nothing.
+   *
+   * `calledTool` is the name tools/call looked the tool up by; tools/list
+   * has none. It is noted on the view so that a permission asked inside the
+   * tool is about that tool and no other (CLEAN-254).
    */
   private async callRequestFor(
     httpRequest: Request,
     mcpRequest: IRequestWithMeta | undefined,
+    calledTool?: string,
   ): Promise<Request> {
     const stated = mcpRequest?.params?._meta?.[ACTOR_META_KEY];
     const actor =
@@ -136,7 +161,9 @@ export class McpToolsHandler extends McpHandlerBase {
     if (typeof client === 'string' && client) {
       setCallerTurnClient(view, client);
     }
+    if (calledTool) setCalledTool(view, calledTool);
     await this.noteManagedAgents(view);
+    await this.noteAssistantGrant(view);
     return view;
   }
 
@@ -195,6 +222,53 @@ export class McpToolsHandler extends McpHandlerBase {
       );
     }
     setCallerManagesAgents(callRequest, manages);
+  }
+
+  /**
+   * A person below Admin may hold single `manage-agent` tools through the
+   * assistant setting (CLEAN-254). Which ones is a fact about that setting
+   * and about which agent is the assistant, and only the assistantAccess
+   * slice knows both: ask once per call and note the answer on the call's
+   * view, where `audienceAllows` and `manageCaller` read it.
+   *
+   * Asked for a person named by an agent's token only: a console token has
+   * no assistant behind it, and an operator has these tools already. Of the
+   * names that come back, only those the registry holds with the audience
+   * `manage-agent` are kept, so the answer can open nothing else. No
+   * resolver, or one that throws, leaves nothing granted.
+   */
+  private async noteAssistantGrant(callRequest: Request): Promise<void> {
+    const person = callerPerson(callRequest);
+    if (!person || callerIsOperator(callRequest)) return;
+    if (callerAgentId(callRequest) === null) return;
+    let granted: string[] = [];
+    try {
+      const resolver = this.moduleRef.get<IAssistantGrantResolver>(
+        ASSISTANT_GRANT_RESOLVER,
+        { strict: false },
+      );
+      const names =
+        typeof resolver?.grantedToolsFor === 'function'
+          ? await resolver.grantedToolsFor(callRequest)
+          : null;
+      if (names instanceof Set) {
+        granted = this.registry
+          .getTools()
+          .filter(
+            (tool) =>
+              tool.audience === 'manage-agent' && names.has(tool.metadata.name),
+          )
+          .map((tool) => tool.metadata.name);
+      }
+    } catch (e) {
+      granted = [];
+      this.logger.warn(
+        `could not tell what the assistant setting gives user ${person.userId}: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+    setCallerAssistantGrant(callRequest, granted);
   }
 
   /**
@@ -285,12 +359,24 @@ export class McpToolsHandler extends McpHandlerBase {
         });
 
         try {
-          const callRequest = await this.callRequestFor(httpRequest, request);
+          const callRequest = await this.callRequestFor(
+            httpRequest,
+            request,
+            toolInfo.metadata.name,
+          );
 
           // First lock: the audience. A name the caller was never listed is
           // refused exactly like one that stopped applying, before the tool
-          // is even resolved (CLEAN-232).
-          if (!audienceAllows(toolInfo.audience, callRequest)) {
+          // is even resolved (CLEAN-232). The name is part of the question:
+          // a `manage-agent` tool may be one the assistant setting gave this
+          // person, and that is decided tool by tool (CLEAN-254).
+          if (
+            !audienceAllows(
+              toolInfo.audience,
+              callRequest,
+              toolInfo.metadata.name,
+            )
+          ) {
             return notAvailable();
           }
 

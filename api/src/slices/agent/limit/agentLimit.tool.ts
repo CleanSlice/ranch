@@ -5,7 +5,7 @@ import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
   agentNotFound,
-  callerManagesAgents,
+  callerHoldsManageTools,
   CONFIRM_SENTENCE,
   confirmed,
   manageCaller,
@@ -179,7 +179,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     // The widest audience in the class; each tool's own audience has already
     // been checked by the time this runs.
-    return Promise.resolve(callerManagesAgents(httpRequest));
+    return Promise.resolve(callerHoldsManageTools(httpRequest));
   }
 
   @Tool({

@@ -54,7 +54,12 @@ export class ToolCatalogService {
           // Decided here and never left to a hook: unlike the hooks below,
           // this has no "stay listed when the check breaks" fallback.
           const audience = tool.audience;
-          if (!audience || !audienceAllows(audience, httpRequest)) return null;
+          if (
+            !audience ||
+            !audienceAllows(audience, httpRequest, tool.metadata.name)
+          ) {
+            return null;
+          }
           let description = tool.metadata.description;
           // Tools may opt into per-caller descriptions by implementing
           // IDynamicallyDescribedTool, and out of the list entirely by

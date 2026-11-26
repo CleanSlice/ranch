@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   agentNotFound,
-  callerManagesAgents,
+  callerHoldsManageTools,
   CONFIRM_SENTENCE,
   confirmed,
   manageCaller,
@@ -68,7 +68,7 @@ export class SecretTool implements IConditionallyListedTool {
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return Promise.resolve(callerManagesAgents(httpRequest));
+    return Promise.resolve(callerHoldsManageTools(httpRequest));
   }
 
   /** The agent, when it exists and this caller may manage it. */

@@ -6,3 +6,4 @@ export * from './conditional-listing.interface';
 export * from './tool-listing-recorder.interface';
 export * from './acting-party.interface';
 export * from './agent-manager.interface';
+export * from './assistant-grant.interface';

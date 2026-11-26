@@ -149,3 +149,92 @@ describe('AssistantToolPolicyService', () => {
     expect(access.grantFor).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * The other thing the tool layer asks of the same setting (CLEAN-254): which
+ * abilities it gave the person, so that an agent ability works for somebody
+ * who created no agent. True for one caller only, the one the policy above
+ * narrows: a person behind the assistant's own token, with the setting on.
+ */
+describe('AssistantToolPolicyService.grantedToolsFor', () => {
+  const user = (agentId = 'assistant') =>
+    asPerson(fromAgent(agentId), UserRoleTypes.User, 'user-1');
+
+  it('is what the setting holds for a person talking through the assistant', async () => {
+    const { policy, access } = harness({
+      enabled: true,
+      names: ['list_agents', 'restart_agent'],
+    });
+    expect(
+      sorted((await policy.grantedToolsFor(user())) as Set<string>),
+    ).toEqual(['list_agents', 'restart_agent']);
+    expect(access.grantFor).toHaveBeenCalledWith({
+      kind: 'person',
+      userId: 'user-1',
+      role: UserRoleTypes.User,
+    });
+  });
+
+  it('is nothing with the assistant switched off for them', async () => {
+    const { policy } = harness({ enabled: false, names: ['restart_agent'] });
+    expect(await policy.grantedToolsFor(user())).toBeNull();
+  });
+
+  it('is nothing through another agent, and nobody’s setting is read', async () => {
+    const { policy, access } = harness({
+      enabled: true,
+      names: ['restart_agent'],
+    });
+    expect(await policy.grantedToolsFor(user('support-bot'))).toBeNull();
+    expect(access.grantFor).not.toHaveBeenCalled();
+  });
+
+  it('is nothing for a person calling with their own console token', async () => {
+    const { policy, access } = harness({
+      enabled: true,
+      names: ['restart_agent'],
+    });
+    expect(
+      await policy.grantedToolsFor(fromConsole('user-1', UserRoleTypes.User)),
+    ).toBeNull();
+    expect(access.assistant).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a guest of the assistant', () => asGuest(fromAgent('assistant'))],
+    [
+      'the assistant acting for itself',
+      () => asTrustedAgent(fromAgent('assistant')),
+    ],
+    [
+      'the Owner',
+      () => asPerson(fromAgent('assistant'), UserRoleTypes.Owner, 'owner'),
+    ],
+  ])('is nothing for %s: no setting applies', async (_label, make) => {
+    // What `grantFor` answers anybody a setting does not apply to.
+    const { policy } = harness({ enabled: true, names: null });
+    expect(await policy.grantedToolsFor(make())).toBeNull();
+  });
+
+  it('is nothing while the installation has no assistant', async () => {
+    const { policy } = harness(
+      { enabled: true, names: ['restart_agent'] },
+      null,
+    );
+    expect(await policy.grantedToolsFor(user())).toBeNull();
+  });
+
+  it('reads the setting once for a call that asks both questions', async () => {
+    const { policy, access } = harness({
+      enabled: true,
+      names: ['restart_agent'],
+    });
+    const req = user();
+    await Promise.all([
+      policy.grantedToolsFor(req),
+      policy.allowedToolsFor(req),
+    ]);
+    expect(access.grantFor).toHaveBeenCalledTimes(1);
+    expect(access.assistant).toHaveBeenCalledTimes(1);
+  });
+});

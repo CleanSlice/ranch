@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   agentNotFound,
-  callerManagesAgents,
+  callerHoldsManageTools,
   manageCaller,
   ok,
   type ToolResult,
@@ -44,7 +44,7 @@ export class LogTool implements IConditionallyListedTool {
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return Promise.resolve(callerManagesAgents(httpRequest));
+    return Promise.resolve(callerHoldsManageTools(httpRequest));
   }
 
   @Tool({

@@ -5,7 +5,7 @@ import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   CONFIRM_SENTENCE,
   agentNotFound,
-  callerManagesAgents,
+  callerHoldsManageTools,
   confirmed,
   manageCaller,
   ok,
@@ -101,7 +101,7 @@ export class FileTool implements IConditionallyListedTool {
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return callerManagesAgents(httpRequest);
+    return callerHoldsManageTools(httpRequest);
   }
 
   /** The agent, when it exists and this caller may manage it. */

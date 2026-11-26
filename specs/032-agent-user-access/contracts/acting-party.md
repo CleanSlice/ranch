@@ -195,6 +195,26 @@ who may call `POST /agents` — and not a second pass over every route and
 tool: a User who creates an agent can stop, change and delete it, in the
 console and through the assistant, and nobody else's.
 
+**Amended 2026-11-26 (CLEAN-254).** A fourth line, for tools only:
+
+```text
+         OR (agent is not the Ranch admin agent
+             AND the tool this call runs was given to the caller through the assistant setting
+             AND reaches(caller, agent))
+```
+
+specs/034 lets the Owner or an Admin give a person single agent abilities
+through the assistant. With three lines such an ability did nothing for a
+User, who created no agent. The fourth line makes it work on every agent
+the person reaches. It is a fact about one tool call, not about the person:
+the MCP handler notes which `manage-agent` tools the setting holds when the
+call carries the assistant's own token, and which tool is being called, and
+`manageCaller` sets `grantedThroughAssistant` on the party from those two
+and from nothing the runtime or the model says. `callerOfBearer` never sets
+it, so the routes and `AgentManageGuard` keep the three lines above: a User
+manages nothing in the console. The Ranch admin agent stays the Owner's
+alone under this line as under the others.
+
 ## 6. A role on every route
 
 `RolesGuard` becomes global, registered after `JwtAuthGuard` in

@@ -275,6 +275,9 @@ export function setCallerManagesAgents(
  *
  * This lists the tools. Which agent a call may touch is a second question,
  * answered per call by `AgentPermissionService` with `manageCaller`.
+ *
+ * A person who manages nothing may still hold single tools of this audience
+ * through the assistant setting: see `callerGrantedTool` below.
  */
 export function callerManagesAgents(httpRequest: Request): boolean {
   if (callerIsOperator(httpRequest)) return true;
@@ -287,25 +290,141 @@ export function callerManagesAgents(httpRequest: Request): boolean {
   );
 }
 
+// ── What the assistant setting gave a person (CLEAN-254) ────
+//
+// The Owner, or an Admin, may give a person agent abilities through the
+// assistant setting (CLEAN-240). Such an ability works through the assistant
+// on every agent that person reaches, whoever created it, and never on the
+// Ranch admin agent. Two facts carry that, both noted by the MCP handler on
+// the per-call view and never taken from the runtime or the model:
+//
+//  - the `manage-agent` tool names the person's setting holds, when the call
+//    carries the assistant's own token (`setCallerAssistantGrant`);
+//  - the name of the tool this call runs (`setCalledTool`).
+//
+// A grant is always about one tool. Holding `restart_agent` lists and runs
+// `restart_agent`; it says nothing about `delete_agent`.
+
+const GRANT_PROPERTY = 'ranchAssistantGrant';
+const CALLED_TOOL_PROPERTY = 'ranchCalledTool';
+
+/**
+ * Note the `manage-agent` tools the assistant setting gives the person this
+ * call is made for. The handler asks the assistantAccess slice once per
+ * call, for a person below Admin talking through an agent, and keeps the
+ * names whose audience is `manage-agent`. Not enumerable, like the party.
+ */
+export function setCallerAssistantGrant(
+  httpRequest: Request,
+  names: Iterable<string>,
+): void {
+  Object.defineProperty(httpRequest, GRANT_PROPERTY, {
+    value: new Set(names),
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+}
+
+/**
+ * The noted names, for the only caller they can mean anything to: a person,
+ * named by an agent's token that carries operator power. The handler noted
+ * them for the assistant alone; this is the token's bound on top, the same
+ * one `callerManagesAgents` applies.
+ */
+function assistantGrant(httpRequest: Request): ReadonlySet<string> | null {
+  if (callerPerson(httpRequest) === null) return null;
+  if (callerAgentId(httpRequest) === null) return null;
+  if (isPlainAgentToken(httpRequest)) return null;
+  const noted = (httpRequest as unknown as Record<string, unknown> | null)?.[
+    GRANT_PROPERTY
+  ];
+  return noted instanceof Set ? (noted as ReadonlySet<string>) : null;
+}
+
+/**
+ * Whether the assistant setting gives the person this call is made for the
+ * `manage-agent` tool `toolName`. False for any other agent, a person's own
+ * console token, a guest, a switched-off setting, and a tool the setting
+ * does not hold.
+ */
+export function callerGrantedTool(
+  httpRequest: Request,
+  toolName: string | null | undefined,
+): boolean {
+  if (typeof toolName !== 'string' || !toolName) return false;
+  return assistantGrant(httpRequest)?.has(toolName) === true;
+}
+
+/**
+ * What a tool class that only holds `manage-agent` tools answers its listing
+ * hook with: the caller manages an agent, or the assistant setting gave them
+ * at least one such tool. Which tools is not asked here: `audienceAllows`
+ * has already decided that for the tool at hand, by name.
+ */
+export function callerHoldsManageTools(httpRequest: Request): boolean {
+  if (callerManagesAgents(httpRequest)) return true;
+  return (assistantGrant(httpRequest)?.size ?? 0) > 0;
+}
+
+/**
+ * Note which tool this call runs. The handler does this on tools/call, on
+ * the per-call view, with the name it looked the tool up by.
+ */
+export function setCalledTool(httpRequest: Request, toolName: string): void {
+  Object.defineProperty(httpRequest, CALLED_TOOL_PROPERTY, {
+    value: toolName,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function calledTool(httpRequest: Request): string | null {
+  const name = (httpRequest as unknown as Record<string, unknown> | null)?.[
+    CALLED_TOOL_PROPERTY
+  ];
+  return typeof name === 'string' && name ? name : null;
+}
+
 /**
  * The caller as `AgentPermissionService.canManage` reads it: the party the
  * call is made for, bounded by the token. A plain agent's token manages
  * nothing whoever it names, so it is a guest here; the Ranch admin agent
  * acting for itself stays trusted; a person stays that person.
+ *
+ * A person is rebuilt here from who they are, so `grantedThroughAssistant`
+ * is on the result for one reason only: the tool this call runs is one the
+ * assistant setting gave them (CLEAN-254). Whatever a party arrived with is
+ * dropped.
  */
 export function manageCaller(httpRequest: Request): ICallerParty {
   if (isPlainAgentToken(httpRequest)) return GUEST;
-  return callerParty(httpRequest);
+  const party = callerParty(httpRequest);
+  if (party.kind !== 'person') return party;
+  const person: ICallerParty = {
+    kind: 'person',
+    userId: party.userId,
+    role: party.role,
+  };
+  return callerGrantedTool(httpRequest, calledTool(httpRequest))
+    ? { ...person, grantedThroughAssistant: true }
+    : person;
 }
 
 /**
  * The single answer to "may this caller use a tool of that audience". The
  * catalogue, tools/call and the listing hooks all ask here. An audience
  * nobody declared allows nobody.
+ *
+ * `toolName` matters to `manage-agent` alone: a person who manages no agent
+ * still has the tools of that audience their assistant setting holds, one
+ * by one (CLEAN-254). Asked without a name, only managing an agent counts.
  */
 export function audienceAllows(
   audience: ToolAudienceTypes | undefined,
   httpRequest: Request,
+  toolName?: string,
 ): boolean {
   switch (audience) {
     case 'everyone':
@@ -319,7 +438,10 @@ export function audienceAllows(
         callerPerson(httpRequest) !== null || callerIsOperator(httpRequest)
       );
     case 'manage-agent':
-      return callerManagesAgents(httpRequest);
+      return (
+        callerManagesAgents(httpRequest) ||
+        callerGrantedTool(httpRequest, toolName)
+      );
     case 'admin':
       return callerIsOperator(httpRequest);
     case 'owner':

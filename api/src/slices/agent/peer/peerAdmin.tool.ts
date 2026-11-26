@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   callerIsOperator,
-  callerManagesAgents,
+  callerHoldsManageTools,
   callerPerson,
   CONFIRM_SENTENCE,
   confirmed,
@@ -88,7 +88,7 @@ export class PeerAdminTool implements IConditionallyListedTool {
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     return Promise.resolve(
-      callerManagesAgents(httpRequest) && callerPerson(httpRequest) !== null,
+      callerHoldsManageTools(httpRequest) && callerPerson(httpRequest) !== null,
     );
   }
 

@@ -367,3 +367,106 @@ describe('ownerOnlyIds: the agents a caller reaches and still does not manage', 
     expect(await service.ownerOnlyIds(admin)).toEqual([]);
   });
 });
+
+/**
+ * Line four (CLEAN-254): the tool this call runs was given to the caller
+ * through the assistant setting. `manageCaller` says so on the party; here
+ * it is one more way past "neither Admin nor creator", and no way past
+ * anything else.
+ */
+describe('canManage: line four, a tool the assistant setting gave', () => {
+  const granted: ICallerParty = {
+    kind: 'person',
+    userId: 'user-User',
+    role: UserRoleTypes.User,
+    grantedThroughAssistant: true,
+  };
+
+  it('a User manages an agent they reach, though they created none', async () => {
+    const reach = new ListedReach();
+    const { service } = make({ reach });
+    expect(
+      await service.canManage(granted, agent({ createdById: 'someone-else' })),
+    ).toBe(true);
+    expect(reach.asked).toEqual(['user-User:agent-1']);
+  });
+
+  it('not an agent they do not reach', async () => {
+    const { service } = make({
+      reach: new ListedReach(['user-User:agent-1']),
+    });
+    expect(await service.canManage(granted, agent())).toBe(false);
+  });
+
+  it('never the Ranch admin agent, reached or not', async () => {
+    const reach = new ListedReach();
+    const { service } = make({ reach });
+    expect(await service.canManage(granted, agent({ isAdmin: true }))).toBe(
+      false,
+    );
+    expect(reach.asked).toEqual([]);
+  });
+
+  it('the same User without it manages nothing, as before', async () => {
+    const { service } = make();
+    expect(await service.canManage(user, agent())).toBe(false);
+    expect(
+      await service.canManage(
+        { ...granted, grantedThroughAssistant: undefined },
+        agent(),
+      ),
+    ).toBe(false);
+    // Only a plain `true` is the fact.
+    expect(
+      await service.canManage(
+        { ...granted, grantedThroughAssistant: 'yes' as never },
+        agent(),
+      ),
+    ).toBe(false);
+  });
+
+  it('manageable answers one null for out of reach, unknown and the Ranch admin agent', async () => {
+    const { service } = make({
+      agents: [
+        agent(),
+        agent({ id: 'agent-hidden' }),
+        agent({ id: 'agent-ranch', isAdmin: true }),
+      ],
+      reach: new ListedReach(['user-User:agent-hidden']),
+    });
+    expect((await service.manageable(granted, 'agent-1'))?.id).toBe('agent-1');
+    expect(await service.manageable(granted, 'agent-hidden')).toBeNull();
+    expect(await service.manageable(granted, 'agent-ghost')).toBeNull();
+    expect(await service.manageable(granted, 'agent-ranch')).toBeNull();
+  });
+
+  it('means nothing on a party that is not a person', async () => {
+    const { service } = make();
+    expect(
+      await service.canManage(
+        { kind: 'guest', grantedThroughAssistant: true } as never,
+        agent(),
+      ),
+    ).toBe(false);
+  });
+
+  it('a console bearer never carries it, whatever the token holds', () => {
+    expect(
+      AgentPermissionService.callerOfBearer({
+        sub: 'user-User',
+        roles: [UserRoleTypes.User],
+        grantedThroughAssistant: true,
+      } as never),
+    ).toEqual(user);
+  });
+
+  it('does not list the manage-agent tools by itself: managesAny is about created agents', async () => {
+    const { service } = make();
+    expect(
+      await service.managesAny({
+        userId: 'user-User',
+        role: UserRoleTypes.User,
+      }),
+    ).toBe(false);
+  });
+});

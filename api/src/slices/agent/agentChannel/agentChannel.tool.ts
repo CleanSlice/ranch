@@ -5,7 +5,7 @@ import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
   agentNotFound,
-  callerManagesAgents,
+  callerHoldsManageTools,
   manageCaller,
   ok,
   stripSecrets,
@@ -89,7 +89,7 @@ export class AgentChannelTool implements IConditionallyListedTool {
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return Promise.resolve(callerManagesAgents(httpRequest));
+    return Promise.resolve(callerHoldsManageTools(httpRequest));
   }
 
   @Tool({

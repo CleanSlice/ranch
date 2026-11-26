@@ -1,4 +1,23 @@
+import 'reflect-metadata';
+import { ASSISTANT_GRANT_RESOLVER } from '#/mcp/interfaces/assistant-grant.interface';
+import { AssistantAccessModule } from './assistantAccess.module';
 import { AssistantAccessWiring } from './assistantAccess.wiring';
+import { AssistantToolPolicyService } from './domain/assistantToolPolicy.service';
+
+// The module below reaches the pod gateway through AgentModule.
+jest.mock('@kubernetes/client-node', () => ({
+  KubeConfig: class {
+    loadFromDefault() {}
+    loadFromCluster() {}
+    makeApiClient() {
+      return {};
+    }
+  },
+  CoreV1Api: class {},
+  CustomObjectsApi: class {},
+  Log: class {},
+  Watch: class {},
+}));
 import { UserRoleTypes } from '#/user/user/domain/user.types';
 
 /**
@@ -61,5 +80,26 @@ describe('AssistantAccessWiring', () => {
     const { access, service } = build({ id: 'r', name: 'Rancher' });
     access.onRemoved.mock.calls[0][0]('u1');
     expect(service.removeUser).toHaveBeenCalledWith('u1');
+  });
+});
+
+/**
+ * The third seam (CLEAN-254) is a token the tool layer looks up: without it
+ * an agent ability given to a User is a switch that does nothing, which is
+ * the defect that ticket was.
+ */
+describe('AssistantAccessModule', () => {
+  it('answers the tool layer’s grant question with the policy service', () => {
+    const providers = Reflect.getMetadata(
+      'providers',
+      AssistantAccessModule,
+    ) as unknown[];
+    expect(providers).toContainEqual({
+      provide: ASSISTANT_GRANT_RESOLVER,
+      useExisting: AssistantToolPolicyService,
+    });
+    expect(typeof AssistantToolPolicyService.prototype.grantedToolsFor).toBe(
+      'function',
+    );
   });
 });

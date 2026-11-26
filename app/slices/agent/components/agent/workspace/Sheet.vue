@@ -3,6 +3,7 @@ import type { IAgentData } from '#agent/domain';
 import type { IBridleConversation } from '#bridle/domain';
 import { agentInitials, agentStatusMeta } from '#agent/utils/agentStatus';
 import { relativeTime } from '#agent/utils/relativeTime';
+import { counterLabel, type PanelView } from '#agent/utils/panelView';
 
 /**
  * The character sheet: who the open agent is and what can be done to it,
@@ -13,7 +14,10 @@ const props = defineProps<{
   agent: IAgentData | null | undefined;
   pending: boolean;
   canManage: boolean;
+  /** What stands under the sheet (CLEAN-248); the switch shows and sets it. */
+  view: PanelView['kind'];
 }>();
+defineEmits<{ 'to-chat': []; 'to-list': [] }>();
 
 const SHEET_KEY = 'agent:sheetOpen';
 
@@ -82,6 +86,15 @@ watch(
   { immediate: true },
 );
 
+// The History counter (CLEAN-248): this person's closed conversations with
+// the open agent, from the chat store's index. Capped for the eye; the exact
+// number is in the button's name.
+const chatStore = useChatStore();
+const closedCount = computed(() =>
+  props.agent ? chatStore.closedCountFor(props.agent.id) : null,
+);
+const historyCounter = computed(() => counterLabel(closedCount.value));
+
 const failedKey = computed(() => {
   switch (controls.failed.value?.action) {
     case 'restart':
@@ -103,9 +116,13 @@ const failedKey = computed(() => {
     class="agent-sheet @container shrink-0 border-b bg-card/60"
     :aria-label="$t('sheet.label')"
   >
-    <!-- The fold line: identity, status, the actions and the toggle. Always
-         visible. -->
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
+    <!-- The fold line: identity, the conversation group, the actions and the
+         toggle. Always visible. Identity and actions grow alike, which is
+         what keeps the conversation group on the axis of the feed below
+         (CLEAN-248). `relative` anchors the New chat confirmation when the
+         sheet is narrow. -->
+    <div class="relative flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
+      <div class="flex min-w-0 flex-[1_1_0%] items-center gap-3">
       <div
         class="flex shrink-0 items-center justify-center rounded-[14px] border bg-linear-to-br from-[#4a3356] to-[#251b2b] font-semibold text-foreground transition-[width,height] duration-300"
         :class="open ? 'h-12 w-12 text-base' : 'h-9 w-9 text-xs'"
@@ -136,7 +153,7 @@ const failedKey = computed(() => {
           </span>
           <span
             v-if="agent"
-            class="inline-flex shrink-0 items-center gap-1.5 rounded-full border bg-card px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+            class="agent-sheet__status inline-flex shrink-0 items-center gap-1.5 rounded-full border bg-card px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
           >
             <span class="relative flex h-1.5 w-1.5">
               <span
@@ -166,11 +183,68 @@ const failedKey = computed(() => {
           {{ $t(agent.isAdmin ? 'sheet.class_admin' : 'sheet.class_agent') }}
         </p>
       </div>
+      </div>
+
+      <!-- The conversation group: what the panel shows, and New chat. All
+           that is about the conversation stands together here; what is done
+           to the agent stays on the right. No role gate on New chat: whoever
+           can open the agent may start their conversation over (spec
+           clarification, 2026-09-07). -->
+      <div v-if="agent" class="agent-sheet__talk relative flex shrink-0 items-center gap-2">
+        <div
+          class="inline-flex rounded-full border bg-card p-[3px]"
+          role="group"
+          :aria-label="$t('sheet.view_label')"
+          data-panel-switch
+        >
+          <button
+            type="button"
+            class="agent-sheet__seg"
+            :aria-pressed="view === 'chat'"
+            :title="$t('sheet.view_chat')"
+            data-panel-view="chat"
+            @click="$emit('to-chat')"
+          >
+            <Icon name="message-square" :size="13" />
+            <span class="agent-sheet__seg-label">{{ $t('sheet.view_chat') }}</span>
+          </button>
+          <!-- Pressed for the list and for a conversation opened from it:
+               both are History. The name carries the exact count; the capped
+               number beside the label is for the eye. -->
+          <button
+            type="button"
+            class="agent-sheet__seg"
+            :aria-pressed="view !== 'chat'"
+            :aria-label="
+              closedCount
+                ? $t('sheet.view_history_count', { count: format.number(closedCount) }, closedCount)
+                : $t('sheet.view_history')
+            "
+            :title="$t('sheet.view_history')"
+            data-panel-view="history"
+            @click="$emit('to-list')"
+          >
+            <Icon name="history" :size="13" />
+            <span class="agent-sheet__seg-label">{{ $t('sheet.view_history') }}</span>
+            <span
+              v-if="historyCounter"
+              class="agent-sheet__seg-count font-mono text-[10.5px]"
+              aria-hidden="true"
+              data-history-count
+            >
+              {{ historyCounter }}
+            </span>
+          </button>
+        </div>
+        <span v-if="conversation" class="agent-sheet__tool agent-sheet__newchat inline-flex">
+          <BridleChatNewChat :conversation="conversation" @confirmed="$emit('to-chat')" />
+        </span>
+      </div>
 
       <!-- Actions sit in the fold line, by the toggle, so they are one click away
            whether the sheet is open or not (owner review). `relative` anchors the
-           share and new-chat popovers. In a narrow column the row drops under
-           the name. -->
+           share popover. In a narrow column the row drops under the name. -->
+      <div class="flex flex-[1_1_0%] items-center justify-end gap-1.5 @max-[520px]:contents">
       <div v-if="agent" class="agent-sheet__tools relative flex shrink-0 flex-wrap items-center justify-end gap-1.5 @max-[520px]:order-last @max-[520px]:basis-full @max-[520px]:justify-start">
         <template v-if="canManage">
           <button
@@ -239,16 +313,13 @@ const failedKey = computed(() => {
           <span class="sr-only">{{ $t(agent.pinned ? 'sheet.unpin' : 'sheet.pin') }}</span>
         </button>
 
-        <!-- No role gate: whoever can open the agent may share it and start
-             their conversation over (spec clarification, 2026-09-07). -->
-        <!-- Both popovers are `absolute right-4 top-full` and anchor to the nearest
-             positioned ancestor; without these wrappers that was the whole sheet,
+        <!-- No role gate: whoever can open the agent may share it (spec
+             clarification, 2026-09-07). -->
+        <!-- The popover is `absolute right-4 top-full` and anchors to the nearest
+             positioned ancestor; without this wrapper that was the whole sheet,
              so the panel opened at the sheet's far right instead of under its button. -->
         <span class="agent-sheet__tool relative inline-flex" :title="$t('share.panel.share')">
           <SharePanelProvider :agent-id="agent.id" />
-        </span>
-        <span v-if="conversation" class="agent-sheet__tool relative inline-flex">
-          <BridleChatNewChat :conversation="conversation" />
         </span>
       </div>
 
@@ -266,6 +337,7 @@ const failedKey = computed(() => {
           :class="open ? 'rotate-180' : ''"
         />
       </button>
+      </div>
     </div>
 
     <p
@@ -382,5 +454,92 @@ const failedKey = computed(() => {
   gap: 0;
   justify-content: center;
   font-size: 0;
+}
+
+/* ── The conversation group (CLEAN-248) ─────────────────────────────── */
+.agent-sheet__seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.agent-sheet__seg:hover {
+  color: var(--foreground);
+}
+.agent-sheet__seg[aria-pressed='true'] {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.agent-sheet__seg:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.agent-sheet__seg-count {
+  color: var(--muted-foreground);
+}
+.agent-sheet__seg[aria-pressed='true'] .agent-sheet__seg-count {
+  color: var(--primary);
+}
+/* With room, New chat reads as a word beside the switch, not as one more
+   icon among the agent's actions. */
+.agent-sheet__newchat :deep(button[aria-haspopup='dialog']) {
+  width: auto;
+  padding: 0 12px;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+/* 700 px: the prototype's value, checked against the column beside the orbit
+   map (500 to 720 px). Below it the words go and the icons stay, each with
+   its name and tooltip; the counter stays too. */
+@container (max-width: 700px) {
+  .agent-sheet__seg {
+    padding: 0 10px;
+  }
+  .agent-sheet__seg-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .agent-sheet__newchat :deep(button[aria-haspopup='dialog']) {
+    width: 32px;
+    padding: 0;
+    gap: 0;
+    font-size: 0;
+  }
+  .agent-sheet__class {
+    display: none;
+  }
+  /* The confirmation is anchored to the whole line here: under a button in
+     the middle of a narrow sheet it would run off the left edge. */
+  .agent-sheet__talk {
+    position: static;
+  }
+}
+
+/* A phone: the conversation group takes its share of the first line, and
+   what is left has to go to the agent's name. The status keeps its dot (the
+   colour says it) and gives up its word, which stays in the page for a
+   screen reader. */
+@container (max-width: 520px) {
+  .agent-sheet__status {
+    gap: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 0;
+  }
 }
 </style>

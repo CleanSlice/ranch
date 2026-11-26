@@ -39,6 +39,45 @@ const canManageOpen = computed(() =>
 // record leaves the list and the page leaves for the agents.
 useAgentGone(() => props.id);
 
+/* ── Chat or history ───────────────────────────────────────────────────── */
+
+// What stands under the sheet: the chat, this agent's conversations, or one
+// closed conversation (CLEAN-248). It is read from the address, so another
+// agent, whose address carries no query, opens in the chat.
+const {
+  view: panelView,
+  toChat,
+  toList,
+  toConversation,
+  back: panelBack,
+} = useAgentPanelView(() => props.id);
+
+const chatStore = useChatStore();
+const bridleStore = useBridleStore();
+
+// The first page of the agent's history is asked for when the agent opens:
+// the History counter needs the total, and the same answer makes the list
+// appear without a wait. A failure shows nothing here; choosing History asks
+// again and says so.
+watch(
+  () => props.id,
+  (id) => {
+    if (id) void chatStore.loadHistory(id);
+  },
+  { immediate: true },
+);
+
+// A new chat closes the conversation into history. The archive call moves
+// the index row before it answers, so a reload when the button stops being
+// busy is enough: the counter and the list follow without Sync. A refusal
+// passes through here too, and then the reload changes nothing.
+watch(
+  () => bridleStore.newChatBlock(props.id),
+  (now, before) => {
+    if (before === 'busy' && now !== 'busy') void chatStore.refreshHistory(props.id);
+  },
+);
+
 // Remember whichever agent is open so the next visit lands back on it.
 watch(
   () => props.id,
@@ -171,6 +210,7 @@ function onSelect(id: string) {
             type="search"
             :placeholder="$t('rail.search')"
             :aria-label="$t('rail.search')"
+            data-agent-search
             class="w-full rounded-full border bg-card py-2 pl-8 pr-12 text-sm transition-colors placeholder:text-muted-foreground/70 focus:outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/25"
             @keydown="onSearchKeydown"
           />
@@ -306,10 +346,31 @@ function onSelect(id: string) {
         :agent="agent"
         :pending="pending"
         :can-manage="canManageOpen"
+        :view="panelView.kind"
+        @to-chat="toChat"
+        @to-list="toList"
       />
 
       <div class="min-h-0 flex-1">
-        <AgentChatProvider :id="id" :key="id" compact />
+        <!-- The chat stays mounted under the history, hidden: its socket, the
+             text typed but not sent, the queue and the scroll position are
+             all there when the person comes back, and an answer that was on
+             its way finishes meanwhile (CLEAN-248). -->
+        <AgentChatProvider
+          v-show="panelView.kind === 'chat'"
+          :id="id"
+          :key="id"
+          compact
+        />
+        <ChatHistoryProvider
+          v-if="panelView.kind !== 'chat'"
+          :key="`history:${id}`"
+          :agent-id="id"
+          :chat-id="panelView.kind === 'conversation' ? panelView.chatId : null"
+          @open="toConversation"
+          @to-chat="toChat"
+          @back="panelBack"
+        />
       </div>
     </div>
 

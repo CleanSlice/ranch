@@ -1,16 +1,20 @@
 {
   "history": {
-    "title": "History",
-    "lede": "Your past conversations. Open one to pick up where you left off.",
     "sync": "Sync",
     "syncing": "Syncing…",
-    "empty_title": "No conversations yet",
-    "empty_hint": "Chat with an agent and it'll show up here so you can revisit it later.",
-    "empty_cta": "Browse agents",
-    "filter_current": "Current",
-    "filter_earlier": "Earlier",
-    "empty_earlier_title": "No earlier chats",
-    "empty_earlier_hint": "A conversation moves here when you start a new chat."
+    "search": "Search this agent’s conversations",
+    "search_none": "Nothing found",
+    "search_scope": "Search looks at the title and the last message.",
+    "group_today": "Today",
+    "group_this_week": "This week",
+    "group_earlier": "Earlier",
+    "running": "Going on now",
+    "empty_agent_title": "No conversations with this agent yet",
+    "empty_agent_hint": "A conversation moves here when you start a new chat.",
+    "load_failed": "Couldn’t load the conversations",
+    "more_failed": "Couldn’t load more",
+    "retry": "Try again",
+    "back": "History"
   },
   "session": {
     "closed": "Closed",
@@ -28,13 +32,17 @@
     "loading": "Loading…",
     "no_messages": "No messages in this conversation.",
     "navigation": "Navigation",
-    "refresh": "Refresh",
     "meta_messages": "Messages",
     "meta_activity": "Last activity",
     "sentiment_positive": "positive",
     "sentiment_neutral": "neutral",
     "sentiment_negative": "negative",
-    "sentiment_mixed": "mixed"
+    "sentiment_mixed": "mixed",
+    "read_only": "This conversation is closed. You can only read it.",
+    "to_current": "To the current chat",
+    "overview": "Overview",
+    "overview_show": "Show the overview",
+    "overview_hide": "Hide the overview"
   },
   "message": {
     "summarized": "Earlier in this conversation — summarized",

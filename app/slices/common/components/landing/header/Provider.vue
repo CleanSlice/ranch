@@ -33,13 +33,6 @@
         <NuxtLink to="/agents" class="land-header__link">
           {{ $t('nav.agents') }}
         </NuxtLink>
-        <NuxtLink
-          v-if="authStore.isAuthenticated"
-          to="/chats"
-          class="land-header__link"
-        >
-          {{ $t('nav.history') }}
-        </NuxtLink>
       </nav>
 
       <!-- Desktop: actions -->
@@ -121,9 +114,6 @@
           </a>
           <NuxtLink to="/agents" class="land-header__menu-link">
             {{ $t('nav.agents') }}
-          </NuxtLink>
-          <NuxtLink v-if="authStore.isAuthenticated" to="/chats" class="land-header__menu-link">
-            {{ $t('nav.history') }}
           </NuxtLink>
         </nav>
         <div class="land-header__menu-foot">

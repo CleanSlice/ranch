@@ -80,6 +80,21 @@ export interface IChatMessage {
   interim?: true;
 }
 
+/**
+ * What the own list is asked for. Everything is optional: with nothing set it
+ * is the first page of the current conversations with every agent.
+ */
+export interface IChatListQuery {
+  page?: number;
+  perPage?: number;
+  /** The conversations closed by "New chat" instead of the current ones. */
+  archived?: boolean;
+  /** Only the conversations with this agent (CLEAN-248). */
+  agentId?: string;
+  /** Title or last message contains this text (CLEAN-248). */
+  search?: string;
+}
+
 export interface IChatListResult {
   items: IChatSession[];
   total: number;

@@ -2,7 +2,6 @@
   "app_name": "Ranch",
   "nav": {
     "agents": "Агенты",
-    "history": "История",
     "templates": "Шаблоны"
   },
   "auth": {

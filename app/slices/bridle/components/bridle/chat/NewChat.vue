@@ -19,6 +19,7 @@ import { newChatHintKey } from '#bridle/utils/newChat';
  * or Cancel.
  */
 const props = defineProps<{ conversation: IBridleConversation }>();
+const emit = defineEmits<{ confirmed: [] }>();
 
 const bridleStore = useBridleStore();
 
@@ -88,6 +89,10 @@ async function ask() {
 
 function onConfirm() {
   close();
+  // For a host that shows something else in the chat's place (the console's
+  // history, CLEAN-248): the person asked for a new chat, so that is what
+  // they should be looking at, and a refusal is written into the chat too.
+  emit('confirmed');
   void bridleStore.startNewChat(props.conversation);
 }
 

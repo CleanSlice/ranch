@@ -115,7 +115,11 @@
     "pin": "Pin",
     "unpin": "Unpin",
     "pinned": "Pinned",
-    "pin_failed": "Pin failed"
+    "pin_failed": "Pin failed",
+    "view_label": "What the panel shows",
+    "view_chat": "Chat",
+    "view_history": "History",
+    "view_history_count": "History, no closed conversations | History, {count} closed conversation | History, {count} closed conversations"
   },
   "create_stub": {
     "badge": "In progress",

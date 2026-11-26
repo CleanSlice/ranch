@@ -26,7 +26,9 @@ called without waiting from the agent socket handler).
    row was just created by this event, add 1 to `userMessages` or
    `agentMessages` of `(sessionId, floor(ts to the hour))`, creating the row
    with the conversation's `agentId`, `channel` and `externalUserId`.
-2. A unique-key race on the hour row is retried once.
+2. A unique-key race on the hour row is retried once. The transaction waits
+   up to 15 seconds for a connection, so a burst queues as the single
+   statement it replaced did.
 3. A failure rolls back both and is logged as today. The caller never waits
    and the message is unaffected (FR-032, SC-011). The settle pass repairs it.
 
@@ -48,15 +50,24 @@ replayed, a duplicated and a concurrent delivery.
 Owner: `chat` slice, `ChatActivityService`, on a timer like the summary batch
 (the API has no scheduler; one process).
 
-- **Picks** up to `STATS_SETTLE_BATCH` (default 100) conversations where
-  `lastMessageAt` is more than 60 minutes old and within the last 180 days,
-  and `activityRebuiltAt` is null or older than `lastMessageAt`; newest first.
+- **Picks** up to `STATS_SETTLE_BATCH` (default 100) conversations that are
+  due (`activityRebuiltAt` is null) and whose `lastMessageAt` is more than 60
+  minutes old and within the last 180 days; newest first.
+- **Due is one column.** The pass stamps a conversation it has read; a live
+  event and a reconcile of a changed file set the column back to null in the
+  statement that already updates the row. The index
+  `(activityRebuiltAt, lastMessageAt)` holds the due ones together, so a run
+  with nothing to do reads nothing. Comparing the stamp with `lastMessageAt`
+  instead would have no index and would walk every conversation of the last
+  180 days every five minutes.
 - **For each**: read the transcript as the live write counts it: one message
   per stored `user` or `assistant` event, transient ones filtered, and no
   bubbles (`bubbles: false`: a streamed answer is one event shown as several
   bubbles, and the runtime reports one activity per event); count per UTC
-  hour; for each hour set the stored value to `max(stored, counted)`,
-  creating the row if absent; set `activityRebuiltAt = now`.
+  hour, leaving out messages older than the 400 days the rows are kept; for
+  each hour set the stored value to `max(stored, counted)`, creating the row
+  if absent; set `activityRebuiltAt` to the start of the run, unless the
+  conversation moved on while it was being read.
 - **Never**: lowers a value, deletes a row, or touches hours the transcript
   does not mention. A compacted transcript therefore cannot erase history.
 - **A transcript that cannot be read** leaves `activityRebuiltAt` untouched

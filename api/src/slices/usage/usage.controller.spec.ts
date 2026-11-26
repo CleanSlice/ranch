@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { UsageController } from './usage.controller';
 import { IUsageGateway } from './domain';
 import { costUsd } from './domain/model-pricing';
@@ -103,21 +104,30 @@ describe('UsageController.report', () => {
     expect(report).toHaveBeenNthCalledWith(2, 'a1', dto, 'Help Desk');
   });
 
-  it('reports with a null name, and does not throw, for an agent that does not exist', async () => {
+  // Usage.agentId has no foreign key any more, so that the rows outlive
+  // their agent. What the key used to refuse, the controller refuses.
+  it('refuses a report for an agent that does not exist with 404, and writes nothing', async () => {
     const { controller, report, agentGateway } = makeController([]);
     // What the real gateway answers for an unknown id.
     (agentGateway as unknown as Record<string, jest.Mock>).findById = jest.fn(
       async () => null,
     );
 
-    await expect(controller.report('agent-gone', dto)).resolves.toBeUndefined();
+    const refused = controller.report('agent-gone', dto);
 
-    expect(report).toHaveBeenCalledWith('agent-gone', dto, null);
+    await expect(refused).rejects.toBeInstanceOf(NotFoundException);
+    await expect(refused).rejects.toMatchObject({
+      status: 404,
+      message: 'Agent not found',
+    });
+    expect(report).not.toHaveBeenCalled();
   });
 
   it('still takes the report when the name lookup itself fails', async () => {
-    // The fake's findById throws for an unknown id. Usage is telemetry: a
-    // name that could not be read must not cost the day's numbers.
+    // The fake's findById throws for an unknown id, as a database that
+    // cannot be reached would. That is not "no such agent". Usage is
+    // telemetry: a name that could not be read must not cost the day's
+    // numbers.
     const { controller, report } = makeController([]);
 
     await expect(controller.report('agent-gone', dto)).resolves.toBeUndefined();

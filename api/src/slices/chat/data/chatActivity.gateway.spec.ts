@@ -3,10 +3,6 @@ import { ChatActivityGateway } from './chatActivity.gateway';
 type Row = Record<string, unknown>;
 type Limit = { lt?: number | Date };
 
-// What `prisma.chatSession.fields.lastMessageAt` stands for in the stub: a
-// reference to the row's own column, not a value.
-const LAST_MESSAGE_AT = { column: 'lastMessageAt' };
-
 const below = (value: unknown, limit: Limit | undefined) =>
   limit?.lt === undefined || (value as number | Date) < limit.lt;
 
@@ -90,7 +86,6 @@ function makePrismaStub(stored: Row[] = []) {
   };
 
   const chatSession = {
-    fields: { lastMessageAt: LAST_MESSAGE_AT },
     findMany: jest.fn(async (_args: Row): Promise<Row[]> => []),
     updateMany: jest.fn(async (_args: Row) => ({ count: 1 })),
   };
@@ -141,7 +136,7 @@ describe('ChatActivityGateway.findUnsettled', () => {
     limit: 100,
   };
 
-  it('asks for quiet, recent conversations not read since their last message, newest first', async () => {
+  it('asks for quiet, recent conversations that are due, newest first', async () => {
     const { gateway, prisma } = makePrismaStub();
 
     await gateway.findUnsettled(gate);
@@ -149,16 +144,31 @@ describe('ChatActivityGateway.findUnsettled', () => {
     expect(prisma.chatSession.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          activityRebuiltAt: null,
           lastMessageAt: { lt: gate.quietBefore, gte: gate.activeSince },
-          OR: [
-            { activityRebuiltAt: null },
-            { activityRebuiltAt: { lt: LAST_MESSAGE_AT } },
-          ],
         },
         orderBy: { lastMessageAt: 'desc' },
         take: 100,
       }),
     );
+  });
+
+  // Due is null and nothing else. The index on [activityRebuiltAt,
+  // lastMessageAt] answers an equality and a range; it cannot answer one
+  // column compared with another, or an OR over the two.
+  it('asks nothing the index cannot answer: no OR, no column compared with a column', async () => {
+    const { gateway, prisma } = makePrismaStub();
+
+    await gateway.findUnsettled(gate);
+
+    const { where } = prisma.chatSession.findMany.mock.calls[0][0] as {
+      where: Row;
+    };
+    expect(Object.keys(where).sort()).toEqual([
+      'activityRebuiltAt',
+      'lastMessageAt',
+    ]);
+    expect(where.activityRebuiltAt).toBeNull();
   });
 
   it('returns what the pass needs to find the transcript and to own the rows, and no more', async () => {
@@ -290,17 +300,29 @@ describe('ChatActivityGateway.raise', () => {
 });
 
 describe('ChatActivityGateway.markSettled', () => {
-  it('stamps the conversation, and is quiet about one that is gone', async () => {
+  // A message that arrived while the transcript was being read is later
+  // than the start of the run and has set the column to null. The condition
+  // is what keeps this stamp from overwriting that.
+  it('stamps the conversation only if it has no message later than the start of the run', async () => {
     const { gateway, prisma } = makePrismaStub();
-    prisma.chatSession.updateMany.mockResolvedValueOnce({ count: 0 });
     const when = new Date('2026-11-27T12:00:00Z');
 
     await gateway.markSettled('c1', when);
 
+    expect(prisma.chatSession.updateMany).toHaveBeenCalledTimes(1);
     expect(prisma.chatSession.updateMany).toHaveBeenCalledWith({
-      where: { id: 'c1' },
+      where: { id: 'c1', lastMessageAt: { lte: when } },
       data: { activityRebuiltAt: when },
     });
+  });
+
+  it('is quiet about a conversation that is gone, or that has moved on', async () => {
+    const { gateway, prisma } = makePrismaStub();
+    prisma.chatSession.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      gateway.markSettled('c1', new Date('2026-11-27T12:00:00Z')),
+    ).resolves.toBeUndefined();
   });
 });
 

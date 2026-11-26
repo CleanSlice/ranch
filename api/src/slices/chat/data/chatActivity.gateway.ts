@@ -17,18 +17,15 @@ export class ChatActivityGateway extends IChatActivityGateway {
   async findUnsettled(gate: IChatSettleGate): Promise<IUnsettledChat[]> {
     const records = await this.prisma.chatSession.findMany({
       where: {
+        // Due is one value of one column: null. Everything that moves a
+        // conversation on puts it back to null (a counted live event, a
+        // reconcile of a changed file), so this is one range of the index
+        // on [activityRebuiltAt, lastMessageAt]. "Stamp older than the last
+        // message" compared a column with a column, which no index answers:
+        // every run walked every conversation of the last 180 days to find,
+        // most of the time, none.
+        activityRebuiltAt: null,
         lastMessageAt: { lt: gate.quietBefore, gte: gate.activeSince },
-        // Something was said since the transcript was last read (null = it
-        // never was). A column compared with a column, as the summary batch
-        // does with summaryAt.
-        OR: [
-          { activityRebuiltAt: null },
-          {
-            activityRebuiltAt: {
-              lt: this.prisma.chatSession.fields.lastMessageAt,
-            },
-          },
-        ],
       },
       orderBy: { lastMessageAt: 'desc' },
       take: gate.limit,
@@ -136,10 +133,18 @@ export class ChatActivityGateway extends IChatActivityGateway {
   }
 
   async markSettled(sessionId: string, at: Date): Promise<void> {
+    // Only a conversation that has not moved on since the run began. A
+    // message that arrived while the transcript was being read has a later
+    // lastMessageAt and has already put the column back to null; without the
+    // condition this stamp would overwrite that null, and with null being
+    // the only thing that makes a conversation due, the message would wait
+    // for the one after it to be counted from the transcript.
+    //
     // updateMany, not update: a conversation deleted while its transcript was
-    // being read is no row, and must not throw.
+    // being read is no row, and must not throw. Neither must one that moved
+    // on.
     await this.prisma.chatSession.updateMany({
-      where: { id: sessionId },
+      where: { id: sessionId, lastMessageAt: { lte: at } },
       data: { activityRebuiltAt: at },
     });
   }

@@ -44,17 +44,28 @@ sum(userMessages)                 = userMessageCount
 sum(userMessages + agentMessages) = messageCount
 ```
 
+The transaction is given 15 seconds to get a connection, not Prisma's
+default two: under a burst it waits its turn, as the single statement it
+replaced did, instead of failing and losing the event from the totals too.
+
 The socket handler does not wait for the write and a failure never reaches
 the message. It is logged and repaired by the pass below. So is the far more
 common loss: the runtime reports each message once and drops the report while
 its socket is down.
 
 **The settle pass** (`ChatActivityService`). Every 5 minutes it takes up to
-100 conversations that have been quiet for an hour, were active in the last
-180 days, and have not been read since their last message. It reads each
-transcript once, counts messages per hour, and raises each stored hour to the
-transcript's count where that is higher. It never lowers a value and never
-deletes a row, because compaction shortens a transcript.
+100 conversations that are due, have been quiet for an hour and were active
+in the last 180 days. It reads each transcript once, counts messages per
+hour, and raises each stored hour to the transcript's count where that is
+higher. It never lowers a value and never deletes a row, because compaction
+shortens a transcript.
+
+A conversation is due when `ChatSession.activityRebuiltAt` is null. The pass
+stamps it; every write that moves the conversation on (a live event, a
+reconcile of a changed file) sets it back to null. "Due" is therefore one
+column with an index, and a run that has nothing to do reads nothing,
+however many conversations there are. The stamp is the start of the run and
+is refused for a conversation that moved on during it.
 
 It counts what the live write counts: one message per stored user or
 assistant event. A streamed answer is one event shown as several bubbles, so
@@ -101,7 +112,8 @@ last 30 that has minutes and no day row is set from its minutes.
 
 `Usage.agentId` is a plain column with no foreign key, and each row carries
 the agent's name as it was when the usage was reported. Deleting an agent
-does not change what a past period cost. A model missing from
+does not change what a past period cost. With the key gone, the report route
+is what refuses an agent that does not exist. A model missing from
 `model-pricing.ts` has no price: `hasPrice()` says so, and a page shows it as
 "no price" with tokens, never as zero.
 

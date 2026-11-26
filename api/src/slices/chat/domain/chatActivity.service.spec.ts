@@ -47,19 +47,31 @@ function chat(over: Partial<IStoredChat> = {}): IStoredChat {
 }
 
 /**
+ * What a counted live event does to the conversation's row, as far as the
+ * pass can see it (ChatGateway.recordActivity): the last message moves, and
+ * the conversation is due again.
+ */
+function liveMessage(c: IStoredChat, when: number): void {
+  c.lastMessageAt = new Date(when);
+  c.activityRebuiltAt = null;
+}
+
+/**
  * The port as the contract states it (spec 038, contracts/collection.md
  * section 3), over two arrays. What the database does with the same calls is
  * covered beside the Prisma gateway, in data/chatActivity.gateway.spec.ts.
+ *
+ * Due is `activityRebuiltAt === null` and nothing else; the stamp is refused
+ * for a conversation with a message later than it.
  */
 function makeStore(chats: IStoredChat[] = [], hours: IStoredHour[] = []) {
   const findUnsettled = jest.fn(async (gate: IChatSettleGate) =>
     chats
       .filter(
         (c) =>
+          c.activityRebuiltAt === null &&
           c.lastMessageAt < gate.quietBefore &&
-          c.lastMessageAt >= gate.activeSince &&
-          (c.activityRebuiltAt === null ||
-            c.activityRebuiltAt < c.lastMessageAt),
+          c.lastMessageAt >= gate.activeSince,
       )
       .sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime())
       .slice(0, gate.limit)
@@ -107,7 +119,7 @@ function makeStore(chats: IStoredChat[] = [], hours: IStoredHour[] = []) {
   );
   const markSettled = jest.fn(async (sessionId: string, when: Date) => {
     const found = chats.find((c) => c.id === sessionId);
-    if (found) found.activityRebuiltAt = when;
+    if (found && found.lastMessageAt <= when) found.activityRebuiltAt = when;
   });
   const pruneBefore = jest.fn(async (date: Date) => {
     const kept = hours.filter((h) => h.hour >= date);
@@ -218,6 +230,13 @@ describe('ChatActivityService.settle, what it picks', () => {
     const key = (id: string) => `bridle:${id}`;
     const one = (id: string, over: Partial<IStoredChat>) =>
       chat({ id, sessionKey: key(id), externalUserId: id, ...over });
+    // Read four hours ago, and written to an hour after that: the message
+    // took the stamp away, which is all that makes it due.
+    const writtenInSince = one('written-in-since', {
+      lastMessageAt: new Date(NOW - 5 * HOUR),
+      activityRebuiltAt: new Date(NOW - 4 * HOUR),
+    });
+    liveMessage(writtenInSince, NOW - 3 * HOUR);
     const store = makeStore([
       one('still-talking', { lastMessageAt: new Date(NOW - 59 * MINUTE) }),
       one('quiet', { lastMessageAt: new Date(NOW - 61 * MINUTE) }),
@@ -227,10 +246,7 @@ describe('ChatActivityService.settle, what it picks', () => {
         lastMessageAt: new Date(NOW - 5 * HOUR),
         activityRebuiltAt: new Date(NOW - 4 * HOUR),
       }),
-      one('written-in-since', {
-        lastMessageAt: new Date(NOW - 3 * HOUR),
-        activityRebuiltAt: new Date(NOW - 4 * HOUR),
-      }),
+      writtenInSince,
     ]);
     const { reader, read } = makeReader({
       'data/sessions/bridle:quiet.jsonl': [],
@@ -345,6 +361,119 @@ describe('ChatActivityService.settle, what it writes', () => {
 
     expect(store.hours).toEqual([]);
     expect(store.chats[0].activityRebuiltAt).toEqual(new Date(NOW));
+  });
+
+  // A conversation that began more than the retention ago: the prune deletes
+  // those hours daily, and settling it must not put them back each time.
+  it('leaves out the part of a transcript that is past the retention', async () => {
+    const store = makeStore([chat()]);
+    const service = new ChatActivityService(
+      store.gateway,
+      makeReader({
+        [PATH]: [
+          { role: 'user', ts: NOW - 401 * DAY },
+          { role: 'assistant', ts: NOW - DAY },
+        ],
+      }).reader,
+    );
+
+    const result = await service.settle(NOW);
+
+    expect(result).toEqual({ picked: 1, raised: 1, failed: 0 });
+    expect(counts(store.hours)).toEqual([['2026-11-26T12:00:00.000Z', 0, 1]]);
+    expect(store.chats[0].activityRebuiltAt).toEqual(new Date(NOW));
+  });
+
+  // The cut is by the start of the hour, as the prune's is: a message still
+  // inside the 400 days whose hour began before them belongs to a row the
+  // prune removes.
+  it('creates no hour that a prune at the same moment would remove', async () => {
+    const now = NOW + 30 * MINUTE;
+    const store = makeStore([chat()]);
+    const service = new ChatActivityService(
+      store.gateway,
+      makeReader({
+        [PATH]: [
+          // 12:40 of the day the retention ends at 12:30: the 12:00 hour.
+          { role: 'user', ts: now - 400 * DAY + 10 * MINUTE },
+          // The first hour that is kept whole.
+          { role: 'assistant', ts: now - 400 * DAY + 30 * MINUTE },
+          { role: 'user', ts: NOW - DAY },
+        ],
+      }).reader,
+    );
+
+    await service.settle(now);
+
+    expect(store.hours.map((h) => h.hour)).toEqual([
+      new Date(NOW - 400 * DAY + HOUR),
+      new Date(NOW - DAY),
+    ]);
+    expect(await service.prune(now)).toBe(0);
+  });
+});
+
+describe('ChatActivityService.settle, a conversation that moves on', () => {
+  it('reads it again after a message that came once it was settled', async () => {
+    const store = makeStore([chat()]);
+    const transcripts = { [PATH]: FULL.slice(0, 4) };
+    const { reader, read } = makeReader(transcripts);
+    const service = new ChatActivityService(store.gateway, reader);
+    await service.settle(NOW);
+    expect(store.chats[0].activityRebuiltAt).toEqual(new Date(NOW));
+
+    // An hour and a half later somebody writes, and the event is lost on
+    // its way: the row moved (the reconcile does the same to it), the hour
+    // did not.
+    const written = NOW + 90 * MINUTE;
+    transcripts[PATH] = [...FULL.slice(0, 4), { role: 'user', ts: written }];
+    liveMessage(store.chats[0], written);
+
+    // Not while it is still going.
+    const early = await service.settle(written + 30 * MINUTE);
+    const late = await service.settle(written + 61 * MINUTE);
+
+    expect(early).toEqual({ picked: 0, raised: 0, failed: 0 });
+    expect(late).toEqual({ picked: 1, raised: 1, failed: 0 });
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(counts(store.hours)).toEqual([
+      ['2026-11-20T09:00:00.000Z', 2, 2],
+      ['2026-11-27T13:00:00.000Z', 1, 0],
+    ]);
+  });
+
+  // The stamp is the start of the run. A message that arrives while the
+  // transcript is being read is later than that and has cleared the column;
+  // were the stamp written over it, nothing would make the conversation due
+  // until the message after.
+  it('does not mark as settled a conversation written to while its transcript was being read', async () => {
+    const store = makeStore([chat()]);
+    const arrived = NOW + 2_000;
+    const lines = FULL.map((l, i) => ({ id: `m${i}`, text: 'x', ...l }));
+    const read = jest
+      .fn(async () => lines)
+      .mockImplementationOnce(async () => {
+        // The first read began before the message was stored, and does not
+        // have it.
+        liveMessage(store.chats[0], arrived);
+        return lines;
+      });
+    const service = new ChatActivityService(store.gateway, {
+      read,
+    } as unknown as TranscriptReaderService);
+
+    const during = await service.settle(NOW);
+
+    expect(during).toEqual({ picked: 1, raised: 3, failed: 0 });
+    expect(store.markSettled).toHaveBeenCalledWith('c1', new Date(NOW));
+    expect(store.chats[0].activityRebuiltAt).toBeNull();
+
+    // So it is taken again once it has been quiet for an hour.
+    const next = await service.settle(arrived + 61 * MINUTE);
+    expect(next.picked).toBe(1);
+    expect(store.chats[0].activityRebuiltAt).toEqual(
+      new Date(arrived + 61 * MINUTE),
+    );
   });
 });
 

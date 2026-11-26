@@ -97,9 +97,12 @@ What the product knows about one figure's history.
 | `insightVersion` | Int, default 0 | 0 none, 1 before this feature, 2 with question, outcome and vocabulary |
 | `activityRebuiltAt` | DateTime? | when the settle pass last read this conversation's transcript |
 
-- **New indexes**: `([lastMessageAt])`, for the settle pass, which looks at
-  every channel; `([externalUserId, channel, lastMessageAt])`, for one
-  person's conversations.
+- **New indexes**: `([activityRebuiltAt, lastMessageAt])`, for the settle
+  pass: a conversation is due when `activityRebuiltAt` is null, and every
+  write that moves a conversation on sets it back to null, so the due ones
+  are one index range however many conversations there are;
+  `([externalUserId, channel, lastMessageAt])`, for one person's
+  conversations.
 - **Unchanged**: `summary`, `summaryAt`, `insights` (Json). `insights` keeps
   being written (`topics` as English labels, `sentiment`, `resolved`,
   `language`) for the admin console's chat pages.

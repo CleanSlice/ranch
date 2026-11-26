@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { TranscriptReaderService } from '#/agent/file/domain';
 import { captureBackgroundError } from '#/setup/sentry';
-import { bucketByHour } from './activityBuckets';
+import { bucketByHour, hourOf } from './activityBuckets';
 import { IChatActivityGateway, IUnsettledChat } from './chatActivity.gateway';
 import { IChatSettleResult } from './chat.types';
 
@@ -76,8 +76,9 @@ interface IFailure {
  * contracts/collection.md section 3, docs/statistics.md).
  *
  * The settle pass: on a timer it takes conversations that have gone quiet and
- * have not been read since their last message, counts each transcript's
- * messages per UTC hour, and raises every stored hour that is lower. One path
+ * are due (`activityRebuiltAt` is null: never read, or a message or a changed
+ * file has cleared it since), counts each transcript's messages per UTC hour,
+ * and raises every stored hour that is lower. One path
  * for three needs: history when an installation is upgraded, events the live
  * write lost (the runtime reports a message once, and not at all while its
  * socket is down), and the past of a figure added later. It only ever raises,
@@ -226,10 +227,17 @@ export class ChatActivityService implements OnModuleInit, OnModuleDestroy {
       await this.activity.markSettled(session.id, new Date(now));
       return 0;
     }
-    const raised = await this.activity.raise(session, bucketByHour(messages));
+    // Not the hours the prune would delete. A conversation that began more
+    // than the retention ago would get them back from its transcript every
+    // time it was settled, and lose them again the next day. By the start of
+    // the message's hour, which is what the prune compares.
+    const keptFrom = now - RETENTION_MS;
+    const kept = messages.filter((m) => hourOf(m.ts).getTime() >= keptFrom);
+    const raised = await this.activity.raise(session, bucketByHour(kept));
     // The start of the run, not the end of the read: a message that arrives
-    // while the transcript is being read is later than the stamp, so the
-    // conversation is due again once it goes quiet.
+    // while the transcript is being read is later than that, has made the
+    // conversation due again, and the stamp is refused for it. So it is
+    // picked up once it goes quiet.
     await this.activity.markSettled(session.id, new Date(now));
     return raised;
   }

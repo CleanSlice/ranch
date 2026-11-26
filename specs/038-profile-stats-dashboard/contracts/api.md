@@ -133,7 +133,7 @@ labels and conversation counts so the operator can see what to merge.
 
 | Route | Change |
 |-------|--------|
-| `POST /agents/:agentId/usage` | also stores the agent's current name with the row |
+| `POST /agents/:agentId/usage` | also stores the agent's current name with the row; answers 404 and writes nothing for an agent that does not exist, which the foreign key used to refuse |
 | `GET /usage/overview`, `GET /llms/:id/usage`, and the tools `get_usage_overview` and `llm_usage` | a deleted agent's rows remain and are listed under the name it had; no shape change. `GET /agents/:agentId/usage` still answers 404 for an agent that no longer exists, as every route that names an agent does |
 | `GET /chats`, `GET /chats/:id`, `GET /me/chats` | `ChatSessionDto` gains optional `outcome`, `question`, `topics[]` (labels); additive |
 | `POST /chats/:id/summarize` | produces a version 2 summary |

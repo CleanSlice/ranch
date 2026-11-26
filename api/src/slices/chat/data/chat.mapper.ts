@@ -73,6 +73,10 @@ export class ChatMapper {
   // (never lowered — the existing row's value is the floor).
   toReconcileUpdate(input: IChatReconcileInput, existing: ChatSession) {
     return {
+      // The reconcile only updates a row whose file changed, so the
+      // transcript has something the settle pass has not read: due again
+      // (CLEAN-261). A row it creates starts null, the column has no default.
+      activityRebuiltAt: null,
       channel: input.channel,
       externalUserId: input.externalUserId,
       title: input.title ?? existing.title,

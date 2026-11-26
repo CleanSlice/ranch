@@ -72,6 +72,8 @@ function makePrismaStub() {
         summaryAt: null,
         insights: null,
         lastIndexedEventId: null,
+        // No default in the schema: a new conversation is due.
+        activityRebuiltAt: null,
         title: null,
         createdAt: new Date(0),
         updatedAt: new Date(0),
@@ -106,6 +108,7 @@ function makePrismaStub() {
             summaryAt: null,
             insights: null,
             lastIndexedEventId: null,
+            activityRebuiltAt: null,
             title: null,
             createdAt: new Date(0),
             updatedAt: new Date(0),
@@ -314,6 +317,9 @@ function makePrismaStub() {
         work:
           | Promise<unknown>[]
           | ((tx: ReturnType<typeof inTransaction>) => Promise<unknown>),
+        // How long it may wait for a connection and run. Nothing waits in
+        // this fake; it is taken so that the calls record it.
+        _options?: { maxWait?: number; timeout?: number },
       ) => {
         if (Array.isArray(work)) return Promise.all(work);
         const undo: Undo = [];
@@ -400,6 +406,34 @@ describe('ChatGateway.reconcileUpsert', () => {
     expect(after.messageCount).toBe(9);
     expect(after.userMessageCount).toBe(5);
   });
+
+  // The settle pass takes a conversation exactly when activityRebuiltAt is
+  // null (CLEAN-261). The reconcile only comes back to a row whose file
+  // changed, so there is something in the transcript the pass has not read.
+  it('makes an existing conversation due for the settle pass again', async () => {
+    const { gw, rows } = newGateway();
+    const first = await gw.reconcileUpsert(input());
+    rows[first.id].activityRebuiltAt = new Date(5000);
+
+    await gw.reconcileUpsert(
+      input({ size: 900, messageCount: 5, lastMessageAt: new Date(6000) }),
+    );
+
+    expect(rows[first.id].activityRebuiltAt).toBeNull();
+  });
+
+  it('creates a conversation due, by leaving the column to the database', async () => {
+    const { gw, rows } = newGateway();
+    const mapper = new ChatMapper();
+
+    const created = await gw.reconcileUpsert(input());
+
+    expect(rows[created.id].activityRebuiltAt).toBeNull();
+    expect(mapper.toCreate(input())).not.toHaveProperty('activityRebuiltAt');
+    expect(mapper.toActivityCreate('agent-1', activity())).not.toHaveProperty(
+      'activityRebuiltAt',
+    );
+  });
 });
 
 function activity(over: Partial<IChatActivity> = {}): IChatActivity {
@@ -460,6 +494,75 @@ describe('ChatGateway.recordActivity', () => {
     await gw.recordActivity('agent-1', activity({ eventId: 'dup' }));
     const s = (await gw.list({ agentId: 'agent-1' })).items[0];
     expect(s.messageCount).toBe(1);
+  });
+});
+
+/**
+ * Who is due for the settle pass (CLEAN-261): a conversation whose
+ * activityRebuiltAt is null, and only that. So the live write has to clear
+ * the stamp whenever it counts an event, in the statement that counts it.
+ */
+describe('ChatGateway.recordActivity, and the settle pass', () => {
+  const STAMP = new Date('2026-11-20T11:00:00Z');
+
+  it('makes a settled conversation due again with the event it counts', async () => {
+    const { gw, rows, prisma } = newGateway();
+    await gw.recordActivity('agent-1', activity({ eventId: 'e1' }));
+    const [session] = Object.values(rows);
+    session.activityRebuiltAt = STAMP;
+    prisma.chatSession.updateMany.mockClear();
+
+    await gw.recordActivity(
+      'agent-1',
+      activity({ eventId: 'e2', role: 'assistant' }),
+    );
+
+    expect(session.messageCount).toBe(2);
+    expect(session.activityRebuiltAt).toBeNull();
+    // With the increment, not after it: one statement.
+    expect(prisma.chatSession.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.chatSession.updateMany.mock.calls[0][0].data).toMatchObject({
+      messageCount: { increment: 1 },
+      activityRebuiltAt: null,
+    });
+  });
+
+  it('leaves the stamp of a settled conversation alone for a repeated event', async () => {
+    const { gw, rows } = newGateway();
+    const event = activity({ eventId: 'dup' });
+    await gw.recordActivity('agent-1', event);
+    const [session] = Object.values(rows);
+    session.activityRebuiltAt = STAMP;
+
+    await gw.recordActivity('agent-1', event);
+
+    expect(session.messageCount).toBe(1);
+    expect(session.activityRebuiltAt).toEqual(STAMP);
+  });
+
+  it('puts the stamp back when the event could not be counted', async () => {
+    const { gw, rows, prisma } = newGateway();
+    await gw.recordActivity('agent-1', activity({ eventId: 'e1' }));
+    Object.values(rows)[0].activityRebuiltAt = STAMP;
+    prisma.chatActivityHour.upsert.mockImplementationOnce(async () => {
+      throw new Error('connection lost');
+    });
+
+    await expect(
+      gw.recordActivity('agent-1', activity({ eventId: 'e2' })),
+    ).rejects.toThrow('connection lost');
+
+    // Rolled back with the totals. The message is in the transcript all the
+    // same, and the reconcile is what makes the conversation due for it.
+    expect(Object.values(rows)[0].activityRebuiltAt).toEqual(STAMP);
+  });
+
+  it('creates a conversation due', async () => {
+    const { gw, rows } = newGateway();
+
+    await gw.recordActivity('agent-1', activity());
+
+    expect(Object.values(rows)[0].activityRebuiltAt).toBeNull();
   });
 });
 
@@ -546,6 +649,43 @@ describe('ChatGateway.recordActivity, by the hour', () => {
         agentMessages: 1,
       }),
     ]);
+  });
+
+  // Prisma gives an interactive transaction 2 s to get a connection and 5 s
+  // to run. This one is started for every message and nobody waits for it:
+  // a burst larger than the pool lost the events at the back of the queue,
+  // from the lifetime totals too. It queues, as the bare statement it
+  // replaced did.
+  it('lets the transaction wait 15 s for a connection, and run as long, on every attempt', async () => {
+    const { gw, prisma } = newGateway();
+    const patient = { maxWait: 15_000, timeout: 15_000 };
+
+    await gw.recordActivity('agent-1', activity({ eventId: 'e1' }));
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      patient,
+    );
+
+    // The retry after a unique-key race is a transaction of its own.
+    prisma.$transaction.mockClear();
+    prisma.chatActivityHour.upsert.mockImplementationOnce(async () => {
+      throw uniqueViolation();
+    });
+    await gw.recordActivity('agent-1', activity({ eventId: 'e2' }));
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Function),
+      patient,
+    );
+    expect(prisma.$transaction).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      patient,
+    );
   });
 
   it('starts a new row when the conversation goes on into another hour', async () => {
@@ -805,6 +945,8 @@ describe('ChatGateway.archiveSession', () => {
     const { gw, rows } = newGateway();
     const live = await gw.reconcileUpsert(input({ messageCount: 6 }));
     rows[live.id].summary = 'asked about billing';
+    const settledAt = new Date(5000);
+    rows[live.id].activityRebuiltAt = settledAt;
 
     await gw.archiveSession('agent-1', 'bridle:admin', ARCHIVED);
 
@@ -814,6 +956,9 @@ describe('ChatGateway.archiveSession', () => {
     expect(moved?.externalUserId).toBe('admin');
     expect(moved?.messageCount).toBe(6);
     expect(moved?.summary).toBe('asked about billing');
+    // The row and its file move together, nothing was said: a settled
+    // conversation stays settled.
+    expect(rows[live.id].activityRebuiltAt).toEqual(settledAt);
     expect(Object.keys(rows)).toHaveLength(1);
   });
 

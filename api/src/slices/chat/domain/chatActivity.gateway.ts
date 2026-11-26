@@ -36,9 +36,13 @@ export type IActivityOwner = Pick<
  */
 export abstract class IChatActivityGateway {
   /**
-   * Conversations that are quiet, recent, and not read since their last
-   * message (`activityRebuiltAt` is null or older than `lastMessageAt`), on
-   * every channel. Most recently active first, capped at `gate.limit`.
+   * Conversations that are quiet, recent, and due, on every channel. Most
+   * recently active first, capped at `gate.limit`.
+   *
+   * Due is exactly `activityRebuiltAt` being null: never read, or moved on
+   * since it was. Whatever moves a conversation on sets the column back to
+   * null (a counted live event, a reconcile of a changed file), so that the
+   * question is one column and an index answers it.
    */
   abstract findUnsettled(gate: IChatSettleGate): Promise<IUnsettledChat[]>;
 
@@ -54,7 +58,12 @@ export abstract class IChatActivityGateway {
     rows: IActivityBucket[],
   ): Promise<number>;
 
-  /** Stamp `activityRebuiltAt`. A conversation deleted meanwhile is no error. */
+  /**
+   * Stamp `activityRebuiltAt` with `at`, the start of the run that read the
+   * transcript, unless the conversation has a message later than `at`: that
+   * one made it due again, and the stamp must not undo it. A conversation
+   * deleted meanwhile is no error.
+   */
   abstract markSettled(sessionId: string, at: Date): Promise<void>;
 
   /** Delete the hours that began before `date`. Returns how many. */

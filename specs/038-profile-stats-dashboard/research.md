@@ -50,7 +50,8 @@ message.
 
 **Decision.** One mechanism, the *settle pass*, in the `chat` slice: every
 5 minutes it takes up to 100 conversations that have been quiet for an hour
-and whose `activityRebuiltAt` is null or older than `lastMessageAt`, reads
+and are due (`activityRebuiltAt` is null: never read, or written in since,
+because every write that moves a conversation on clears the stamp), reads
 each transcript once, buckets the user and assistant messages by hour with
 the same reader options the reconcile uses, and raises each hour to the
 transcript's count where it is higher. It never lowers. Newest first, limited

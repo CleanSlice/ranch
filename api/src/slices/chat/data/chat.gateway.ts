@@ -18,6 +18,20 @@ import { ChatMapper } from './chat.mapper';
 
 const DEFAULT_PER_PAGE = 50;
 
+/**
+ * How long the live write may wait for a connection, and how long it may then
+ * run (CLEAN-261). Prisma's defaults for an interactive transaction are 2 s
+ * and 5 s. This one is started for every message, and nobody waits for it: a
+ * burst larger than the connection pool made the ones at the back fail to
+ * start after 2 s, and the event was lost from the lifetime totals too. When
+ * the write was one bare statement it simply waited for a connection, and
+ * waiting is still right, since the socket handler does not wait for the
+ * result. An event that cannot start even after 15 s is given up on here and
+ * repaired from the transcript by the settle pass.
+ */
+const ACTIVITY_TX_MAX_WAIT_MS = 15_000;
+const ACTIVITY_TX_TIMEOUT_MS = 15_000;
+
 @Injectable()
 export class ChatGateway extends IChatGateway {
   constructor(
@@ -113,29 +127,32 @@ export class ChatGateway extends IChatGateway {
     agentId: string,
     a: IChatActivity,
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      const counted = await this.countActivity(tx, agentId, a);
-      // A repeated event: the totals did not move, so neither does the hour.
-      if (!counted) return;
+    await this.prisma.$transaction(
+      async (tx) => {
+        const counted = await this.countActivity(tx, agentId, a);
+        // A repeated event: the totals did not move, so neither does the hour.
+        if (!counted) return;
 
-      const fromPerson = a.role === 'user';
-      const hour = hourOf(a.ts);
-      await tx.chatActivityHour.upsert({
-        where: { sessionId_hour: { sessionId: counted.id, hour } },
-        create: {
-          sessionId: counted.id,
-          hour,
-          agentId,
-          channel: counted.channel,
-          externalUserId: counted.externalUserId,
-          userMessages: fromPerson ? 1 : 0,
-          agentMessages: fromPerson ? 0 : 1,
-        },
-        update: fromPerson
-          ? { userMessages: { increment: 1 } }
-          : { agentMessages: { increment: 1 } },
-      });
-    });
+        const fromPerson = a.role === 'user';
+        const hour = hourOf(a.ts);
+        await tx.chatActivityHour.upsert({
+          where: { sessionId_hour: { sessionId: counted.id, hour } },
+          create: {
+            sessionId: counted.id,
+            hour,
+            agentId,
+            channel: counted.channel,
+            externalUserId: counted.externalUserId,
+            userMessages: fromPerson ? 1 : 0,
+            agentMessages: fromPerson ? 0 : 1,
+          },
+          update: fromPerson
+            ? { userMessages: { increment: 1 } }
+            : { agentMessages: { increment: 1 } },
+        });
+      },
+      { maxWait: ACTIVITY_TX_MAX_WAIT_MS, timeout: ACTIVITY_TX_TIMEOUT_MS },
+    );
   }
 
   /**
@@ -228,6 +245,10 @@ export class ChatGateway extends IChatGateway {
         preview: a.preview,
         lastRole: a.role,
         lastIndexedEventId: a.eventId,
+        // Due for the settle pass again, which takes a conversation exactly
+        // when this is null. In the statement that counts the event, so a
+        // repeated event, which matches no row, does not touch it either.
+        activityRebuiltAt: null,
       },
     });
     return res.count > 0;

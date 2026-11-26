@@ -75,7 +75,7 @@ CREATE INDEX "ChatActivityHour_agentId_hour_idx" ON "ChatActivityHour"("agentId"
 CREATE INDEX "ChatActivityHour_hour_idx" ON "ChatActivityHour"("hour");
 
 -- CreateIndex
-CREATE INDEX "ChatSession_lastMessageAt_idx" ON "ChatSession"("lastMessageAt");
+CREATE INDEX "ChatSession_activityRebuiltAt_lastMessageAt_idx" ON "ChatSession"("activityRebuiltAt", "lastMessageAt");
 
 -- AddForeignKey
 ALTER TABLE "AgentLoadDay" ADD CONSTRAINT "AgentLoadDay_agentId_fkey" FOREIGN KEY ("agentId") REFERENCES "Agent"("id") ON DELETE CASCADE ON UPDATE CASCADE;

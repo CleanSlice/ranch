@@ -31,6 +31,10 @@ function makeLimiter() {
     addMinutes: () => Promise.resolve(),
     minutes: () => Promise.resolve([]),
     pruneBefore: () => Promise.resolve(),
+    rebuildMissingDays: () => Promise.resolve(0),
+    pruneDaysBefore: () => Promise.resolve(),
+    findDays: () => Promise.resolve([]),
+    firstDayAt: () => Promise.resolve(null),
   };
   return new AgentLimitService(gateway);
 }

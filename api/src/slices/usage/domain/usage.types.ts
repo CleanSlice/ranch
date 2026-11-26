@@ -1,6 +1,12 @@
 export interface IUsageData {
   id: string;
   agentId: string;
+  /**
+   * The agent's name when this row was last reported (CLEAN-261). The row
+   * outlives the agent, and this is what it is shown under once the agent is
+   * gone. Null when no report could read the name.
+   */
+  agentName: string | null;
   llmCredentialId: string | null;
   model: string;
   date: Date;

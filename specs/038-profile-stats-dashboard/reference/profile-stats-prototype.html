@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RANCH: статистика в профиле</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0c0910;--card:rgba(22,17,28,.72);--card-solid:#16111c;--card2:#1e1726;
+  --ln:rgba(255,255,255,.1);--ln2:rgba(255,255,255,.16);--hair:rgba(255,255,255,.07);
+  --fg:#f5f1f6;--mut:#a89fae;--dim:#7e7488;
+  --cu:#f5a16b;--lv:#c9a1e4;--ok:#4cc38a;--okd:#2fa66b;
+  /* categorical, dark band, validated on #16111c (scripts/validate_palette.js) */
+  --c1:#de8040;--c2:#a87bd8;--c3:#2a9f96;--c4:#4f86e0;--c0:#6e6478;
+  /* outcome status */
+  --good:#3fb67b;--warn:#d4a24c;--none:#5b5262;
+  /* sequential copper for activity */
+  --s0:rgba(255,255,255,.06);--s1:#4a2f22;--s2:#7a4a2e;--s3:#b5683a;--s4:#f5a16b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Geist','Inter',system-ui,sans-serif;font-size:14px;line-height:1.45}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:var(--cu)}
+:focus-visible{outline:2px solid var(--cu);outline-offset:2px}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.dot{font-family:'DotGothic16','Geist Mono',monospace}
+svg.i{width:1em;height:1em;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ── prototype controls (not part of the design) ── */
+.proto{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 20px;border-bottom:1px dashed rgba(245,161,107,.35);background:rgba(12,9,16,.94);backdrop-filter:blur(8px);font-size:12.5px}
+.proto b{font-weight:600;color:var(--cu);letter-spacing:.04em}
+.proto .grp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--dim)}
+.pg{display:flex;flex-wrap:wrap;gap:2px;padding:2px;border:1px solid var(--ln);border-radius:999px;background:rgba(22,17,28,.7)}
+.pg button{min-height:30px;padding:0 11px;border:0;border-radius:999px;background:none;color:var(--mut);white-space:nowrap}
+.pg button[aria-pressed=true]{background:var(--cu);color:#1a1220;font-weight:600}
+.proto label{display:inline-flex;align-items:center;gap:6px;color:var(--mut);cursor:pointer}
+.proto input{accent-color:var(--cu)}
+
+/* ── console chrome ── */
+.app{min-height:100vh;background:radial-gradient(60% 46% at 28% 30%,rgba(201,161,228,.08),rgba(201,161,228,0) 70%),radial-gradient(70% 50% at 50% 100%,rgba(245,161,107,.08),rgba(245,161,107,0) 70%),var(--bg)}
+.hdr{border-bottom:1px solid var(--ln);background:rgba(12,9,16,.7)}
+.hdr .in{max-width:1228px;margin:0 auto;padding:0 24px;min-height:56px;display:flex;flex-wrap:wrap;align-items:center;gap:16px 20px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+.brand img{display:block;width:auto}
+.nav{display:flex;gap:2px;padding:3px;border:1px solid var(--ln);border-radius:999px;background:rgba(22,17,28,.6)}
+.nav a{padding:8px 16px;border-radius:999px;color:var(--mut);text-decoration:none}
+.sp{flex:1 1 0}
+.lang{min-height:36px;padding:0 12px;border:1px solid var(--ln);border-radius:999px;background:rgba(22,17,28,.6);color:var(--mut);font-family:'Geist Mono',monospace;font-size:12px;display:inline-flex;align-items:center}
+.me{display:flex;align-items:center;gap:10px;min-height:40px;padding:0 6px 0 14px;border:1px solid rgba(245,161,107,.45);border-radius:999px;background:rgba(245,161,107,.08);color:var(--fg);text-decoration:none}
+.badge{padding:3px 9px;border:1px solid rgba(245,161,107,.35);border-radius:999px;background:rgba(245,161,107,.12);color:var(--cu);font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.logout{min-height:40px;padding:0 4px;border:0;background:none;color:var(--mut)}
+
+.page{max-width:1180px;margin:0 auto;padding:0 24px 64px;display:grid;grid-template-columns:400px minmax(0,1fr);gap:32px 56px;align-items:start}
+@media (max-width:1023px){.page{grid-template-columns:minmax(0,1fr)}.pass-col{max-width:420px;margin:0 auto;width:100%}}
+
+/* ── pass (simplified copy of the shipped component) ── */
+.pass-col{display:flex;flex-direction:column;align-items:center}
+@media (min-width:1024px){.pass-col{position:sticky;top:56px}}
+.strap{width:30px;height:62px;background:repeating-linear-gradient(180deg,#2a2033 0,#2a2033 7px,#332740 7px,#332740 8px);border-inline:1px solid rgba(201,161,228,.35)}
+.clip{width:46px;height:20px;margin-bottom:-12px;position:relative;z-index:2;border-radius:6px;background:linear-gradient(180deg,#5a4a66,#2c2236);border:1px solid rgba(255,255,255,.22)}
+.pass{position:relative;overflow:hidden;width:100%;border-radius:24px;border:1px solid rgba(255,255,255,.14);background:linear-gradient(158deg,#211829 0%,#140f1b 52%,#1c1322 100%);box-shadow:0 40px 80px -30px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.08)}
+.pass .glow{position:absolute;top:-150px;right:-150px;width:340px;height:340px;border-radius:50%;background:conic-gradient(from 210deg,rgba(245,161,107,0),rgba(245,161,107,.34) 50deg,rgba(201,161,228,.36) 110deg,rgba(245,161,107,.16) 170deg,rgba(201,161,228,0) 230deg,rgba(245,161,107,0));filter:blur(26px)}
+.pass .slot{position:absolute;top:16px;left:50%;width:62px;height:12px;margin-left:-31px;border-radius:999px;background:var(--bg);box-shadow:inset 0 1px 3px rgba(0,0,0,.9)}
+.pass .top{position:relative;padding:48px 28px 22px;display:flex;flex-direction:column;gap:18px}
+.pass .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.cap{font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
+.pass h1{margin:0;font-size:28px;line-height:1.1;font-weight:600;text-align:center}
+.pass .role{font-family:'DotGothic16','Geist Mono',monospace;font-size:15px;letter-spacing:.16em;color:var(--cu);text-align:center}
+.perf{position:relative;height:22px}
+.perf i{position:absolute;top:0;width:22px;height:22px;border-radius:50%;background:var(--bg);border:1px solid rgba(255,255,255,.14)}
+.perf i:first-child{left:-12px}.perf i:nth-child(2){right:-12px}
+.perf b{position:absolute;left:22px;right:22px;top:10px;border-top:2px dashed rgba(255,255,255,.2)}
+.stub{padding:16px 28px 24px;display:flex;flex-direction:column;gap:14px}
+.stub .nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.stub .n{font-family:'DotGothic16','Geist Mono',monospace;font-size:30px;line-height:1}
+.stub small{display:block;font-size:12px;color:var(--mut);margin-top:3px}
+
+/* ── right column ── */
+.col{min-width:0;display:flex;flex-direction:column;gap:16px}
+@media (min-width:1024px){.col{margin-top:40px}}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px}
+.seg{display:inline-flex;padding:3px;border:1px solid var(--ln);border-radius:999px;background:var(--card-solid)}
+.seg button{display:inline-flex;align-items:center;gap:7px;min-height:32px;padding:0 14px;border:0;border-radius:999px;background:none;color:var(--mut);font-size:13px;font-weight:500;white-space:nowrap}
+.seg button:hover{color:var(--fg)}
+.seg button[aria-pressed=true]{background:#2a2032;color:var(--fg)}
+.seg.sm button{min-height:28px;padding:0 11px;font-size:12.5px}
+.seg .k{font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--dim)}
+.scope{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:-4px}
+.scope p{margin:0;font-size:12px;color:var(--dim)}
+
+.card{position:relative;border:1px solid var(--ln);border-radius:18px;background:var(--card);padding:18px 22px 20px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.card h2{margin:0;font-size:15px;font-weight:600}
+.ch{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin-bottom:14px}
+.ch .cap{font-size:10px}
+.hint{margin:10px 0 0;font-size:12px;color:var(--dim)}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:640px){.two{grid-template-columns:minmax(0,1fr)}}
+
+/* data-source notes, shown with the prototype switch */
+.src{display:none;margin:-4px 0 14px;padding:9px 11px;border:1px dashed var(--ln2);border-radius:10px;font-size:12px;color:var(--mut)}
+.show-src .src{display:block}
+.src p{margin:0;display:flex;gap:8px;align-items:baseline}
+.src p+p{margin-top:5px}
+.src em{flex:none;font-style:normal;font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.04em;padding:1px 7px;border-radius:999px;border:1px solid}
+.src .ok{color:#7fd6a6;border-color:rgba(76,195,138,.45)}
+.src .calc{color:var(--lv);border-color:rgba(201,161,228,.45)}
+.src .gap{color:var(--cu);border-color:rgba(245,161,107,.5)}
+.legend-src{display:none;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:12px;color:var(--mut);padding:10px 14px;border:1px dashed var(--ln2);border-radius:14px}
+.show-src .legend-src{display:flex}
+
+/* scoreboard */
+.board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--ln);border-radius:18px;background:linear-gradient(160deg,rgba(33,24,41,.85),rgba(20,15,27,.85));overflow:hidden}
+.board .t{position:relative;padding:16px 18px 15px;min-width:0}
+.board .t+.t::before{content:'';position:absolute;left:0;top:16px;bottom:16px;border-left:1px dashed rgba(255,255,255,.16)}
+.board .v{font-family:'DotGothic16','Geist Mono',monospace;font-size:clamp(28px,3.2vw,36px);line-height:1;letter-spacing:.01em;white-space:nowrap}
+.board .v small{font-family:'Geist',sans-serif;font-size:16px;color:var(--mut)}
+.board .l{margin-top:7px;font-size:12.5px;color:var(--mut)}
+.board .d{margin-top:6px;font-family:'Geist Mono',monospace;font-size:11px;line-height:1.35;color:var(--dim)}
+.board .d.up{color:#7fd6a6}.board .d.down{color:#e8a08a}
+@media (max-width:700px){.board{grid-template-columns:repeat(2,minmax(0,1fr))}.board .t:nth-child(3)::before{display:none}.board .t:nth-child(n+3){border-top:1px dashed rgba(255,255,255,.16)}}
+
+/* activity */
+.cal-wrap{overflow-x:auto;padding-bottom:2px}
+.cal{display:grid;grid-template-rows:14px repeat(7,13px);grid-template-columns:repeat(13,13px);gap:4px;width:max-content}
+.cal .m{font-family:'Geist Mono',monospace;font-size:10px;line-height:14px;color:var(--dim);white-space:nowrap;grid-row:1}
+.cal .c{width:13px;height:13px;border-radius:3px;background:var(--s0)}
+.cal .c.out{opacity:.32}
+.cal .c.today{box-shadow:0 0 0 1.5px var(--fg)}
+.cal-side{display:flex;flex-wrap:wrap;gap:16px 28px;align-items:flex-end;margin-top:14px}
+.days{display:flex;gap:6px;align-items:flex-end;height:58px}
+.days span{display:flex;flex-direction:column;align-items:center;gap:4px;font-family:'Geist Mono',monospace;font-size:10px;color:var(--dim)}
+.days i{display:block;width:16px;border-radius:4px 4px 0 0;background:var(--c2)}
+.days span.top i{background:var(--cu)}
+.scale{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--dim)}
+.scale i{width:11px;height:11px;border-radius:3px}
+.kv{font-size:13px;color:var(--mut)}
+.kv b{color:var(--fg);font-weight:600}
+
+/* agents */
+.ag{display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px;align-items:center}
+@media (max-width:640px){.ag{grid-template-columns:minmax(0,1fr)}.orbit{max-width:260px;margin:0 auto}}
+.orbit{width:100%;height:auto;display:block}
+.orbit .node{cursor:pointer}
+.orbit .node:focus-visible{outline:none}
+.orbit .node:focus-visible rect{stroke:var(--cu);stroke-width:2}
+.alist{display:flex;flex-direction:column;gap:2px}
+.arow{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 8px;border:1px solid transparent;border-radius:12px;background:none;text-align:left;width:100%}
+.arow:hover{background:rgba(255,255,255,.03)}
+.arow.sel{border-color:rgba(245,161,107,.45);background:rgba(245,161,107,.06)}
+.av{display:grid;place-items:center;width:30px;height:30px;border-radius:10px;border:1px solid var(--ln2);background:linear-gradient(135deg,#4a3356,#251b2b);font-size:10.5px;font-weight:600}
+.arow b{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arow small{display:block;font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arow .r{text-align:right;font-size:12px;line-height:1.5;color:var(--mut);white-space:nowrap}
+.arow .r b{display:inline;font-size:13px;color:var(--fg)}
+.meter{height:4px;border-radius:999px;background:rgba(255,255,255,.07);margin-top:5px;overflow:hidden}
+.meter i{display:block;height:100%;border-radius:999px;background:var(--c2)}
+.arow.sel .meter i{background:var(--cu)}
+
+/* topics */
+.tp{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:20px}
+@media (max-width:700px){.tp{grid-template-columns:minmax(0,1fr)}}
+.tl{display:flex;flex-direction:column;gap:3px}
+.trow{display:grid;grid-template-columns:minmax(0,1fr) 34px;gap:4px 10px;align-items:center;padding:6px 8px;border:0;border-radius:10px;background:none;text-align:left;width:100%}
+.trow:hover{background:rgba(255,255,255,.03)}
+.trow span{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow .n{text-align:right;font-family:'Geist Mono',monospace;font-size:12px;color:var(--mut)}
+.pix{grid-column:1/-1;display:flex;gap:2px;height:8px}
+.pix i{flex:none;width:6px;height:8px;border-radius:2px;background:var(--c2)}
+.pix i.r{background:rgba(201,161,228,.35)}
+.trow.sel{background:rgba(245,161,107,.07)}
+.trow.sel .pix i{background:var(--cu)}.trow.sel .pix i.r{background:rgba(245,161,107,.38)}
+.trow.sel span{color:var(--fg);font-weight:600}
+.qs{border-left:1px dashed var(--ln2);padding-left:18px;min-width:0}
+@media (max-width:700px){.qs{border-left:0;padding-left:0;border-top:1px dashed var(--ln2);padding-top:14px}}
+.qs h3{margin:0 0 3px;font-size:13.5px;font-weight:600}
+.qs .meta{font-size:12px;color:var(--dim);margin-bottom:10px}
+.q{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--hair)}
+.q:first-of-type{border-top:0}
+.q .tx{flex:1;min-width:0}
+.q b{display:block;font-size:13px;font-weight:500}
+.q small{display:block;font-size:11.5px;color:var(--dim);margin-top:2px}
+.pill{flex:none;display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border:1px solid var(--ln);border-radius:999px;font-size:11px;color:var(--mut);white-space:nowrap}
+.pill::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.good{color:#7fd6a6;border-color:rgba(63,182,123,.45)}
+.pill.warn{color:#e6bf73;border-color:rgba(212,162,76,.5)}
+.pill.none{color:var(--dim)}
+
+/* segmented (tall) */
+.tall{display:flex;gap:2px;height:28px;margin:4px 0 10px}
+.tall span{display:flex;align-items:center;padding:0 8px;border-radius:4px;font-size:11.5px;font-weight:600;color:#14101a;white-space:nowrap;overflow:visible;min-width:0}
+.tall span.lt{color:#f5f1f6}
+.thin{display:flex;gap:2px;height:8px;margin:4px 0 10px}
+.thin span{border-radius:999px}
+.lg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--mut)}
+.lg span{display:inline-flex;align-items:center;gap:7px}
+.lg i{width:10px;height:10px;border-radius:3px;flex:none}
+.lg b{color:var(--fg);font-weight:600}
+.sent{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
+.sent div{display:flex;align-items:baseline;gap:8px;padding:8px 10px;border:1px solid var(--hair);border-radius:12px;background:rgba(255,255,255,.02)}
+.sent b{display:block;font-family:'DotGothic16','Geist Mono',monospace;font-size:20px;font-weight:400;line-height:1.1}
+.sent small{font-size:11.5px;color:var(--mut)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.chip{padding:3px 10px;border:1px solid var(--ln);border-radius:999px;font-family:'Geist Mono',monospace;font-size:11px;color:var(--mut)}
+
+/* open questions */
+.oq{display:flex;flex-direction:column}
+.oqr{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--hair)}
+.oqr:first-child{border-top:0;padding-top:2px}
+.oqr .tx{flex:1;min-width:0}
+.oqr b{display:block;font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oqr small{display:block;font-size:11.5px;color:var(--dim)}
+.go{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 13px;border:1px solid rgba(245,161,107,.45);border-radius:999px;background:rgba(245,161,107,.08);color:var(--cu);font-size:12.5px;font-weight:500;text-decoration:none;white-space:nowrap}
+.go:hover{background:rgba(245,161,107,.16)}
+
+/* help tiles */
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:700px){.tiles{grid-template-columns:minmax(0,1fr)}}
+.tile{padding:14px 14px 13px;border:1px solid var(--hair);border-radius:14px;background:rgba(255,255,255,.02);min-width:0}
+.tile .h{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut)}
+.tile .h svg{color:var(--lv);font-size:14px}
+.tile .v{margin-top:8px;font-family:'DotGothic16','Geist Mono',monospace;font-size:28px;line-height:1}
+.tile .v small{font-family:'Geist',sans-serif;font-size:13px;color:var(--mut)}
+.tile .v svg{font-size:15px;color:var(--mut);vertical-align:-1px;margin:0 6px 0 2px}
+.tile p{margin:7px 0 0;font-size:12px;color:var(--mut)}
+.tile p b{color:var(--fg);font-weight:500}
+
+/* columns chart */
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart .ax{font-family:'Geist Mono',monospace;font-size:10px;fill:var(--dim)}
+.tblbtn{border:1px solid var(--ln);border-radius:999px;background:none;color:var(--mut);font-size:11.5px;min-height:26px;padding:0 10px}
+.tblbtn[aria-pressed=true]{color:var(--fg);border-color:var(--ln2)}
+table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+table.t th{font-weight:500;color:var(--dim);text-align:left;padding:6px 8px;border-bottom:1px solid var(--ln)}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--hair);font-variant-numeric:tabular-nums}
+table.t td.n,table.t th.n{text-align:right}
+.tblwrap{max-height:280px;overflow:auto}
+
+/* owner: ranked rows */
+.rk{display:flex;flex-direction:column;gap:9px}
+.rkr{display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr) auto;gap:12px;align-items:center}
+.rkr .nm{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rkr .nm small{display:block;font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--dim)}
+.rkr .b{height:12px;border-radius:0 4px 4px 0;background:var(--c2)}
+.rkr .vv{font-family:'Geist Mono',monospace;font-size:12px;color:var(--mut);text-align:right;white-space:nowrap}
+.rkr .vv b{color:var(--fg);font-weight:500}
+.noprice{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border:1px dashed rgba(245,161,107,.55);border-radius:999px;color:var(--cu);font-size:11px}
+.inc{display:flex;flex-direction:column}
+.inc div{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--hair);font-size:13px}
+.inc div:first-child{border-top:0}
+.inc .st{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;white-space:nowrap}
+.inc .st.open{color:#ef8a7a}.inc .st.closed{color:var(--dim)}
+.inc .st svg{font-size:13px}
+.inc .tx{flex:1;min-width:0}
+.inc small{display:block;font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--dim)}
+.qrow{display:grid;grid-template-columns:minmax(0,1fr) 44px 62px 62px;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--hair);font-size:13px}
+.qrow>span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qrow.h svg{font-size:13px}
+.qrow.h{border-top:0;font-size:11px;color:var(--dim);padding-top:0}
+.qrow .n{text-align:right;font-family:'Geist Mono',monospace;font-size:12px;color:var(--mut)}
+.qrow .n.hot{color:#ef8a7a}
+
+/* empty states */
+.empty{padding:30px 24px;text-align:center}
+.empty .ic{display:grid;place-items:center;width:46px;height:46px;margin:0 auto 12px;border-radius:14px;background:rgba(245,161,107,.1);color:var(--cu);font-size:20px}
+.empty h3{margin:0;font-size:15px}
+.empty p{margin:6px auto 0;max-width:420px;font-size:13px;color:var(--mut)}
+.empty .go{margin-top:14px}
+.soft{padding:16px;border:1px dashed var(--ln2);border-radius:14px;font-size:13px;color:var(--mut)}
+.soft b{color:var(--fg);font-weight:500}
+
+/* account tab */
+dl.acc{margin:0}
+dl.acc div{display:flex;justify-content:space-between;gap:16px;min-height:44px;align-items:center;border-top:1px solid var(--hair)}
+dl.acc dt{color:var(--mut)}dl.acc dd{margin:0;font-family:'Geist Mono',monospace;font-size:13px;text-align:right;overflow-wrap:anywhere}
+
+/* tooltip */
+.tip{position:fixed;z-index:60;pointer-events:none;max-width:260px;padding:8px 10px;border:1px solid var(--ln2);border-radius:10px;background:#1b1422;box-shadow:0 14px 30px -10px #000;font-size:12px;line-height:1.4;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .12s}
+.tip.on{opacity:1;transform:none}
+.tip b{font-weight:600}
+.tip .r{display:flex;align-items:center;gap:7px;color:var(--mut)}
+.tip .r i{width:9px;height:9px;border-radius:2px}
+.tip .r span{flex:1}.tip .r em{font-style:normal;color:var(--fg);font-family:'Geist Mono',monospace;font-size:11px}
+
+/* entrance: cards rise once; reduced motion shows everything at once */
+@media (prefers-reduced-motion:no-preference){
+  .rise{animation:rise .55s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--i,0)*60ms)}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}}
+  .cal .c.lit{animation:lit .5s ease-out both;animation-delay:calc(var(--k)*5ms)}
+  @keyframes lit{from{opacity:0;transform:scale(.4)}}
+}
+@media (forced-colors:active){.cal .c,.pix i,.tall span,.thin span,.meter i,.rkr .b,.days i{forced-color-adjust:none}}
+</style>
+</head>
+<body>
+
+<div class="proto" role="region" aria-label="Управление прототипом">
+  <b>ПРОТОТИП · ДЕМО-ДАННЫЕ</b>
+  <span class="grp">Роль <span class="pg" id="p-role"><button data-role="User">Пользователь</button><button data-role="Admin">Администратор</button><button data-role="Owner">Владелец</button></span></span>
+  <span class="grp">Данные <span class="pg" id="p-data"><button data-d="full">Обычные</button><button data-d="new">Новый пользователь</button><button data-d="noins">Сводки выключены</button></span></span>
+  <label><input type="checkbox" id="p-src"> Откуда берутся цифры</label>
+</div>
+
+<div class="app" id="app">
+  <header class="hdr"><div class="in">
+    <a class="brand" href="#" aria-label="RANCH"><img src="data:image/webp;base64,UklGRggPAABXRUJQVlA4WAoAAAAQAAAAUgAARwAAQUxQSCoGAAABBmrYtpeSpC+part7bNu27bVt27Zt27Zt29s9tj09fZLvuk4n30nO7P7/EhEQJUmq2+ztBjg9OLBAp3wC/39MSE8TO8CTSqiSU64Bc8WA/Y498eRTDDvtzHPCuecxn3P+BSHw2ScePLlHQ8MhUkNcK55609drNXrYllU/Pnp0V6OSlrfgwI9rkVkr0iLKmM1BLn58lxJgmYYYRryJzJHyKlmzCowcPtwtmwIF8ClrUMeeNExHyOH53iDYVzlXIUecnsVDXrSvJ4Xka1Axpmk6wtoz/CjhRPuqNJ3I58Q9emjYOkyqK2fT9CNSd6j7zQTnv0pf4dmZ0mR1zXBnStilTiVNJc//4J6rrgghcLg6XBXblYE53Pz8b1uRFRngl+WCHe+Y9xpGtMIb+7fPByfLNJ50z/oEnu5YSBi6Celp/GWPXGAWzrvf6A9QMzH7C1qDdMMZCQN+uhVwxvUREhzHU3YDFabCc50gIPsc1Vb4QAFk/JZjYL6CoNI/VoBwQbO/URN6s8R/05Ai9yWCum46SJd2/w02NM/r7C9mCd0X2+dEfJ0bZtYSwDMhQ0wb8cMldcAsKZfC9/JBOOBISos6CEkELti6HdEB4Rq4HrUVak1TkA441z5T4ePkQCvYtFJraRQXUvNW8i0qC2u7O+ESCqdYbQEVt357R+PYyUd++eZQkAJ2/uT9sdTUPkdgy3AnXGZD4x4WJByNzFdBlkdsRv60TECzauQfG1kUcDeBbWOdcKkFjXWzCFyDm/XrMsD+WBstbQPcZ0sUNvQCaeEOAltHOuFyN4xYgduPiKNo8SXynVnBBQ8jP1og2MLjBNb38kSYTd1r5Pk7GzG0POGwUhAM5UccXkG0i74hUNPMCRcTbt6ZgLA7cFy3/ddZN1L4QQEIL+Be1B/JbFKysDsgQj3fXmIRXw8SPBqs8KB6pLERtKpGTewt3jg+FYgAt6NK2AFdGhTiZysV7VurdMLrxGMj0Lh5HMgUarzTaiT0V1MQXlDoMnuCNMnMwHknb4h9Ng4DCa5wmz3hlmsXT38dCUX8Yr4UbjjLhMJvq4g92U6x88pCk+ahGXPTZqFF56kXfFyLmglVdwQJbjjZGK5W23exAjP36iaDDjjvrle+/OnvmlAdAnOYt2yrMWJCayaAdM7DDCi8LyPtWuh+zGO/rnfKcVhTWrdLLFecECNu/dwchFmr2u/5ZWZaGJISMSbHhAumx/KCVlvqI6tvNTjuW+OY0p7J8rt9YnlBK7zKlNz7u/pQGX1twaklptzdceRPlgiOY2j/qEojZ1aLru8MsXxwHKq68wqgXpP/QE3UiI+a5Bz5rTbG15EXjtLbzwBDe6zFSNMeK4DEr5lFsyArwA+H4PMZIeMA9t2IUZJnY81nz935RjJx/RzIeGKart/xJey5iVg/RgALXzh1dPOSHGj0PUaJrpXj/Sig8YkNRfxn1GpCcV+1bx3eKWsEluFhi1ElcuHQFLZfAa1+xojyvjUjH5glC+P5m7LSgdV9PSniMvdJQoGXHFVgeICt6uy1iYz4z55G1bcr6mOiHySly4F3ceFvXf0oof8KKlN9u4VD/h14zy2oE/l9ex8KLnrLHnzErzZyijDw0ZFO5hdtQPqsMkrvNnKLT0g4XTvws9bOlNC+RptQ+Kcxi448V6tkftTUkULyvVapeeMU999FMFyCDnwnpls5dasVYsSX+/3S4TqMHNjYhYKrvkbb92WFYK9lmHu7S/X1KrdUmfCtMzJpL+bd48LnS0Emf7mu02yVl3iKWULBnS58vAhk0lJ4m/B9VWn5/A7e4cKH8kG4vOqZtaqdY5Te1fxbUKvEd+o9uRQl9FhKlA9nDPlXs5cojBJ5W1aw7ct7zpZe2CUu0yEfsgIjRVPhdZKFVe6nGK3yjHqlQ4Yh7yEr1jQvBoMCGn6vI663gF9S16Rxi9LTqzF2EFlQqAsnWlvAdWjbFiNVS5Hc7rxvt2KCnZYVcUBdvv739+oFy1YsmbfqilRlZmyV489+9I33Q/jgw48+/uTTj/kj4/OwuG2bVu079+jZrVMP66spTacx8kx+CAWFRcUlIRSXl8GONyFZuL5A7X8U7ahDCQb/SWNWUDgguAgAANAnAJ0BKlMASAA+PRiJQyIhoRgKrmQgA8S1B1MWQJAzEPl/ewL6TzY63/a/xdx5Req+PqU/RW9R83f8Y/037Se6n/mfVB6AH6udYf+2/sL/wD/Pemd7Ff7gfuP8A/8i/t//u6wDhIv6f2uf3fo1PWvspydmj8VDwuVDNCPGG+pf7fTQ/0z/Q8cl4l7AH8h/oP+D+3n5M/8rys/Rv/P9wX+N/zT/Of3n95v8b/////93Psb/ar2Fv0/KGZ++AyDp8zVzqLvM4iWaxlRLlT6dkFraEsaEZwzn7LcagdCkfx28FuCEUjSbmeULkPmEfu/J7Xq51cjEw2kxrLREcag/tQVf/YPj5DYKO7N+qf0Lw70OtD3rbl8E8MeQA9XFXXRgxmj7+OEWWeSFcegi21KMimQ72uxzIwnOq7f8luP/eQUFXv7Fl/xekAD++PvcXZWc5p1/JLs8kQiiC/8B4awhi3Nl9vnCWUVF8zn8SEUhglJPLtQO+A3mlqN97QkqMUqCoFX665v4rfot1B8zyyljl+lZCeZn5P8V14xl805EIM7o7RSADw8JvVegyGKcvfWfsuW9F+12FEOTS7+cOTgss9O2ovuPOLKSPuixqlbAgrJDWS//Zp7F2zOdZmOueP4ic/SRYWekAu/zXSJGzaO+v/5b3GmvRBYZkzuPZBUwv2nh/2FWz7Tq9h5CmVOHSdadn50MTzRZtl57t2/pMITVWWHB0Z9Q8pqOFp5vzOxItsdj+tH1rlxE3uU7LKEd46LEdu+FaXcv4pAIPFW+XdeJzZPC5YnoBXdszfJiL6zKe7zQNE84TybIPVcDUOr1Ik//D+FdMmGqi1CdYU5Xkrl4F8n9Ni1/k52SqEEkoddfaDdX6/Q58jH4UP02NZjbptOtK025fymIZHx4v6AxknxvcIS3nAyen9Gee+9tYetvBYs/qxJEFNNGdEZyo2BWci8Ab45rZ3RgvIOZOAd4D4eRI4DTQyW/kYmKGlXmfChU0hCLOl1yqXZEQcjsU4FUjKdrwxjr7EdSOxKXu9zrpcBeG1YMo9yDF4NqlmyViJ1CeciPILdOmMQxlp0d61UxhE7QjoTLOiWfmnTXrfrh1gPc07ISgIlJaMPOg6NURsRDRwIEt+sZ1CJ/c0nwbrtI1EZyRonNAroP3HTvAjszzOKNP33RUvS9mY7RyLi+ny5henwv2IZ0PErFeI/3NQj6yKyU6lJ2ouugJmNVXXS1Kbi2ZQ+lLp7IpBe5qjFA0RUT5DEN4pQ7f11uVS5YXrYuY0zLyihzhP634z/XffgcogYQonIa1Ls8MZXhLPUAyKgpyPH5gr6QlAz0NJvzrUzaQEKz0dPbgVjKQ+p7tOwq2+rn1bMXMdaF77/LnTRdNAA5XNbYa9jpsZHzYB7oBwh42pmvI5oVRQRbKTxZmTZPLa/o7gHuzDCaEWGf1mLCnorSorwrW6ZrgWgmr4ZGf5M2mATpPkVxmVP3c0eMgmVh5ogIwHbxMYiJ/hv5evkuOXTV4WMZZNIdUBo8l60tWcB9TrPjlTRomjHV+kiylDSPxKzmQJ3SKOjbwbKuAnSg0o9P25BA1upkEijh2qRcwvAUqtmubNfz6+/Mb9gMm7MmK80nNH/Q4HtNRZ+ud/OPqAhUbfw3wvngyYkoDaSN9MUyLQOUrzF/8moJo2PcfQWD987tZTkAfDvVXhbvNCDxleGOLCnDMf54c1Ax0VUnu6x2QwR3yvWUB/X9CgB/A11gnsYuPCd3jHwe2P4HoTeL6qHxuSqv/nv/7T7F9R//ypq40nNvBapf3dWcp1/U/brrUmJN5rwmCcvSqu4PiffuB1T+Lh3JwqXjX5kSCeiENr5dDBC0Pf5SmziXEqFBckReBH9ACMay42zggtYyeZgKMhl+wPRENoPByt9NlMYnHN8yfZjwVXA4ARuV8z9RB8c8f/9dGjlfW3favdmhYemX9pZeWrcEnxjJLS+xfgLDMJIlz2jOyyPhHW53XoEEO9gnda0D/r/2LPcIMd5YS2VSrbCC9+v7fN/wMW6VMxcPw+0YAZfsl/J0Z0J4wP5sB8+wk7Dzi4I/LD/skat3VxczB1DpmoVsFcZnPtt5DoAI4b0cGmi7br8ICtv6Pj0+u/IPEYYBYv1fUpj0fxVvufWN7VL+h8RAboLBp4o92/zrNoRWZ7kfTLjLGTVe+6UFPwTIkYQnRjBwZ+VggD/Jll86n2tqlhds3Yg+dFQp3ZtFZ1YEEWCfqe5OqERlmHvVmRjUml1smy1opBGYhlyfvDixyrmJPInLI45dWPSBjxUHo3Jj3B00jQnAZNAnhPdr5FkMoQT7FHkHfxrn/5EsSpQCZrEfniJxFqyiclrv2yVmO2HzEv7MK/RPJWQcXpeWGDya3/hDBFCVf4H9PWOparQBxCmFJGTVgc6qp39HXnlmkG0ML4PZ/ptOigirNiDmtJtkLofb7j8CsfFwt0Wt6xPWdZg44Exz0AfnZBZNI6SJMiLwQ7Ph+TH1oxJyRxeu7NHzzP0HEBjY783PXlnJ2fwdjcFFbzGS/7PFdAohvwN91jei5bfadM0fs+QgDZmQH0GN5ODLyRyMAAMlry6rqkZH3WiTQAaDvca0IQqTcZQiKY2MqPg4ak2axdAg5Xi5Op9ndGaYgwZrS3QA8d59/lGwgwCF55YE4pRkHr0ro7eoBKSgyx3oyzmaOapyyiOBu/y07/F1cZr2swRpbU/WZ4N9Gv/Fa1UPWWBzKSQfVX4Gs7kCaKKWAkCX+u1f/978/dcmkezmRytxxujv8cf3qSedJ/afMtYnRvf5b+wviTO4EquJ3Dmf6PfOl+uNZT0KGF+bDGuEMFMsorwaFEJs10/dquP9xkOd/4QE3EPCmQqdDoiP0bA8/BKT5q5gOr5fz9AGqZ27x8HZIcz5OFPfDTwY+f5r43Tz1rJ0UAmAYDfRW5vuJi0xdnPLr9RcYdu8G0LwfkNAvSf5OSkECAAAAA==" alt="" style="height:28px"><img src="data:image/webp;base64,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" alt="" style="height:11px"></a>
+    <nav class="nav" aria-label="Разделы"><a href="#">Агенты</a></nav>
+    <span class="sp"></span>
+    <span class="lang">RU ⌄</span>
+    <a class="me" href="#" aria-current="page"><span id="h-name">Alex Morgan</span><span class="badge" id="h-role">Пользователь</span></a>
+    <button class="logout" type="button">Выйти</button>
+  </div></header>
+
+  <main class="page">
+    <section class="pass-col" aria-label="Пропуск">
+      <div class="strap" aria-hidden="true"></div><div class="clip" aria-hidden="true"></div>
+      <div class="pass">
+        <div class="glow" aria-hidden="true"></div><div class="slot" aria-hidden="true"></div>
+        <div class="top">
+          <div class="row"><span style="display:flex;align-items:center;gap:9px"><img src="data:image/webp;base64,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" alt="" style="height:24px;width:auto"><img src="data:image/webp;base64,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" alt="RANCH" style="height:9px;width:auto"></span><span class="cap">Пропуск</span></div>
+          <svg viewBox="0 0 200 200" width="150" height="150" role="img" aria-label="Знак: инициалы AM" style="display:block;margin:0 auto">
+            <defs><linearGradient id="sg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f5a16b"/><stop offset="1" stop-color="#c9a1e4"/></linearGradient></defs>
+            <circle cx="100" cy="100" r="76" fill="rgba(201,161,228,.07)" stroke="url(#sg)" stroke-width="2"/>
+            <ellipse cx="100" cy="100" rx="96" ry="30" transform="rotate(-24 100 100)" fill="none" stroke="#c9a1e4" stroke-opacity=".6" stroke-width="1.2" stroke-dasharray="2 5"/>
+            <circle cx="187.7" cy="61" r="5.5" fill="#f5a16b"/>
+            <text x="101" y="113" text-anchor="middle" font-family="Geist, Inter, sans-serif" font-weight="600" font-size="56" letter-spacing="2" fill="#f5f1f6">AM</text>
+            <path d="M56 132 Q100 156 144 132" fill="none" stroke="#f5a16b" stroke-width="4" stroke-linecap="round"/>
+          </svg>
+          <div><h1 id="p-name">Alex Morgan</h1><div class="role" id="p-rl">ПОЛЬЗОВАТЕЛЬ</div></div>
+          <div class="row"><div><div class="cap">Номер реестра</div><div class="dot" style="font-size:19px;margin-top:4px">4C2E·81B7</div></div><div style="text-align:right"><div class="cap">Учётная запись</div><div class="mono" style="margin-top:6px;font-size:13px;color:var(--ok)">● Активна</div></div></div>
+        </div>
+        <div class="perf" aria-hidden="true"><i></i><i></i><b></b></div>
+        <div class="stub">
+          <div class="row cap"><span>Флот установки</span><span>опрос раз в 30 с</span></div>
+          <div class="nums"><div><div class="n">6</div><small>агентов</small></div><div><div class="n">5</div><small>запущено</small></div><div id="slots"><div class="n">4</div><small>слотов свободно</small></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="col" id="col" aria-label="Статистика и учётная запись"></section>
+  </main>
+</div>
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+/* ──────────────────────────────────────────────────────────────────────
+   Demo data. Everything on the page is computed from one synthetic list of
+   conversations, so the numbers agree with each other. Nothing here is
+   real data.
+   ────────────────────────────────────────────────────────────────────── */
+let seed = 20261126;
+const rnd = () => (seed = (seed * 16807) % 2147483647, (seed - 1) / 2147483646);
+const pick = (arr, w) => { let t = rnd() * w.reduce((a, b) => a + b, 0); for (let i = 0; i < arr.length; i++) { t -= w[i]; if (t <= 0) return arr[i]; } return arr[arr.length - 1]; };
+const TODAY = new Date(2026, 10, 26);
+const dayDate = d => new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate() - d);
+const MON = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const MONS = ['янв', 'фев', 'март', 'апр', 'май', 'июнь', 'июль', 'авг', 'сен', 'окт', 'нояб', 'дек'];
+const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+const WDL = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+const fmtDay = d => { const x = dayDate(d); return `${x.getDate()} ${MON[x.getMonth()]}, ${WD[x.getDay()]}`; };
+const nf = n => Math.round(n).toLocaleString('ru-RU');
+const ago = d => d === 0 ? 'сегодня' : d === 1 ? 'вчера' : d < 7 ? `${d} дн назад` : d < 30 ? `${Math.round(d / 7)} нед назад` : `${Math.round(d / 30)} мес назад`;
+const plural = (n, a, b, c) => { const m = n % 10, h = n % 100; return m === 1 && h !== 11 ? a : m >= 2 && m <= 4 && (h < 12 || h > 14) ? b : c; };
+
+const MODELS = [
+  { id: 'claude-sonnet-4-6', c: 'var(--c1)', p: [3, 15] },
+  { id: 'claude-haiku-4-5', c: 'var(--c2)', p: [1, 5] },
+  { id: 'claude-opus-4-7', c: 'var(--c3)', p: [15, 75] },
+  { id: 'gpt-4o-mini', c: 'var(--c4)', p: [0.15, 0.6] },
+  { id: 'local/llama-3.1-70b', c: 'var(--c0)', p: null },
+];
+const M = id => MODELS.find(m => m.id === id);
+const AGENTS = [
+  { id: 'sd', name: 'Support Desk', ini: 'SD', model: 'claude-sonnet-4-6', w: 9, ws: 10, pub: true },
+  { id: 'dh', name: 'Docs Helper', ini: 'DH', model: 'claude-haiku-4-5', w: 6, ws: 8, pub: true },
+  { id: 're', name: 'Research', ini: 'RE', model: 'claude-opus-4-7', w: 4, ws: 3 },
+  { id: 'qa', name: 'QA Runner', ini: 'QR', model: 'gpt-4o-mini', w: 2.5, ws: 4 },
+  { id: 'rn', name: 'Release Notes', ini: 'RN', model: 'claude-sonnet-4-6', w: 1.5, ws: 2 },
+  { id: 'nw', name: 'Night Watch', ini: 'NW', model: 'local/llama-3.1-70b', w: 0.6, ws: 2.5 },
+];
+const A = id => AGENTS.find(a => a.id === id);
+const TOPICS = [
+  { k: 'Деплой и образы', w: 7, res: .78, q: ['Почему не стартует новый образ agent-base:1.4?', 'Как откатить тег образа без потери записи агента?', 'Что значит ImagePullBackOff в статусе?', 'Можно ли задеплоить из приватного реестра?'] },
+  { k: 'Логи и перезапуски', w: 6, res: .82, q: ['Какие поды перезапускались ночью?', 'Собери логи Support Desk за неделю', 'Почему агент ушёл в CrashLoopBackOff?', 'Где смотреть логи до перезапуска?'] },
+  { k: 'Лимиты запросов', w: 5, res: .7, q: ['Какой лимит поставить публичному агенту?', 'Почему посетителю пишет «слишком много запросов»?', 'Лимит общий на агента или на человека?'] },
+  { k: 'База знаний', w: 4.5, res: .74, q: ['Откуда агент взял этот ответ?', 'Как обновить документы в Docs KB?', 'Почему агент не видит новый раздел базы?'] },
+  { k: 'Память и ресурсы', w: 3.5, res: .8, q: ['Хватит ли 1Gi для Research?', 'Подними QA Runner память до 2Gi', 'Сколько CPU реально ест агент?'] },
+  { k: 'Telegram-канал', w: 3, res: .45, q: ['Вложения из Telegram не доходят до агента', 'Как подключить второго бота к тому же агенту?', 'Бот отвечает с задержкой в минуту'] },
+  { k: 'Доступ и ссылки', w: 2.5, res: .85, q: ['Перевыпусти ссылку на чат с Docs Helper', 'Кто видит агента, если сделать его публичным?'] },
+  { k: 'A2A и делегирование', w: 2, res: .6, q: ['Почему Support Desk спросил Research?', 'Как подключить внешнего A2A-агента?'] },
+  { k: 'Релизы', w: 1.5, res: .9, q: ['Собери заметки к релизу 0.3.86', 'Что изменилось с прошлого релиза?'] },
+];
+const CHANNELS = [{ k: 'console', l: 'Консоль', w: .74, c: 'var(--c1)' }, { k: 'telegram', l: 'Telegram', w: .14, c: 'var(--c4)' }, { k: 'slack', l: 'Slack', w: .07, c: 'var(--c2)' }, { k: 'share', l: 'По ссылке', w: .05, c: 'var(--c3)' }];
+const KBS = ['Docs KB', 'Runbooks', 'Веб'];
+
+function makeSessions(days, perDay, pickAgent, users) {
+  const out = [];
+  for (let d = 0; d < days; d++) {
+    const wd = dayDate(d).getDay();
+    const wk = wd === 0 ? .25 : wd === 6 ? .35 : wd === 2 ? 1.25 : 1;
+    const trend = .65 + .55 * (1 - d / days);
+    const n = Math.max(0, Math.round(wk * trend * perDay * (0.25 + 1.5 * rnd()) - .45));
+    for (let i = 0; i < n; i++) {
+      const agent = pickAgent();
+      const t = pick(TOPICS, TOPICS.map(x => x.w));
+      const um = 2 + Math.floor(rnd() * rnd() * 16);
+      const hasIns = rnd() > .16;
+      const sent = pick(['positive', 'neutral', 'negative', 'mixed'], [.36, .48, .07, .09]);
+      out.push({
+        d, agent, topic: t.k, q: t.q[Math.floor(rnd() * t.q.length)],
+        um, am: um + Math.floor(rnd() * 3), ins: hasIns,
+        resolved: hasIns ? rnd() < t.res : null, sent: hasIns ? sent : null,
+        lang: rnd() < .82 ? 'ru' : 'en',
+        ch: pick(CHANNELS.map(c => c.k), CHANNELS.map(c => c.w)),
+        cites: rnd() < .46 ? 1 + Math.floor(rnd() * 3) : 0, kb: pick(KBS, [.55, .25, .2]),
+        a2a: rnd() < .09 ? { ok: rnd() < .86, peer: pick(['re', 'dh', 'sd'], [.6, .25, .15]) } : null,
+        up: rnd() < .34 ? 1 + Math.floor(rnd() * 2) : 0, down: rnd() < .07 ? 1 : 0,
+        user: users ? Math.floor(Math.pow(rnd(), 1.7) * users) : 0,
+      });
+    }
+  }
+  return out;
+}
+const MINE = makeSessions(180, 1.15, () => pick(AGENTS.map(a => a.id), AGENTS.map(a => a.w)));
+seed = 77;
+const WS = makeSessions(180, 7.5, () => pick(AGENTS.map(a => a.id), AGENTS.map(a => a.ws)), 26);
+// Workspace LLM usage, one row per day × agent (the shape of the Usage table).
+seed = 4242;
+const USAGE = [];
+for (let d = 0; d < 180; d++) {
+  const wd = dayDate(d).getDay(), wk = wd === 0 ? .3 : wd === 6 ? .4 : 1, trend = .7 + .5 * (1 - d / 180);
+  for (const a of AGENTS) {
+    const calls = Math.round(a.ws * wk * trend * (14 + 26 * rnd()));
+    if (!calls) continue;
+    const inT = calls * (1300 + 1600 * rnd()), outT = calls * (260 + 380 * rnd());
+    USAGE.push({ d, agent: a.id, model: a.model, calls, inT, outT });
+  }
+}
+const cost = r => { const p = M(r.model).p; return p ? (r.inT / 1e6) * p[0] + (r.outT / 1e6) * p[1] : null; };
+const INCIDENTS = [
+  { d: 2, agent: 'nw', open: true, reason: 'CrashLoopBackOff', dur: null },
+  { d: 12, agent: 'qa', open: false, reason: 'OOMKilled', dur: '18 мин' },
+  { d: 26, agent: 'sd', open: false, reason: 'Readiness probe failed', dur: '4 мин' },
+  { d: 41, agent: 're', open: false, reason: 'ImagePullBackOff', dur: '6 мин' },
+  { d: 70, agent: 'dh', open: false, reason: 'CrashLoopBackOff', dur: '11 мин' },
+];
+seed = 909;
+const REFUSED = [];
+for (let d = 0; d < 180; d++) for (const id of ['sd', 'dh']) { const n = rnd() < .22 ? Math.round(rnd() * (id === 'sd' ? 40 : 14)) : 0; if (n) REFUSED.push({ d, agent: id, n }); }
+
+/* ── state ── */
+const st = { role: 'User', data: 'full', src: false, tab: 'stats', period: 30, scope: 'mine', topic: null, agent: null, tables: {} };
+const ROLE = { User: ['Пользователь', 'ПОЛЬЗОВАТЕЛЬ'], Admin: ['Администратор', 'АДМИНИСТРАТОР'], Owner: ['Владелец', 'ВЛАДЕЛЕЦ'] };
+const operator = () => st.role !== 'User';
+
+const I = {
+  chart: '<path d="M3 3v18h18"/><path d="M7 15v-4"/><path d="M12 15V8"/><path d="M17 15v-6"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  arrow: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  peers: '<circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="m8.6 10.6 6.8-3.2"/><path d="m8.6 13.4 6.8 3.2"/>',
+  down: '<path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/>',
+  up: '<path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  msg: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  spark: '<path d="M12 3v3"/><path d="M12 18v3"/><path d="M3 12h3"/><path d="M18 12h3"/><path d="m5.6 5.6 2.1 2.1"/><path d="m16.3 16.3 2.1 2.1"/><path d="m5.6 18.4 2.1-2.1"/><path d="m16.3 7.7 2.1-2.1"/>',
+};
+const ic = n => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${I[n]}</svg>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* data-source notes: which numbers exist today, which need a new aggregate */
+const SRC = {
+  board: [['calc', 'ChatSession по вашему clientId: число бесед, userMessageCount, agentId, insights.resolved. Нужен один агрегат <code>GET /me/stats?period=</code>: сейчас <code>/me/chats</code> отдаёт беседы страницами по 50.']],
+  activity: [['calc', 'День беседы — ChatSession.createdAt. По дням недели — из него же.'], ['gap', 'Время каждого сообщения лежит только в транскриптах в S3. Для активности по часам нужен счётчик сообщений по дням при индексации.']],
+  agents: [['calc', 'ChatSession.agentId → Agent.name; сообщения — userMessageCount; модель — LlmCredential.model агента.']],
+  topics: [['calc', 'insights.topics и insights.resolved, их пишет ChatInsightService. Беседы без сводки в темы не попадают — счётчик покрытия обязателен.']],
+  outcome: [['calc', 'insights.resolved, insights.sentiment, insights.language.']],
+  open: [['calc', 'Беседы с insights.resolved = false, по lastMessageAt. Кнопка ведёт в историю агента, в эту беседу.']],
+  models: [['calc', 'Модель агента сейчас (LlmCredential.model), взвешенная вашими сообщениями.'], ['gap', 'История смены модели не хранится; токены на человека не пишутся — Usage ведётся по агенту и дню.']],
+  help: [['calc', 'ChatMessageSource по clientId (ссылки и базы), AgentDelegation по clientId (обращения к коллегам), ChatFeedback по authorId (оценки).']],
+  channels: [['calc', 'ChatSession.channel: bridle, telegram, slack; «по ссылке» — clientId вида share-*.']],
+  wboard: [['ok', 'Токены, вызовы и стоимость — <code>GET /usage/overview</code> (только 30 дней).'], ['calc', 'Люди — число разных externalUserId в ChatSession за период.']],
+  daily: [['ok', '<code>GET /usage/overview</code>: last30days по дате и модели.'], ['gap', 'Периоды 7 и 90 дней — нужен параметр периода в overview. Сегодняшний расход появится, когда агент пришлёт отчёт за день.']],
+  wagents: [['ok', '<code>byAgent</code> из overview.'], ['gap', 'Модель без цены в model-pricing.ts считается как $0. Показываем «нет цены», а не ноль.']],
+  health: [['calc', 'AgentIncident (открыт/закрыт, причина, длительность), AgentLoadMinute.refused (отказы по лимиту).']],
+  quality: [['calc', 'ChatFeedback.rating по агентам и insights.resolved по всем беседам установки.']],
+};
+const srcHtml = k => `<div class="src">${(SRC[k] || []).map(([t, s]) => `<p><em class="${t}">${t === 'ok' ? 'есть в API' : t === 'calc' ? 'в БД, нужен агрегат' : 'не записывается'}</em><span>${s}</span></p>`).join('')}</div>`;
+const card = (k, title, cap, body, i, extra = '') => `<article class="card rise" style="--i:${i}" data-card="${k}"><div class="ch"><h2>${title}</h2><span style="display:flex;align-items:center;gap:10px">${extra}<span class="cap">${cap}</span></span></div>${srcHtml(k)}${body}</article>`;
+
+/* ── selection helpers ── */
+const win = (list, p, off = 0) => list.filter(s => s.d >= off && s.d < p + off);
+const sum = (l, f) => l.reduce((a, x) => a + f(x), 0);
+const pct = (a, b) => b ? Math.round(100 * a / b) : 0;
+function delta(cur, prev, unit = '') {
+  if (!prev) return '<div class="d">нет данных за прошлый период</div>';
+  const r = Math.round(100 * (cur - prev) / prev);
+  if (r === 0) return `<div class="d">как в прошлом периоде</div>`;
+  return `<div class="d ${r > 0 ? 'up' : 'down'}">${r > 0 ? '▲' : '▼'} ${Math.abs(r)}% к прошлым ${st.period} дн${unit}</div>`;
+}
+
+/* ── personal view ── */
+function personal() {
+  const all = st.data === 'new' ? [] : MINE.map(s => st.data === 'noins' ? { ...s, ins: false, resolved: null, sent: null } : s);
+  const P = st.period, cur = win(all, P), prev = win(all, P, P);
+  if (!cur.length && !prev.length) return emptyAll();
+  let i = 0, h = '';
+  // scoreboard
+  const conv = cur.length, msgs = sum(cur, s => s.um), ags = new Set(cur.map(s => s.agent)).size;
+  const withIns = cur.filter(s => s.ins), res = withIns.filter(s => s.resolved).length;
+  const pWithIns = prev.filter(s => s.ins);
+  h += `<div class="board rise" style="--i:${i++}" data-card="board">
+    <div class="t"><div class="v" data-count="${conv}">${nf(conv)}</div><div class="l">${plural(conv, 'беседа', 'беседы', 'бесед')}</div>${delta(conv, prev.length)}</div>
+    <div class="t"><div class="v" data-count="${msgs}">${nf(msgs)}</div><div class="l">ваших сообщений</div>${delta(msgs, sum(prev, s => s.um))}</div>
+    <div class="t"><div class="v" data-count="${ags}">${ags}</div><div class="l">${plural(ags, 'агент', 'агента', 'агентов')} отвечали вам</div><div class="d">из ${AGENTS.length} доступных</div></div>
+    <div class="t">${withIns.length ? `<div class="v" data-count="${pct(res, withIns.length)}">${pct(res, withIns.length)}<small>%</small></div><div class="l">вопросов решено</div><div class="d">сводка у ${withIns.length} из ${conv}</div>` : `<div class="v" style="color:var(--dim)">—</div><div class="l">вопросов решено</div><div class="d">сводки бесед не считаются</div>`}</div>
+  </div>`;
+  h = h.replace('data-card="board">', `data-card="board">`) + `<div style="margin-top:-8px">${srcHtml('board')}</div>`;
+
+  h += card('activity', 'Активность', `${P} дн из последних 13 недель`, activity(all, P), i++, tblBtn('activity'));
+  h += card('agents', 'С кем вы говорите', 'по вашим сообщениям', agentsBlock(cur), i++);
+  if (withIns.length) {
+    h += card('topics', 'Темы и вопросы', `сводка есть у ${withIns.length} из ${conv}`, topicsBlock(cur, withIns), i++);
+    h += `<div class="two">${card('outcome', 'Чем заканчиваются беседы', '', outcome(cur, withIns), i++)}${card('models', 'Кто вам отвечает', 'модели агентов', models(cur), i++)}</div>`;
+    h += card('open', 'Незакрытые вопросы', 'можно продолжить', openQs(cur), i++);
+  } else {
+    // Without summaries there are no topics, outcomes or open questions: one note instead of three empty cards.
+    h += card('topics', 'Темы, итоги и незакрытые вопросы', 'сводок нет', insightsOff(), i++);
+    h += card('models', 'Кто вам отвечает', 'модели агентов', models(cur), i++);
+  }
+  h += card('help', 'Как агенты вам помогали', `за ${P} дн`, help(cur), i++);
+  h += card('channels', 'Где вы пишете', 'каналы', channels(cur), i++);
+  return h;
+}
+function emptyAll() {
+  return `<article class="card rise"><div class="empty"><div class="ic">${ic('chart')}</div><h3>Здесь появится ваша статистика</h3><p>Темы, агенты и итоги бесед считаются по вашим разговорам. Начните первую беседу, и через несколько минут здесь будут цифры.</p><a class="go" href="#">${ic('msg')}К агентам</a></div></article>`;
+}
+function tblBtn(k) { return `<button class="tblbtn" type="button" data-tbl="${k}" aria-pressed="${!!st.tables[k]}">Таблица</button>`; }
+
+function activity(all, P) {
+  const per = {}; all.forEach(s => { if (s.d < 91) per[s.d] = (per[s.d] || 0) + 1; });
+  if (st.tables.activity) {
+    const rows = []; for (let d = 0; d < P; d++) rows.push(`<tr><td>${fmtDay(d)}</td><td class="n">${per[d] || 0}</td></tr>`);
+    return `<div class="tblwrap"><table class="t"><thead><tr><th>День</th><th class="n">Бесед</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+  }
+  const lvl = n => !n ? 0 : n === 1 ? 1 : n === 2 ? 2 : n <= 4 ? 3 : 4;
+  // columns = weeks, Monday first; the last column holds today
+  const todayW = (TODAY.getDay() + 6) % 7; // 0 = Monday
+  const start = 12 * 7 + todayW; // days ago of the first Monday shown
+  let cells = '', k = 0, lastMon = -1;
+  for (let w = 0; w < 13; w++) {
+    const dMon = start - w * 7, mDate = dayDate(dMon);
+    // A month is named over the week it starts in; the first column only if that month still has 3+ weeks on screen.
+    const label = mDate.getMonth() !== lastMon && (mDate.getDate() <= 7 || (w === 0 && mDate.getDate() <= 14)) ? MONS[mDate.getMonth()] : '';
+    if (label) lastMon = mDate.getMonth();
+    cells += `<span class="m" style="grid-column:${w + 1}">${label}</span>`;
+    for (let r = 0; r < 7; r++) {
+      const d = dMon - r;
+      if (d < 0) continue;
+      const n = per[d] || 0;
+      cells += `<span class="c${d >= P ? ' out' : ''}${d === 0 ? ' today' : ''}${n ? ' lit' : ''}" style="grid-column:${w + 1};grid-row:${r + 2};background:var(--s${lvl(n)});--k:${k++}" tabindex="${n ? 0 : -1}" data-tip="<b>${fmtDay(d)}</b><br>${n ? `${n} ${plural(n, 'беседа', 'беседы', 'бесед')}` : 'бесед нет'}${d >= P ? '<br><span style=&quot;color:var(--dim)&quot;>вне выбранного периода</span>' : ''}"></span>`;
+    }
+  }
+  // by weekday within the period
+  const byWd = [0, 0, 0, 0, 0, 0, 0]; all.filter(s => s.d < P).forEach(s => byWd[(dayDate(s.d).getDay() + 6) % 7]++);
+  const mx = Math.max(...byWd, 1), top = byWd.indexOf(Math.max(...byWd));
+  const days = byWd.map((n, j) => `<span class="${j === top && n ? 'top' : ''}" data-tip="<b>${WDL[(j + 1) % 7]}</b><br>${n} ${plural(n, 'беседа', 'беседы', 'бесед')} за ${P} дн" tabindex="0"><i style="height:${Math.max(3, 40 * n / mx)}px"></i>${WD[(j + 1) % 7]}</span>`).join('');
+  const activeDays = Object.keys(per).filter(d => d < P).length;
+  return `<div class="cal-wrap"><div class="cal" role="img" aria-label="Календарь бесед по дням за 13 недель. Цифры по дням есть в табличном виде.">${cells}</div></div>
+    <div class="cal-side">
+      <div class="days" aria-label="Беседы по дням недели">${days}</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="kv">Чаще всего: <b>${WDL[(top + 1) % 7]}</b></div>
+        <div class="kv">Дней с беседами: <b>${activeDays}</b> из ${P}</div>
+        <div class="scale">меньше <i style="background:var(--s0)"></i><i style="background:var(--s1)"></i><i style="background:var(--s2)"></i><i style="background:var(--s3)"></i><i style="background:var(--s4)"></i> больше</div>
+      </div>
+    </div>`;
+}
+
+function agentsBlock(cur) {
+  const by = AGENTS.map(a => { const l = cur.filter(s => s.agent === a.id); const ins = l.filter(s => s.ins); return { a, conv: l.length, msgs: sum(l, s => s.um), res: ins.length ? pct(ins.filter(s => s.resolved).length, ins.length) : null, last: l.length ? Math.min(...l.map(s => s.d)) : null }; }).filter(x => x.conv).sort((x, y) => y.msgs - x.msgs);
+  const total = sum(by, x => x.msgs) || 1, maxM = by[0]?.msgs || 1;
+  if (!st.agent || !by.find(x => x.a.id === st.agent)) st.agent = by[0]?.a.id;
+  // orbit: the person in the middle, the agent you write to most on the inner ring
+  const C = 120, rings = [52, 80, 106];
+  let svg = `<svg class="orbit" viewBox="0 0 240 240" role="group" aria-label="Агенты вокруг вас: чем ближе к центру, тем больше вы ему пишете">`;
+  rings.forEach(r => svg += `<circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="rgba(201,161,228,.22)" stroke-dasharray="2 5"/>`);
+  svg += `<circle cx="${C}" cy="${C}" r="24" fill="rgba(201,161,228,.08)" stroke="url(#og)" stroke-width="1.5"/><defs><linearGradient id="og" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f5a16b"/><stop offset="1" stop-color="#c9a1e4"/></linearGradient></defs><text x="${C}" y="${C + 5}" text-anchor="middle" font-family="Geist" font-weight="600" font-size="14" fill="#f5f1f6">AM</text>`;
+  by.forEach((x, j) => {
+    const ring = rings[Math.min(2, j === 0 ? 0 : j < 3 ? 1 : 2)];
+    const ang = (-90 + j * (360 / by.length) + 18) * Math.PI / 180;
+    const x0 = C + ring * Math.cos(ang), y0 = C + ring * Math.sin(ang), s = 18 + 12 * x.msgs / maxM;
+    const sel = x.a.id === st.agent;
+    svg += `<line x1="${C}" y1="${C}" x2="${x0}" y2="${y0}" stroke="${sel ? '#f5a16b' : 'rgba(201,161,228,.18)'}" stroke-width="${sel ? 1.4 : 1}"/>`;
+    svg += `<g class="node" tabindex="0" role="button" aria-label="${x.a.name}: ${x.msgs} сообщений" data-agent="${x.a.id}" data-tip="<b>${x.a.name}</b><br>${x.conv} ${plural(x.conv, 'беседа', 'беседы', 'бесед')} · ${x.msgs} сообщ. · ${pct(x.msgs, total)}%"><rect x="${x0 - s / 2}" y="${y0 - s / 2}" width="${s}" height="${s}" rx="${s * .3}" fill="#2a1f31" stroke="${sel ? '#f5a16b' : 'rgba(255,255,255,.22)'}" stroke-width="${sel ? 2 : 1}"/><text x="${x0}" y="${y0 + 3.5}" text-anchor="middle" font-family="Geist" font-weight="600" font-size="${s > 24 ? 10 : 8.5}" fill="#f5f1f6">${x.a.ini}</text></g>`;
+  });
+  svg += `</svg>`;
+  const rows = by.map(x => `<button class="arow${x.a.id === st.agent ? ' sel' : ''}" type="button" data-agent="${x.a.id}" aria-pressed="${x.a.id === st.agent}">
+    <span class="av">${x.a.ini}</span>
+    <span style="min-width:0"><b>${x.a.name}</b><small>${x.a.model} · ${ago(x.last)}</small><span class="meter"><i style="width:${100 * x.msgs / maxM}%"></i></span></span>
+    <span class="r"><b>${x.msgs}</b> сообщ.<br>${x.conv} ${plural(x.conv, 'беседа', 'беседы', 'бесед')}${x.res !== null ? ` · ${x.res}%` : ''}</span></button>`).join('');
+  return `<div class="ag">${svg}<div class="alist">${rows}</div></div>`;
+}
+
+function topicsBlock(cur, withIns) {
+  if (!withIns.length) return insightsOff();
+  const tally = {}; withIns.forEach(s => { (tally[s.topic] ||= { n: 0, r: 0, l: [] }); tally[s.topic].n++; if (s.resolved) tally[s.topic].r++; tally[s.topic].l.push(s); });
+  const list = Object.entries(tally).sort((a, b) => b[1].n - a[1].n).slice(0, 8);
+  if (!st.topic || !tally[st.topic]) st.topic = list[0][0];
+  const mx = list[0][1].n;
+  const rows = list.map(([k, v]) => {
+    const blocks = Math.max(1, Math.round(34 * v.n / mx)), solved = Math.round(blocks * v.r / v.n);
+    return `<button class="trow${k === st.topic ? ' sel' : ''}" type="button" data-topic="${esc(k)}" aria-pressed="${k === st.topic}"><span>${esc(k)}</span><span class="n">${v.n}</span><span class="pix" aria-hidden="true">${'<i></i>'.repeat(solved)}${'<i class="r"></i>'.repeat(blocks - solved)}</span></button>`;
+  }).join('');
+  const t = tally[st.topic];
+  const qs = [...new Map(t.l.sort((a, b) => a.d - b.d).map(s => [s.q, s])).values()].slice(0, 4);
+  const q = qs.map(s => `<div class="q"><span class="tx"><b>${esc(s.q)}</b><small>${A(s.agent).name} · ${ago(s.d)}</small></span>${s.resolved ? '<span class="pill good">решено</span>' : '<span class="pill warn">открыт</span>'}</div>`).join('');
+  return `<div class="tp"><div><div class="tl">${rows}</div><div class="lg" style="margin-top:10px"><span><i style="background:var(--c2)"></i>решено</span><span><i style="background:rgba(201,161,228,.35)"></i>осталось открытым</span></div></div>
+    <div class="qs"><h3>${esc(st.topic)}</h3><div class="meta">${t.n} ${plural(t.n, 'беседа', 'беседы', 'бесед')} · решено ${pct(t.r, t.n)}%</div>${q}</div></div>
+    <p class="hint">Тема берётся из сводки беседы. ${cur.length - withIns.length ? `Ещё ${cur.length - withIns.length} ${plural(cur.length - withIns.length, 'беседа ждёт', 'беседы ждут', 'бесед ждут')} сводки и пока не учтены.` : 'Все беседы периода учтены.'}</p>`;
+}
+function insightsOff() {
+  return `<div class="soft"><b>Темы и итоги появятся, когда включат сводки бесед.</b><br>${operator() ? 'Сводки считает фоновая задача API: переменная <span class="mono">CHAT_INSIGHT_INTERVAL_SEC</span> в установке не задана. Пока её нет, этот блок пуст у всех.' : 'Их включает администратор установки. Остальная статистика считается и без них.'}</div>`;
+}
+
+function outcome(cur, withIns) {
+  if (!withIns.length) return insightsOff();
+  const r = withIns.filter(s => s.resolved).length, u = withIns.length - r, n = cur.length - withIns.length, T = cur.length;
+  const seg = (v, c, lt, lbl) => v ? `<span class="${lt ? 'lt' : ''}" style="flex:${v};background:${c}" data-tip="<b>${lbl}</b><br>${v} ${plural(v, 'беседа', 'беседы', 'бесед')} · ${pct(v, T)}%" tabindex="0">${pct(v, T) >= 14 ? pct(v, T) + '%' : ''}</span>` : '';
+  const S = { positive: 0, neutral: 0, negative: 0, mixed: 0 }; withIns.forEach(s => S[s.sent]++);
+  const langs = {}; cur.forEach(s => langs[s.lang] = (langs[s.lang] || 0) + 1);
+  return `<div class="tall" role="img" aria-label="Решено ${r}, открыто ${u}, без сводки ${n}">${seg(r, 'var(--good)', 0, 'Решено')}${seg(u, 'var(--warn)', 0, 'Осталось открытым')}${seg(n, 'var(--none)', 1, 'Без сводки')}</div>
+    <div class="lg"><span><i style="background:var(--good)"></i>решено <b>${r}</b></span><span><i style="background:var(--warn)"></i>открыто <b>${u}</b></span>${n ? `<span><i style="background:var(--none)"></i>без сводки <b>${n}</b></span>` : ''}</div>
+    <div class="sent">${[['positive', 'спокойный тон'], ['neutral', 'нейтральный'], ['mixed', 'смешанный'], ['negative', 'раздражение']].map(([k, l]) => `<div><b>${S[k]}</b><small>${l}</small></div>`).join('')}</div>
+    <div class="chips">${Object.entries(langs).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span class="chip">${k.toUpperCase()} ${pct(v, T)}%</span>`).join('')}</div>`;
+}
+
+function models(cur) {
+  const by = {}; cur.forEach(s => { const m = A(s.agent).model; by[m] = (by[m] || 0) + s.um; });
+  const list = MODELS.filter(m => by[m.id]).map(m => [m, by[m.id]]);
+  const T = sum(list, x => x[1]), top = [...list].sort((a, b) => b[1] - a[1])[0];
+  return `<div class="kv" style="margin-bottom:4px">Чаще всего вам отвечает</div><div class="mono" style="font-size:16px;margin-bottom:12px">${top[0].id}</div>
+    <div class="tall" role="img" aria-label="${list.map(([m, v]) => `${m.id} ${pct(v, T)}%`).join(', ')}">${list.map(([m, v]) => `<span style="flex:${v};background:${m.c}" class="${m.p ? '' : 'lt'}" tabindex="0" data-tip="<b>${m.id}</b><br>${v} ваших сообщ. · ${pct(v, T)}%">${pct(v, T) >= 16 ? pct(v, T) + '%' : ''}</span>`).join('')}</div>
+    <div class="lg">${list.map(([m, v]) => `<span><i style="background:${m.c}"></i>${m.id.replace('claude-', '')} <b>${v}</b></span>`).join('')}</div>
+    <p class="hint">Считается по модели, которая стоит у агента сейчас.</p>`;
+}
+
+function openQs(cur) {
+  const l = cur.filter(s => s.resolved === false).sort((a, b) => a.d - b.d);
+  if (!cur.some(s => s.ins)) return insightsOff();
+  if (!l.length) return `<div class="soft">${ic('check')} Открытых вопросов за ${st.period} дн нет.</div>`;
+  return `<div class="oq">${l.slice(0, 4).map(s => `<div class="oqr"><span class="av">${A(s.agent).ini}</span><span class="tx"><b>${esc(s.q)}</b><small>${A(s.agent).name} · ${s.topic} · ${ago(s.d)}</small></span><a class="go" href="#" data-tip="Откроет агента ${A(s.agent).name} на этой беседе в его истории">Продолжить ${ic('arrow')}</a></div>`).join('')}</div>
+    ${l.length > 4 ? `<p class="hint">Ещё ${l.length - 4}. Все открытые беседы — в истории каждого агента.</p>` : ''}`;
+}
+
+function help(cur) {
+  const cited = cur.filter(s => s.cites), kb = {}; cited.forEach(s => kb[s.kb] = (kb[s.kb] || 0) + s.cites);
+  const topKb = Object.entries(kb).sort((a, b) => b[1] - a[1]);
+  const del = cur.filter(s => s.a2a), ok = del.filter(s => s.a2a.ok).length, peers = {}; del.forEach(s => peers[s.a2a.peer] = (peers[s.a2a.peer] || 0) + 1);
+  const topPeer = Object.entries(peers).sort((a, b) => b[1] - a[1])[0];
+  const up = sum(cur, s => s.up), down = sum(cur, s => s.down);
+  return `<div class="tiles">
+    <div class="tile"><div class="h">${ic('link')}Ответы со ссылками</div><div class="v">${cited.length}<small> из ${cur.length}</small></div><p>${topKb.length ? `Чаще всего: <b>${topKb[0][0]}</b>${topKb[1] ? `, затем ${topKb[1][0]}` : ''}` : 'Агенты пока не ссылались на источники'}</p></div>
+    <div class="tile"><div class="h">${ic('peers')}Спросили коллегу</div><div class="v">${del.length}<small> ${plural(del.length, 'раз', 'раза', 'раз')}</small></div><p>${del.length ? `Успешно ${ok} из ${del.length}. Чаще всего — <b>${A(topPeer[0]).name}</b>` : 'Агенты справлялись сами'}</p></div>
+    <div class="tile"><div class="h">${ic('up')}Ваши оценки</div><div class="v">${up}${ic('up')}${down}${ic('down')}</div><p>${up + down ? `${pct(up, up + down)}% ответов вы отметили как полезные` : 'Вы пока не оценивали ответы'}</p></div>
+  </div>`;
+}
+
+function channels(cur) {
+  const by = {}; cur.forEach(s => by[s.ch] = (by[s.ch] || 0) + 1); const T = cur.length;
+  const l = CHANNELS.filter(c => by[c.k]);
+  return `<div class="thin" role="img" aria-label="${l.map(c => `${c.l} ${pct(by[c.k], T)}%`).join(', ')}">${l.map(c => `<span style="flex:${by[c.k]};background:${c.c}" tabindex="0" data-tip="<b>${c.l}</b><br>${by[c.k]} ${plural(by[c.k], 'беседа', 'беседы', 'бесед')} · ${pct(by[c.k], T)}%"></span>`).join('')}</div>
+    <div class="lg">${l.map(c => `<span><i style="background:${c.c}"></i>${c.l} <b>${by[c.k]}</b></span>`).join('')}</div>`;
+}
+
+/* ── installation view (Owner, Admin) ── */
+function installation() {
+  const P = st.period, u = USAGE.filter(r => r.d < P), up = USAGE.filter(r => r.d >= P && r.d < 2 * P);
+  const inT = sum(u, r => r.inT), outT = sum(u, r => r.outT), calls = sum(u, r => r.calls);
+  const priced = u.filter(r => cost(r) !== null), $ = sum(priced, cost), $p = sum(up.filter(r => cost(r) !== null), cost);
+  const ws = win(WS, P), wsp = win(WS, P, P), people = new Set(ws.map(s => s.user)).size, peopleP = new Set(wsp.map(s => s.user)).size;
+  const mtok = n => n >= 1e6 ? (n / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + '<small> млн</small>' : nf(n / 1e3) + '<small> тыс</small>';
+  let i = 0, h = '';
+  h += `<div class="board rise" style="--i:${i++}" data-card="wboard">
+    <div class="t"><div class="v">${mtok(inT + outT)}</div><div class="l">токенов</div><div class="d">${mtok(inT).replace(/<[^>]+>/g, '')} вход · ${mtok(outT).replace(/<[^>]+>/g, '')} выход</div></div>
+    <div class="t"><div class="v" data-count="${calls}">${nf(calls)}</div><div class="l">вызовов модели</div>${delta(calls, sum(up, r => r.calls))}</div>
+    <div class="t"><div class="v">≈ $${nf($)}</div><div class="l">оценка стоимости</div>${delta($, $p)}</div>
+    <div class="t"><div class="v" data-count="${people}">${people}</div><div class="l">${plural(people, 'человек', 'человека', 'человек')} в беседах</div>${delta(people, peopleP)}</div>
+  </div><div style="margin-top:-8px">${srcHtml('wboard')}</div>`;
+  h += card('daily', 'Расход по дням', 'токены по моделям', daily(u, P), i++, tblBtn('daily'));
+  h += card('wagents', 'Агенты по стоимости', `за ${P} дн`, wagents(u), i++);
+  h += `<div class="two">${card('health', 'Здоровье', 'инциденты и лимиты', health(P), i++)}${card('quality', 'Где люди недовольны', 'по беседам установки', quality(ws), i++)}</div>`;
+  return h;
+}
+function daily(u, P) {
+  const days = []; for (let d = P - 1; d >= 0; d--) { const rows = u.filter(r => r.d === d); const m = {}; rows.forEach(r => m[r.model] = (m[r.model] || 0) + r.inT + r.outT); days.push({ d, m, tot: sum(rows, r => r.inT + r.outT), $: sum(rows.filter(r => cost(r) !== null), cost) }); }
+  if (st.tables.daily) return `<div class="tblwrap"><table class="t"><thead><tr><th>День</th>${MODELS.map(m => `<th class="n">${m.id.replace('claude-', '')}</th>`).join('')}<th class="n">≈ $</th></tr></thead><tbody>${days.slice().reverse().map(x => `<tr><td>${fmtDay(x.d)}</td>${MODELS.map(m => `<td class="n">${nf((x.m[m.id] || 0) / 1e3)}k</td>`).join('')}<td class="n">${x.$.toFixed(2)}</td></tr>`).join('')}</tbody></table></div>`;
+  const W = 640, H = 170, pad = 34, max = Math.max(...days.map(x => x.tot)), step = Math.pow(10, Math.floor(Math.log10(max))) * (max / Math.pow(10, Math.floor(Math.log10(max))) > 5 ? 2 : 1);
+  const top = Math.ceil(max / step) * step, bw = (W - pad) / days.length, colW = Math.min(24, Math.max(2, bw - 2));
+  let s = `<svg viewBox="0 0 ${W} ${H + 22}" role="img" aria-label="Токены по дням и моделям за ${P} дней. Значения есть в табличном виде.">`;
+  for (let v = 0; v <= top; v += step) { const y = H - (H - 8) * v / top; s += `<line x1="${pad}" x2="${W}" y1="${y}" y2="${y}" stroke="rgba(255,255,255,.07)"/><text class="ax" x="${pad - 6}" y="${y + 3}" text-anchor="end">${v >= 1e6 ? (v / 1e6).toLocaleString('ru-RU') + 'M' : v / 1e3 + 'k'}</text>`; }
+  days.forEach((x, j) => {
+    const cx = pad + j * bw + (bw - colW) / 2; let y = H;
+    const segs = MODELS.filter(m => x.m[m.id]);
+    segs.forEach((m, k) => { const hh = (H - 8) * x.m[m.id] / top; const last = k === segs.length - 1; y -= hh; s += last ? `<path d="M${cx} ${y + hh}V${y + Math.min(4, hh)}q0 -${Math.min(4, hh)} ${Math.min(4, colW / 2)} -${Math.min(4, hh)}H${cx + colW - Math.min(4, colW / 2)}q${Math.min(4, colW / 2)} 0 ${Math.min(4, colW / 2)} ${Math.min(4, hh)}V${y + hh}Z" fill="${m.c}"/>` : `<rect x="${cx}" y="${y + 1}" width="${colW}" height="${Math.max(0, hh - 2)}" fill="${m.c}"/>`; });
+    const tip = `<b>${fmtDay(x.d)}</b>${MODELS.filter(m => x.m[m.id]).map(m => `<div class=r><i style=background:${m.c}></i><span>${m.id.replace('claude-', '')}</span><em>${nf(x.m[m.id] / 1e3)}k</em></div>`).join('')}<div class=r><span>≈ стоимость</span><em>$${x.$.toFixed(2)}</em></div>`;
+    s += `<rect x="${pad + j * bw}" y="0" width="${bw}" height="${H}" fill="transparent" data-tip="${tip.replace(/"/g, '&quot;')}" tabindex="${P <= 30 ? 0 : -1}"/>`;
+    if (j === 0 || j === days.length - 1 || (P > 7 && j % Math.ceil(days.length / 5) === 0 && j < days.length - 3)) s += `<text class="ax" x="${cx + colW / 2}" y="${H + 15}" text-anchor="middle">${dayDate(x.d).getDate()} ${MON[dayDate(x.d).getMonth()]}</text>`;
+  });
+  s += '</svg>';
+  const used = MODELS.filter(m => u.some(r => r.model === m.id));
+  return `<div class="chart">${s}</div><div class="lg" style="margin-top:8px">${used.map(m => `<span><i style="background:${m.c}"></i>${m.id}${m.p ? '' : ' <span class="noprice">нет цены</span>'}</span>`).join('')}</div>`;
+}
+function wagents(u) {
+  const by = AGENTS.map(a => { const l = u.filter(r => r.agent === a.id); const c = M(a.model).p ? sum(l, cost) : null; return { a, c, tok: sum(l, r => r.inT + r.outT), calls: sum(l, r => r.calls) }; }).filter(x => x.tok).sort((x, y) => (y.c ?? -1) - (x.c ?? -1));
+  const mx = Math.max(...by.map(x => x.c || 0)), T = sum(by, x => x.c || 0), days = st.period;
+  return `<div class="rk">${by.map(x => `<div class="rkr"><span class="nm">${x.a.name}<small>${x.a.model}</small></span><span>${x.c === null ? '<span class="noprice">нет цены · считается как $0</span>' : `<span class="b" style="display:block;width:${Math.max(2, 100 * x.c / mx)}%" data-tip="<b>${x.a.name}</b><br>${nf(x.tok / 1e3)}k токенов · ${nf(x.calls)} вызовов" tabindex="0"></span>`}</span><span class="vv">${x.c === null ? `${nf(x.tok / 1e3)}k ток.` : `<b>$${x.c.toFixed(0)}</b> · ${pct(x.c, T)}%`}</span></div>`).join('')}</div>
+    <p class="hint">При таком темпе за 30 дней ≈ <b style="color:var(--fg)">$${nf(T / days * 30)}</b>. Цена из таблицы model-pricing.ts, не из счёта провайдера.</p>`;
+}
+function health(P) {
+  const inc = INCIDENTS.filter(x => x.d < P), ref = REFUSED.filter(r => r.d < P);
+  const refBy = {}; ref.forEach(r => refBy[r.agent] = (refBy[r.agent] || 0) + r.n);
+  return `<div class="inc">${inc.length ? inc.map(x => `<div><span class="st ${x.open ? 'open' : 'closed'}">${ic(x.open ? 'alert' : 'check')}${x.open ? 'открыт' : 'закрыт'}</span><span class="tx">${A(x.agent).name}<small>${x.reason} · ${ago(x.d)}${x.dur ? ' · ' + x.dur : ''}</small></span></div>`).join('') : `<div><span class="st closed">${ic('check')}</span><span class="tx">Инцидентов за ${P} дн не было</span></div>`}</div>
+    <div class="cap" style="margin:14px 0 8px">Отказы по лимиту запросов</div>
+    ${Object.keys(refBy).length ? Object.entries(refBy).map(([id, n]) => `<div class="kv" style="display:flex;justify-content:space-between;padding:3px 0">${A(id).name}<b class="mono">${nf(n)}</b></div>`).join('') + `<p class="hint">Отказы видят посетители публичных агентов. Лимит меняется в настройках агента.</p>` : '<div class="kv">Отказов не было</div>'}`;
+}
+function quality(ws) {
+  const rows = AGENTS.map(a => { const l = ws.filter(s => s.agent === a.id), ins = l.filter(s => s.ins), up = sum(l, s => s.up), dn = sum(l, s => s.down); return { a, n: l.length, open: ins.length ? pct(ins.filter(s => !s.resolved).length, ins.length) : null, down: up + dn ? pct(dn, up + dn) : null }; }).filter(x => x.n).sort((x, y) => (y.open ?? 0) - (x.open ?? 0));
+  const worstOpen = Math.max(...rows.map(r => r.open ?? 0)), worstDown = Math.max(...rows.map(r => r.down ?? 0));
+  return `<div class="qrow h"><span>Агент</span><span class="n">бесед</span><span class="n">открыто</span><span class="n" title="Доля плохих оценок">${ic('down')}</span></div>${rows.map(r => `<div class="qrow"><span>${r.a.name}</span><span class="n">${r.n}</span><span class="n${r.open === worstOpen ? ' hot' : ''}">${r.open ?? '—'}${r.open !== null ? '%' : ''}</span><span class="n${r.down === worstDown && r.down ? ' hot' : ''}">${r.down ?? '—'}${r.down !== null ? '%' : ''}</span></div>`).join('')}`;
+}
+
+/* ── account tab (the cards that are on the page today) ── */
+function account() {
+  return `<article class="card rise"><div class="ch"><h2>Учётная запись</h2></div><dl class="acc"><div><dt>Имя</dt><dd>Alex Morgan</dd></div><div><dt>Email</dt><dd>alex.morgan@example.com</dd></div><div><dt>ID</dt><dd>4c2e81b7-…-9f10</dd></div><div><dt>Роль</dt><dd>${ROLE[st.role][0]}</dd></div><div><dt>Версия консоли</dt><dd>0.3.x</dd></div></dl></article>
+  <article class="card rise" style="--i:1"><div class="ch"><h2>Что вам доступно</h2></div><p class="hint" style="margin:0">Без изменений: карточка «Что вам доступно» и строка «Этот браузер: вход выполнен» остаются как на странице сейчас.</p></article>`;
+}
+
+/* ── render ── */
+function render() {
+  const col = document.getElementById('col');
+  let h = `<div class="bar"><div class="seg" role="tablist" aria-label="Раздел профиля"><button role="tab" data-tab="stats" aria-pressed="${st.tab === 'stats'}" aria-selected="${st.tab === 'stats'}">${ic('chart')}Статистика</button><button role="tab" data-tab="account" aria-pressed="${st.tab === 'account'}" aria-selected="${st.tab === 'account'}">${ic('user')}Учётная запись</button></div><span class="sp"></span>`;
+  if (st.tab === 'stats') h += `<div class="seg sm" role="group" aria-label="Период">${[7, 30, 90].map(p => `<button data-period="${p}" aria-pressed="${st.period === p}">${p} дн</button>`).join('')}</div>`;
+  h += `</div>`;
+  if (st.tab === 'stats') {
+    if (operator()) h += `<div class="scope"><div class="seg sm" role="group" aria-label="Чья статистика"><button data-scope="mine" aria-pressed="${st.scope === 'mine'}">Мои беседы</button><button data-scope="ws" aria-pressed="${st.scope === 'ws'}">Вся установка</button></div><p>${st.scope === 'ws' ? 'Видят владелец и администраторы.' : st.role === 'Owner' ? 'Ваши беседы из консоли и админ-панели: у владельца это общий канал admin.' : 'Видите только вы.'}</p></div>`;
+    else h += `<div class="scope"><p>Статистику по вашим беседам видите только вы.</p></div>`;
+    h += `<div class="legend-src"><b style="color:var(--fg);font-weight:600">Откуда берутся цифры:</b><span class="src" style="display:contents"><em class="ok" style="font-style:normal;font-family:Geist Mono;font-size:10px;padding:1px 7px;border:1px solid;border-radius:999px">есть в API</em><em class="calc" style="font-style:normal;font-family:Geist Mono;font-size:10px;padding:1px 7px;border:1px solid;border-radius:999px">в БД, нужен агрегат</em><em class="gap" style="font-style:normal;font-family:Geist Mono;font-size:10px;padding:1px 7px;border:1px solid;border-radius:999px">не записывается</em></span></div>`;
+    h += operator() && st.scope === 'ws' ? installation() : personal();
+  } else h += account();
+  col.innerHTML = h;
+  document.getElementById('app').classList.toggle('show-src', st.src);
+  document.getElementById('h-role').textContent = ROLE[st.role][0];
+  document.getElementById('p-rl').textContent = ROLE[st.role][1];
+  document.getElementById('slots').style.display = operator() ? '' : 'none';
+  document.querySelectorAll('[data-role]').forEach(b => b.setAttribute('aria-pressed', b.dataset.role === st.role));
+  document.querySelectorAll('[data-d]').forEach(b => b.setAttribute('aria-pressed', b.dataset.d === st.data));
+  countUp();
+}
+// Numbers count up once when they change; reduced motion shows them as they are.
+function countUp() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelectorAll('[data-count]').forEach(el => {
+    const to = +el.dataset.count, tail = el.innerHTML.replace(/^[^<]*/, ''), t0 = performance.now(), dur = 700;
+    const f = now => { const k = Math.min(1, (now - t0) / dur), v = Math.round(to * (1 - Math.pow(1 - k, 3))); el.innerHTML = nf(v) + tail; if (k < 1) requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  });
+}
+
+/* ── events ── */
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-role],[data-d],[data-tab],[data-period],[data-scope],[data-topic],[data-agent],[data-tbl],a[href="#"]');
+  if (!t) return;
+  if (t.matches('a[href="#"]')) { e.preventDefault(); return; }
+  if (t.dataset.role) { st.role = t.dataset.role; if (!operator()) st.scope = 'mine'; }
+  if (t.dataset.d) st.data = t.dataset.d;
+  if (t.dataset.tab) st.tab = t.dataset.tab;
+  if (t.dataset.period) st.period = +t.dataset.period;
+  if (t.dataset.scope) st.scope = t.dataset.scope;
+  if (t.dataset.topic) st.topic = t.dataset.topic;
+  if (t.dataset.agent) st.agent = t.dataset.agent;
+  if (t.dataset.tbl) st.tables[t.dataset.tbl] = !st.tables[t.dataset.tbl];
+  hideTip(); render();
+});
+document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('g.node')) { e.preventDefault(); st.agent = e.target.dataset.agent; render(); } if (e.key === 'Escape') hideTip(); });
+document.getElementById('p-src').addEventListener('change', e => { st.src = e.target.checked; render(); });
+const tip = document.getElementById('tip');
+function showTip(el) { tip.innerHTML = el.getAttribute('data-tip'); tip.classList.add('on'); const r = el.getBoundingClientRect(), w = tip.offsetWidth, hh = tip.offsetHeight; let x = r.left + r.width / 2 - w / 2, y = r.top - hh - 8; if (y < 54) y = r.bottom + 8; x = Math.max(8, Math.min(innerWidth - w - 8, x)); tip.style.left = x + 'px'; tip.style.top = y + 'px'; }
+function hideTip() { tip.classList.remove('on'); }
+document.addEventListener('mouseover', e => { const el = e.target.closest('[data-tip]'); el ? showTip(el) : hideTip(); });
+document.addEventListener('focusin', e => { const el = e.target.closest('[data-tip]'); el ? showTip(el) : hideTip(); });
+document.addEventListener('scroll', hideTip, { passive: true });
+render();
+</script>
+</body>
+</html>

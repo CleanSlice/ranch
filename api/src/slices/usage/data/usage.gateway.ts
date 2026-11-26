@@ -20,7 +20,13 @@ export class UsageGateway extends IUsageGateway {
     super();
   }
 
-  async report(agentId: string, data: IReportUsageData): Promise<void> {
+  // The name comes in from the caller rather than from a read of the Agent
+  // table here: this slice keeps no relation to it any more (CLEAN-261).
+  async report(
+    agentId: string,
+    data: IReportUsageData,
+    agentName: string | null,
+  ): Promise<void> {
     const date = dayStartUtc(data.date);
 
     // Resolve which referenced credentials actually exist. Stale ids
@@ -60,11 +66,12 @@ export class UsageGateway extends IUsageGateway {
           },
           create: this.mapper.toCreate({
             agentId,
+            agentName,
             model,
             date,
             entry: safeEntry,
           }),
-          update: this.mapper.toUpdate(safeEntry),
+          update: this.mapper.toUpdate(safeEntry, agentName),
         });
       }),
     );
@@ -110,5 +117,21 @@ export class UsageGateway extends IUsageGateway {
       orderBy: [{ date: 'desc' }, { model: 'asc' }],
     });
     return records.map((r) => this.mapper.toEntity(r));
+  }
+
+  async findRange(from: Date, to: Date): Promise<IUsageData[]> {
+    const records = await this.prisma.usage.findMany({
+      where: { date: { gte: from, lt: to } },
+      orderBy: [{ date: 'desc' }, { model: 'asc' }],
+    });
+    return records.map((r) => this.mapper.toEntity(r));
+  }
+
+  async firstRecordAt(): Promise<Date | null> {
+    const first = await this.prisma.usage.findFirst({
+      orderBy: { date: 'asc' },
+      select: { date: true },
+    });
+    return first?.date ?? null;
   }
 }

@@ -11,12 +11,28 @@ const PRICING: Record<string, IModelPricing> = {
   'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
 };
 
+// The one lookup both functions below go through, so "has a price" and
+// "what it costs" cannot disagree about a model. Own keys only: a model
+// named like something every object has ("constructor") is not in the list.
+function priceOf(model: string): IModelPricing | undefined {
+  return Object.hasOwn(PRICING, model) ? PRICING[model] : undefined;
+}
+
+/**
+ * Whether the model is in the price list. `costUsd` answers 0 for a model
+ * that is not, which reads as "free"; a caller that must tell an unpriced
+ * model from a free one asks here first (CLEAN-261).
+ */
+export function hasPrice(model: string): boolean {
+  return priceOf(model) !== undefined;
+}
+
 export function costUsd(
   model: string,
   inputTokens: number,
   outputTokens: number,
 ): number {
-  const p = PRICING[model];
+  const p = priceOf(model);
   if (!p) return 0;
   return (
     (inputTokens / 1_000_000) * p.inputPerMillion +

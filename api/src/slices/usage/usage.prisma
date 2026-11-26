@@ -1,10 +1,16 @@
-import { Agent } from "../agent/agent/agent"
 import { LlmCredential } from "../llm/llm"
 
 model Usage {
   id              String         @id @default(uuid())
+  // A plain column, not a relation (CLEAN-261): what an agent spent stays
+  // spent after the agent is deleted, so a past period's total does not
+  // shrink (spec 038, FR-031). The same choice as
+  // ChatMessageSource.knowledgeId, for the same reason.
   agentId         String
-  agent           Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // The agent's name when the usage was reported, so a deleted agent's rows
+  // can still be shown by name. Null on rows written before this column for
+  // an agent that was already gone.
+  agentName       String?
   llmCredentialId String?
   llmCredential   LlmCredential? @relation(fields: [llmCredentialId], references: [id], onDelete: SetNull)
   model           String

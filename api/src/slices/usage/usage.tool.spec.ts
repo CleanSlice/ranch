@@ -1,5 +1,8 @@
+import 'reflect-metadata';
 import { ForbiddenException } from '@nestjs/common';
 import type { Request } from 'express';
+import { MCP_TOOL_METADATA_KEY } from '#/mcp/decorators';
+import type { ToolMetadata } from '#/mcp/decorators';
 import { UsageTool } from './usage.tool';
 import { costUsd } from './domain/model-pricing';
 import type { IUsageData } from './domain/usage.types';
@@ -26,6 +29,7 @@ function row(
 ): IUsageData {
   return {
     id: `${p.agentId}|${p.model}|${p.date.toISOString()}`,
+    agentName: null,
     llmCredentialId: null,
     inputTokens: 0,
     outputTokens: 0,
@@ -61,6 +65,15 @@ function harness(rows: IUsageData[], agentNames: Record<string, string> = {}) {
 
 const text = (result: { content: { text: string }[] }) =>
   result.content[0].text;
+
+/** The description the model reads when it picks the tool. */
+const toolDescription = (method: 'getUsageOverview') =>
+  (
+    Reflect.getMetadata(
+      MCP_TOOL_METADATA_KEY,
+      UsageTool.prototype[method],
+    ) as ToolMetadata
+  ).description;
 
 describe('UsageTool', () => {
   describe('audience', () => {
@@ -165,7 +178,50 @@ describe('UsageTool', () => {
       expect(text(result)).toContain('"inputTokens": 3400');
     });
 
-    it('keeps a deleted agent visible under its id', async () => {
+    it('keeps a deleted agent listed under the name it had', async () => {
+      // The row carries the name it was reported with (CLEAN-261), so the
+      // spend of an agent that is gone still reads as that agent's.
+      const { tool } = harness(
+        [
+          row({
+            agentId: 'agent-gone',
+            agentName: 'Support Bot',
+            model: HAIKU,
+            date: DAY_1,
+            inputTokens: 10,
+            outputTokens: 10,
+            callCount: 1,
+          }),
+        ],
+        {},
+      );
+
+      const result = await tool.getUsageOverview({}, undefined, operator());
+      const body = JSON.parse(text(result)) as {
+        byAgent: { agentId: string; agentName: string; costUsd: number }[];
+      };
+
+      expect(body.byAgent).toEqual([
+        {
+          agentId: 'agent-gone',
+          agentName: 'Support Bot',
+          inputTokens: 10,
+          outputTokens: 10,
+          callCount: 1,
+          costUsd: costUsd(HAIKU, 10, 10),
+        },
+      ]);
+      expect(result.isError).toBeUndefined();
+    });
+
+    it('says in its description what a deleted agent is listed under', () => {
+      const description = toolDescription('getUsageOverview');
+
+      expect(description).toContain('under the name it had');
+      expect(description).not.toContain('shows its id as the name');
+    });
+
+    it('falls back to the id for a deleted agent whose rows carry no name', async () => {
       const { tool } = harness(
         [
           row({

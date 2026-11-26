@@ -34,6 +34,11 @@ import { IFileGateway } from '#/agent/file/domain';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { ILlmGateway } from '#/llm/domain';
 
+const AGENT_NOT_FOUND = 'Agent not found';
+
+/** The agent could not be looked up, which is not the same as not there. */
+const LOOKUP_FAILED: unique symbol = Symbol('agent lookup failed');
+
 interface IRuntimeUsageSnapshot {
   date: string;
   totalInputTokens: number;
@@ -68,7 +73,28 @@ export class UsageController {
     @Param('agentId') agentId: string,
     @Body() dto: ReportUsageDto,
   ): Promise<void> {
-    await this.gateway.report(agentId, dto);
+    // The agent's name travels with what it spent, so the spend can still
+    // be shown by name once the agent is deleted (CLEAN-261). Read once for
+    // the whole report.
+    //
+    // The same read refuses a report for an agent that is not there. The
+    // foreign key on Usage.agentId used to, and it is gone so that the rows
+    // can outlive their agent: without this, any id would get rows.
+    //
+    // A lookup that fails is another matter, and is kept apart from "no such
+    // agent" by its own marker. Usage is telemetry: a name that could not be
+    // read must not cost the day's numbers, so it reports without one.
+    const agent = await this.agentGateway
+      .findById(agentId)
+      .catch((err): typeof LOOKUP_FAILED => {
+        this.logger.warn(
+          `Could not read the name of agent ${agentId} for its usage report: ${(err as Error).message}`,
+        );
+        return LOOKUP_FAILED;
+      });
+    if (!agent) throw new NotFoundException(AGENT_NOT_FOUND);
+    const name = agent === LOOKUP_FAILED ? null : agent.name;
+    await this.gateway.report(agentId, dto, name);
   }
 
   @Get('agents/:agentId/usage')
@@ -83,7 +109,7 @@ export class UsageController {
     // An agent that does not exist used to answer an empty report, which
     // told it apart from one the caller's lists hide (CLEAN-231).
     if (!(await this.agentGateway.findById(agentId))) {
-      throw new NotFoundException('Agent not found');
+      throw new NotFoundException(AGENT_NOT_FOUND);
     }
     const rows = await this.gateway.findRecentForAgent(agentId, 30);
     const todayKey = dayKey(new Date());

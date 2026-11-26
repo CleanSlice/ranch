@@ -12,6 +12,8 @@ import { ChatSourceGateway } from './data/chatSource.gateway';
 import { ChatParticipantService } from './domain/chatParticipant.service';
 import { UserModule } from '#/user/user/user.module';
 import { IChatSourceGateway, ChatSourceService } from './domain';
+import { IChatActivityGateway, ChatActivityService } from './domain';
+import { ChatActivityGateway } from './data/chatActivity.gateway';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { SourceModule } from '#/reins/source/source.module';
 import { TemplateModule } from '#/agent/template/template.module';
@@ -41,12 +43,17 @@ import { TemplateModule } from '#/agent/template/template.module';
     ChatTool,
     ChatSourceService,
     ChatParticipantService,
+    // Activity by the hour (CLEAN-261): the settle pass and the daily prune.
+    ChatActivityService,
     { provide: IChatSourceGateway, useClass: ChatSourceGateway },
+    { provide: IChatActivityGateway, useClass: ChatActivityGateway },
     {
       provide: IChatGateway,
       useClass: ChatGateway,
     },
   ],
-  exports: [IChatGateway, ChatSourceService],
+  // IChatActivityGateway is exported for the stats slice: what it shows about
+  // activity it asks of this port, never of the table.
+  exports: [IChatGateway, ChatSourceService, IChatActivityGateway],
 })
 export class ChatModule {}

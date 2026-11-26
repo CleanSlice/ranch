@@ -119,6 +119,13 @@ export interface IChatInsightBatchResult {
   failed: number;
 }
 
+/** One run of the activity settle pass (ChatActivityService, CLEAN-261). */
+export interface IChatSettleResult {
+  picked: number; // conversations whose transcript the run set out to read
+  raised: number; // hour rows it created or raised
+  failed: number; // conversations it could not settle; they stay due
+}
+
 /** A 👍/👎 on one assistant message. `source` = admin | app | telegram. */
 export interface IChatFeedbackData {
   id: string;

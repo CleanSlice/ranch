@@ -37,6 +37,7 @@ import { BridleModule } from './slices/bridle/bridle.module';
 import { LlmModule } from './slices/llm/llm.module';
 import { UsageModule } from './slices/usage/usage.module';
 import { ChatModule } from './slices/chat/chat.module';
+import { StatsModule } from './slices/stats/stats.module';
 import { KnowledgeModule } from './slices/reins/knowledge/knowledge.module';
 import { SourceModule } from './slices/reins/source/source.module';
 import { MigrationModule } from './slices/reins/migration/migration.module';
@@ -99,6 +100,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     LlmModule,
     UsageModule,
     ChatModule,
+    StatsModule,
     KnowledgeModule,
     SourceModule,
     MigrationModule,

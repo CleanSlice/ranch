@@ -6,7 +6,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { ApiInstanceService } from '#/setting/domain/apiInstance.service';
-import { IAgentLimitGateway } from './agentLimit.gateway';
+import { IAgentLimitGateway, IAgentLoadDay } from './agentLimit.gateway';
 import {
   AgentLimitState,
   IAgentLimitHub,
@@ -23,6 +23,7 @@ import {
   hasAnyLimit,
   limitFor,
 } from './agentLimit.types';
+import { oldestWholeDay } from './loadDay';
 import { admit, countIn, decide, rebuild, trim } from './slidingLog';
 
 const MINUTE_MS = 60_000;
@@ -36,6 +37,13 @@ export const FLUSH_MS = 10_000;
 /** How far back the "highest seen" figures look. */
 export const PEAK_DAYS = 30;
 const RETENTION_MS = PEAK_DAYS * WINDOW_MS.day;
+/**
+ * How long the per-day rows are kept (CLEAN-261). The longest period the
+ * statistics page shows is 90 days and it is compared with the 90 before it;
+ * a year of margin on top keeps a future yearly view from needing new
+ * collection (spec 038, FR-030).
+ */
+const DAY_RETENTION_MS = 400 * WINDOW_MS.day;
 const PRUNE_EVERY_MS = WINDOW_MS.day;
 /** Peaks scan up to a month of rows; they are for choosing limits, not for
  *  watching, so a minute-old figure is as good as a fresh one. */
@@ -144,14 +152,14 @@ export class AgentLimitService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    const now = Date.now();
     try {
-      const now = Date.now();
       for (const row of await this.gateway.findAll()) {
         const counter = this.counterFor(row.agentId);
         counter.limits = row.limits;
         await this.rebuild(row.agentId, counter, now);
       }
-      await this.gateway.pruneBefore(now - RETENTION_MS);
+      await this.prune(now);
     } catch (err) {
       // Booting without counters is better than not booting: limits are then
       // empty-handed until the next change, and the log says why.
@@ -159,14 +167,13 @@ export class AgentLimitService implements OnModuleInit, OnModuleDestroy {
         `Could not load request limits at boot: ${(err as Error).message}`,
       );
     }
+    await this.rebuildDays(now);
     this.flushTimer = setInterval(() => void this.flush(), FLUSH_MS);
     this.flushTimer.unref?.();
     this.pruneTimer = setInterval(() => {
-      void this.gateway
-        .pruneBefore(Date.now() - RETENTION_MS)
-        .catch((err: Error) =>
-          this.logger.warn(`Pruning load rows failed: ${err.message}`),
-        );
+      void this.prune(Date.now()).catch((err: Error) =>
+        this.logger.warn(`Pruning load rows failed: ${err.message}`),
+      );
     }, PRUNE_EVERY_MS);
     this.pruneTimer.unref?.();
     void this.warnIfSeveralCopies();
@@ -393,6 +400,20 @@ export class AgentLimitService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * Requests by UTC day for these agents, `from <= day < to` (CLEAN-261). What
+   * a statistics view reads: the minute rows are gone after 30 days, the day
+   * rows stay. Counts written since the last flush are not in it yet.
+   */
+  loadDays(agentIds: string[], from: Date, to: Date): Promise<IAgentLoadDay[]> {
+    return this.gateway.findDays(agentIds, from, to);
+  }
+
+  /** The earliest day there is a row for, or null: how far back refusals can be shown. */
+  firstLoadDayAt(): Promise<Date | null> {
+    return this.gateway.firstDayAt();
+  }
+
   /** Write what has been counted since the last flush. Safe to call at any time. */
   async flush(): Promise<void> {
     // One flush at a time: the timer and a caller must not write the same
@@ -429,6 +450,38 @@ export class AgentLimitService implements OnModuleInit, OnModuleDestroy {
           `Could not store load counts for agent ${agentId}: ${(err as Error).message}`,
         );
       }
+    }
+  }
+
+  private async prune(now: number): Promise<void> {
+    await this.gateway.pruneBefore(now - RETENTION_MS);
+    await this.gateway.pruneDaysBefore(new Date(now - DAY_RETENTION_MS));
+  }
+
+  /**
+   * Give a day row to every day that has minutes and none (CLEAN-261): the
+   * days counted before day rows existed, on the first boot that has them.
+   * Awaited before the flush timer starts, because a flush that creates
+   * today's row first would leave it holding only what came after the boot.
+   */
+  private async rebuildDays(now: number): Promise<void> {
+    try {
+      const rebuilt = await this.gateway.rebuildMissingDays(
+        new Date(oldestWholeDay(now, RETENTION_MS)),
+      );
+      if (rebuilt > 0) {
+        this.logger.log(
+          `Rebuilt ${rebuilt} per-day load rows from their minutes`,
+        );
+      }
+    } catch (err) {
+      // The limiter does not need the day rows; only the statistics read
+      // them. Days still without a row are tried again at the next boot.
+      // Today is the exception: the next flush creates its row, without
+      // what was counted before this boot, and a row is never rebuilt.
+      this.logger.error(
+        `Could not rebuild per-day load rows at boot: ${(err as Error).message}`,
+      );
     }
   }
 

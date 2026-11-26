@@ -58,6 +58,13 @@ export interface ReadTranscriptOptions {
    * (the bridle widget replay does this).
    */
   filterTransient?: boolean;
+  /**
+   * Replay an assistant turn as the bubbles it was shown in. Default: true.
+   * Pass false to get one message per stored event, under the event's own id
+   * and time: what a reader that counts needs, since the runtime reports one
+   * activity per event, whatever number of bubbles it streamed (CLEAN-261).
+   */
+  bubbles?: boolean;
 }
 
 // Streamed in 512 KB blocks; hard-capped so a pathological session file can't
@@ -206,7 +213,9 @@ export class TranscriptReaderService {
       // recorded the bubbles, replay THOSE — same ids, same boundaries —
       // instead of one paragraph with the sentences glued together (CLEAN-102).
       const bubbles =
-        evt.type === 'assistant' ? sanitizeBubbles(evt.data?.messages) : [];
+        evt.type === 'assistant' && opts.bubbles !== false
+          ? sanitizeBubbles(evt.data?.messages)
+          : [];
       if (bubbles.length) {
         for (const bubble of bubbles) {
           messages.push({ ...bubble, role: 'assistant' });

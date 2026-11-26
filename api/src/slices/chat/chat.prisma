@@ -1,4 +1,5 @@
 import { Agent } from "../agent/agent/agent"
+import { ChatActivityHour } from "./chatActivity"
 
 // Chat history index. The message CONTENT stays in the agent runtime's
 // append-only JSONL (S3, `agents/{agentId}/data/sessions/{channel}:{userId}.jsonl`);
@@ -30,14 +31,26 @@ model ChatSession {
   summaryAt        DateTime?
   insights         Json?                             // { topics[], sentiment, resolved, language }
   archived         Boolean   @default(false)         // *.archived.jsonl sessions get their own row
+  // When the settle pass last read this conversation's transcript into
+  // ChatActivityHour (CLEAN-261). Null = due: it never was read, or something
+  // has been said since. Every write that moves the conversation on (a live
+  // event, a reconcile of a changed file) sets it back to null, so "due" is
+  // one column the index below can answer, not a comparison of two.
+  activityRebuiltAt DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   feedback         ChatFeedback[]
+  activityHours    ChatActivityHour[]
 
   @@unique([agentId, sessionKey])
   @@index([agentId, lastMessageAt])
   @@index([channel, lastMessageAt])
+  // The settle pass: the conversations that are due, newest first, across
+  // every channel and agent. In the steady state that is a handful of rows,
+  // and the index holds them together, so a run does not walk half a year of
+  // conversations to find nothing.
+  @@index([activityRebuiltAt, lastMessageAt])
 }
 
 model ChatFeedback {

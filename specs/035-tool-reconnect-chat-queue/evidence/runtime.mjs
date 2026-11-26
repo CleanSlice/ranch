@@ -162,6 +162,13 @@ class FakeRuntime {
       this.socket.once("connect_error", reject);
     });
     this.socket.on("message", (msg) => void this.onMessage(msg));
+    // The hub asks a runtime to push its files before it closes a
+    // conversation ("New chat"). There are none here, so the answer is
+    // immediate; without it the archive waits five seconds and refuses
+    // (CLEAN-248 needs a new chat to go through on this stack).
+    this.socket.on("sync", (msg) =>
+      this.socket.emit("sync_done", { requestId: msg?.requestId, pushed: 0 }),
+    );
     this.socket.on("connect", () => this.say());
     this.say();
   }

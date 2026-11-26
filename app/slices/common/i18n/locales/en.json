@@ -2,7 +2,6 @@
   "app_name": "Ranch",
   "nav": {
     "agents": "Agents",
-    "history": "History",
     "templates": "Templates"
   },
   "auth": {

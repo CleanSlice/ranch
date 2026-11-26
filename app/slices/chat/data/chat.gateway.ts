@@ -16,6 +16,7 @@ import {
   type ChatExportFormat,
   type IChatExportFile,
   type IChatFeedback,
+  type IChatListQuery,
   type IChatListResult,
   type IChatMessagesQuery,
   type IChatMessagesResult,
@@ -27,16 +28,21 @@ import { ChatMapper } from './chat.mapper';
 export class ChatGateway extends BaseGateway implements IChatGateway {
   private mapper = new ChatMapper();
 
-  listMine(
-    page: number,
-    perPage: number,
-    archived: boolean,
-  ): Promise<IChatListResult> {
+  listMine(query: IChatListQuery): Promise<IChatListResult> {
+    const page = query.page ?? 1;
+    const perPage = query.perPage ?? 50;
     return this.execute(async () => {
       const res = await ChatsService.getMyChats({
-        // Sent only when asked for: without it the API lists the current
-        // conversations, as it always has.
-        query: { page, perPage, ...(archived ? { archived: true } : {}) },
+        // Each filter is sent only when asked for: without them the API
+        // lists the current conversations with every agent, as it always
+        // has.
+        query: {
+          page,
+          perPage,
+          ...(query.archived ? { archived: true } : {}),
+          ...(query.agentId ? { agentId: query.agentId } : {}),
+          ...(query.search ? { search: query.search } : {}),
+        },
       });
       const dto = unwrapEnvelope<ChatListResponseDto>(res.data);
       return dto ? this.mapper.toList(dto) : emptyChatList(page, perPage);

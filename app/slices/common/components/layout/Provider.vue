@@ -10,35 +10,20 @@
         class="flex items-center h-14 px-4 gap-5"
         :class="isFlush ? 'w-full' : 'container mx-auto'"
       >
-        <NuxtLink to="/" class="flex items-center" :aria-label="$t('app_name')">
+        <!-- Signed in, the logo is the way to the agents: with the tabs gone
+             it is the header's only one (CLEAN-248). A visitor still gets
+             the front page. -->
+        <NuxtLink
+          :to="authStore.isAuthenticated ? '/agents' : '/'"
+          class="flex items-center"
+          :aria-label="$t('app_name')"
+        >
           <LandingBrandLogo variant="full" :size="28" :label="null" />
         </NuxtLink>
 
-        <nav
-          class="hidden md:flex items-center gap-0.5 rounded-full border bg-card/60 p-0.5 text-sm"
-        >
-          <!-- Active state by path prefix, not router-link-active: /agents/:id
-               is its own page, not a child route of /agents, so the router
-               never marked the Agents link active inside an agent. -->
-          <NuxtLink
-            to="/agents"
-            class="rounded-full px-3.5 py-1.5 transition-colors hover:text-foreground"
-            :class="navActive('/agents') ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'"
-            :aria-current="navActive('/agents') ? 'page' : undefined"
-          >
-            {{ $t('nav.agents') }}
-          </NuxtLink>
-          <NuxtLink
-            v-if="authStore.isAuthenticated"
-            to="/chats"
-            class="rounded-full px-3.5 py-1.5 transition-colors hover:text-foreground"
-            :class="navActive('/chats') ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground'"
-            :aria-current="navActive('/chats') ? 'page' : undefined"
-          >
-            {{ $t('nav.history') }}
-          </NuxtLink>
-        </nav>
-
+        <!-- No tabs here any more (CLEAN-248): history lives inside the
+             agent, so there was nothing left for Agents to be switched
+             against. The logo above is the way back to the agents. -->
         <div class="flex-1" />
 
         <!-- Browser language decides the first render (detectBrowserLanguage);

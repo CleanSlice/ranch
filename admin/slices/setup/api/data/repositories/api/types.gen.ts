@@ -6159,6 +6159,14 @@ export type GetMyChatsData = {
      * Include archived chats
      */
     archived?: boolean;
+    /**
+     * Only conversations with this agent
+     */
+    agentId?: string;
+    /**
+     * Title or last message contains this text, case-insensitive. Blank is the same as absent.
+     */
+    search?: string;
     page?: number;
     perPage?: number;
   };

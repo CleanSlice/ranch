@@ -2,6 +2,7 @@ import type {
   ChatExportFormat,
   IChatExportFile,
   IChatFeedback,
+  IChatListQuery,
   IChatListResult,
   IChatMessagesQuery,
   IChatMessagesResult,
@@ -19,12 +20,9 @@ export abstract class IChatGateway {
    * The caller's own conversations, newest first. `archived` picks which
    * ones: the current conversations, or the ones closed by "New chat"
    * (CLEAN-136). The API's filter is exclusive, so it is one or the other.
+   * `agentId` and `search` narrow either list (CLEAN-248).
    */
-  abstract listMine(
-    page: number,
-    perPage: number,
-    archived: boolean,
-  ): Promise<IChatListResult>;
+  abstract listMine(query: IChatListQuery): Promise<IChatListResult>;
   abstract getMine(id: string): Promise<IChatSession | null>;
   abstract messages(
     id: string,

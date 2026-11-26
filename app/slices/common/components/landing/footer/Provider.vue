@@ -7,8 +7,7 @@
       <nav class="land-footer__nav" :aria-label="$t('landing_nav.footer')">
         <NuxtLink to="/agents">{{ $t('nav.agents') }}</NuxtLink>
         <NuxtLink to="/templates">{{ $t('nav.templates') }}</NuxtLink>
-        <NuxtLink v-if="authStore.isAuthenticated" to="/chats">{{ $t('nav.history') }}</NuxtLink>
-        <NuxtLink v-else to="/login">{{ $t('auth.sign_in') }}</NuxtLink>
+        <NuxtLink v-if="!authStore.isAuthenticated" to="/login">{{ $t('auth.sign_in') }}</NuxtLink>
       </nav>
       <div class="land-footer__meta">
         <span>{{ $t('footer.note', { year }) }}</span>

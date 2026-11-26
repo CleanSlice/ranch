@@ -3366,7 +3366,7 @@ export class ChatsService {
   }
 
   /**
-   * List the current user's own chat sessions, newest first.
+   * List the current user's own chat sessions, newest first. `agentId` keeps the ones with that agent; `search` keeps those whose title or last message contains the text.
    */
   public static getMyChats<ThrowOnError extends boolean = false>(
     options?: Options<GetMyChatsData, ThrowOnError>,

@@ -26,8 +26,9 @@ export const MY_ASSISTANT_ACCESS_TOOL = 'get_my_assistant_access';
  * before it asks any policy, and a policy can only take names away, so
  * nothing this returns can give a person what their role does not have.
  *
- * One thing the same setting does open (CLEAN-254): an agent ability it
- * holds works on every agent the person reaches, though they created none.
+ * One thing the same setting does open (CLEAN-254): an agent ability ticked
+ * in a custom pick works on every agent the person reaches, though they
+ * created none. A built-in level opens nothing of the kind.
  * That is `grantedToolsFor`, asked by the tool layer through
  * `ASSISTANT_GRANT_RESOLVER`; the role's ceiling still holds, because the
  * names come from `grantFor`, which cuts them down to the role.
@@ -72,16 +73,25 @@ export class AssistantToolPolicyService
    * no agent. Read from the same setting the policy above narrows by, so the
    * two cannot disagree about a call.
    *
-   * `null` wherever no setting is behind the call, and for a setting that is
-   * switched off: another agent, a console token, a guest, the Owner. Every
-   * name in the set is a governed ability within the person's role; which of
-   * them are tools for managing an agent is the tool layer's to say.
+   * Only what was ticked for them counts: the names of a CUSTOM pick, the
+   * account's own or the role's. A built-in level (basic, standard, full),
+   * the role's default or one somebody chose, opens nothing here: nothing
+   * widens for anybody without somebody having chosen that ability. It is
+   * read from the stored level, not from comparing sets, so a custom pick
+   * that happens to equal Standard is still a custom pick and counts.
+   *
+   * `null` wherever no setting is behind the call, for a setting that is
+   * switched off, and for a built-in level: another agent, a console token,
+   * a guest, the Owner. Every name in the set is a governed ability within
+   * the person's role; which of them are tools for managing an agent is the
+   * tool layer's to say.
    */
   async grantedToolsFor(
     httpRequest: Request,
   ): Promise<ReadonlySet<string> | null> {
     const grant = await this.settingFor(httpRequest);
     if (!grant || grant.names === null || !grant.enabled) return null;
+    if (grant.level !== 'custom') return null;
     return grant.names;
   }
 

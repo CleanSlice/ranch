@@ -49,20 +49,22 @@ const GUEST: ICallerParty = { kind: 'guest' };
  *     OR (agent is not the Ranch admin agent AND caller created the agent
  *         AND caller reaches the agent)
  *     OR (agent is not the Ranch admin agent AND the tool this call runs
- *         was given to the caller through the assistant setting
- *         AND caller reaches the agent)
+ *         was ticked for the caller in a custom pick of the assistant
+ *         setting AND caller reaches the agent)
  *
  * The caller is a party (`ICallerParty`): a person, a trusted agent, or a
  * guest. A trusted party is the Ranch admin agent acting for itself and is
  * allowed, as before. A guest never is.
  *
  * The last line is for tools only, and for one tool at a time (CLEAN-254).
- * The Owner or an Admin gives a person agent abilities in the assistant
- * setting (CLEAN-240); such an ability works through the assistant on every
- * agent that person reaches, whoever created it. It arrives here as
+ * The Owner or an Admin ticks agent abilities for a person in a custom pick
+ * of the assistant setting (CLEAN-240); such an ability works through the
+ * assistant on every agent that person reaches, whoever created it. A
+ * built-in level (basic, standard, full) never does: nothing widens by
+ * default, and for a User a level's agent abilities stay with line three. It arrives here as
  * `grantedThroughAssistant` on the party, which `manageCaller` sets when the
- * call came through the assistant and the setting holds the very tool being
- * called. `callerOfBearer` never sets it, so the management routes and
+ * call came through the assistant and a custom pick holds the very tool
+ * being called. `callerOfBearer` never sets it, so the management routes and
  * `AgentManageGuard` keep the first three lines: a User manages nothing in
  * the console by having been given `restart_agent` in the chat. Nor does
  * the line widen which agents: those are the ones the access lists give.

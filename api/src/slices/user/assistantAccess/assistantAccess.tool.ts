@@ -52,6 +52,11 @@ const confirmSchema = z
   .optional()
   .describe('Set true only after the person confirmed in the chat.');
 
+const OWN_AGENTS_ONLY =
+  'These are part of the level for agents this person created themselves, ' +
+  'and not counted in `areas`. On any other agent they are not included: ' +
+  'the Owner can include one by choosing it for this account.';
+
 const WHO_DECIDES =
   'The Owner of this installation decides what the assistant can do for ' +
   'each person.';
@@ -337,8 +342,11 @@ export class AssistantAccessTool {
       '`notIncluded`, say that it is not included for them and that the ' +
       'Owner decides — do not say you have no such tool, do not try ' +
       'another way. Also call it when they ask what you can do for them ' +
-      'or what their level means, and answer from `levels`. Never describe ' +
-      'what other people have.',
+      'or what their level means, and answer from `levels`. ' +
+      '`onlyOnAgentsYouCreated`, when present, lists what their level ' +
+      'holds for agents they created themselves and for no other agent: ' +
+      'for any other agent treat it as not included, and say the Owner ' +
+      'can include it for them. Never describe what other people have.',
     parameters: z.object({}),
   })
   async getMyAssistantAccess(
@@ -354,6 +362,16 @@ export class AssistantAccessTool {
       ...(mine.matchesLevel ? { sameAs: mine.matchesLevel } : {}),
       areas: mine.areas,
       notIncluded: mine.leftOut.map((a) => ({ title: a.title, area: a.area })),
+      // Only when there is something to say: a User on a built-in level.
+      ...(mine.ownAgentsOnly.length
+        ? {
+            onlyOnAgentsYouCreated: mine.ownAgentsOnly.map((a) => ({
+              title: a.title,
+              area: a.area,
+            })),
+            onlyOnAgentsYouCreatedNote: OWN_AGENTS_ONLY,
+          }
+        : {}),
       whoDecides: WHO_DECIDES,
       // Their own role only: what a level means for them.
       levels: this.access.levelsFor(person.role),

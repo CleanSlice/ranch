@@ -199,14 +199,15 @@ console and through the assistant, and nobody else's.
 
 ```text
          OR (agent is not the Ranch admin agent
-             AND the tool this call runs was given to the caller through the assistant setting
+             AND the tool this call runs was ticked for the caller in a custom pick of the assistant setting
              AND reaches(caller, agent))
 ```
 
-specs/034 lets the Owner or an Admin give a person single agent abilities
-through the assistant. With three lines such an ability did nothing for a
+specs/034 lets the Owner or an Admin tick single agent abilities for a
+person in a custom pick. With three lines such an ability did nothing for a
 User, who created no agent. The fourth line makes it work on every agent
-the person reaches. It is a fact about one tool call, not about the person:
+the person reaches. A built-in level never sets it: nothing widens by
+default. It is a fact about one tool call, not about the person:
 the MCP handler notes which `manage-agent` tools the setting holds when the
 call carries the assistant's own token, and which tool is being called, and
 `manageCaller` sets `grantedThroughAssistant` on the party from those two

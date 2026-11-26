@@ -56,6 +56,11 @@ export interface IAssistantLevelInfo {
   title: string;
   summary: string;
   areas: IAssistantAreaCount[];
+  /**
+   * Of what the level holds, how many abilities work only on agents the
+   * person created (CLEAN-254). Not counted in `areas`. Zero for an Admin.
+   */
+  ownAgentsOnly: number;
 }
 
 export interface IAssistantRoleView extends IAssistantResolved {
@@ -135,6 +140,13 @@ export interface IAssistantMine {
   areas: IAssistantAreaCount[];
   /** What the person's role has and their setting leaves out. */
   leftOut: { name: string; title: string; area: ToolTopic }[];
+  /**
+   * What their level holds for agents they created and for no other agent
+   * (CLEAN-254): the agent abilities of a User on a built-in level. Not
+   * counted in `areas`, and not in `leftOut` either: it is neither theirs
+   * to use on the agents they are shown nor left out of their level.
+   */
+  ownAgentsOnly: { name: string; title: string; area: ToolTopic }[];
 }
 
 const LEVEL_TITLES: Record<AssistantLevel, string> = {
@@ -285,6 +297,37 @@ export class AssistantAccessService {
         .filter((a) => chosen.has(a.name))
         .map((a) => a.name),
     );
+  }
+
+  /**
+   * The agent abilities a setting holds that work only on agents the person
+   * created (CLEAN-254). An ability for managing an agent works on every
+   * agent a person reaches when it was ticked for them, which is a custom
+   * pick. A built-in level, the role's default or one somebody chose, widens
+   * nothing: for a User its agent abilities keep the meaning of specs/032,
+   * the agents they made. An Admin manages by role, so nothing is held back.
+   */
+  private ownAgentsOnly(
+    role: UserRoleTypes,
+    setting: { level: AssistantLevelOrCustom; custom: IAssistantCustom | null },
+  ): IAbility[] {
+    if (role !== UserRoleTypes.User || setting.level === 'custom') return [];
+    const offered = this.offeredNames(role, setting);
+    return this.ceilingOf(role).filter(
+      (a) => a.audience === 'manage-agent' && offered.has(a.name),
+    );
+  }
+
+  /** What a setting offers, less what works only on the person's own agents. */
+  private usableNames(
+    role: UserRoleTypes,
+    setting: { level: AssistantLevelOrCustom; custom: IAssistantCustom | null },
+  ): Set<string> {
+    const usable = this.offeredNames(role, setting);
+    for (const ability of this.ownAgentsOnly(role, setting)) {
+      usable.delete(ability.name);
+    }
+    return usable;
   }
 
   private resolved(
@@ -723,8 +766,9 @@ export class AssistantAccessService {
       summary: ASSISTANT_LEVEL_SUMMARIES[level],
       areas: this.areaCounts(
         role,
-        this.offeredNames(role, { level, custom: null }),
+        this.usableNames(role, { level, custom: null }),
       ),
+      ownAgentsOnly: this.ownAgentsOnly(role, { level, custom: null }).length,
     }));
   }
 
@@ -741,6 +785,7 @@ export class AssistantAccessService {
         matchesLevel: null,
         areas: this.areaCounts(role, all),
         leftOut: [],
+        ownAgentsOnly: [],
       };
     }
     const effective = await this.effectiveFor(party.userId, role);
@@ -751,17 +796,26 @@ export class AssistantAccessService {
         matchesLevel: null,
         areas: [],
         leftOut: [],
+        ownAgentsOnly: [],
       };
     }
     const offered = this.offeredNames(role, effective);
+    const describe = (a: IAbility) => ({
+      name: a.name,
+      title: a.title,
+      area: a.area,
+    });
     return {
       enabled: true,
       level: effective.level,
       matchesLevel: this.resolved(role, effective).matchesLevel,
-      areas: this.areaCounts(role, offered),
+      // Counted as theirs: what they can ask for about the agents they are
+      // shown. An ability good for their own agents only is named apart.
+      areas: this.areaCounts(role, this.usableNames(role, effective)),
       leftOut: this.ceilingOf(role)
         .filter((a) => !offered.has(a.name))
-        .map((a) => ({ name: a.name, title: a.title, area: a.area })),
+        .map(describe),
+      ownAgentsOnly: this.ownAgentsOnly(role, effective).map(describe),
     };
   }
 

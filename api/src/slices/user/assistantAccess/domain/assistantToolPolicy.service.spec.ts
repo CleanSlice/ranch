@@ -30,7 +30,12 @@ const fromConsole = (userId: string, role: UserRoleTypes): Request =>
   ({ user: { sub: userId, email: '', roles: [role] } }) as unknown as Request;
 
 function harness(
-  grant: { enabled: boolean; names: string[] | null } = {
+  grant: {
+    enabled: boolean;
+    names: string[] | null;
+    /** The stored level; a custom pick unless a spec says otherwise. */
+    level?: string;
+  } = {
     enabled: true,
     names: ['list_agents'],
   },
@@ -45,7 +50,7 @@ function harness(
     grantFor: jest.fn(async () => ({
       enabled: grant.enabled,
       names: grant.names === null ? null : new Set(grant.names),
-      level: 'basic',
+      level: grant.level ?? 'custom',
     })),
   };
   const policy = new AssistantToolPolicyService(
@@ -160,7 +165,7 @@ describe('AssistantToolPolicyService.grantedToolsFor', () => {
   const user = (agentId = 'assistant') =>
     asPerson(fromAgent(agentId), UserRoleTypes.User, 'user-1');
 
-  it('is what the setting holds for a person talking through the assistant', async () => {
+  it('is what a custom pick holds for a person talking through the assistant', async () => {
     const { policy, access } = harness({
       enabled: true,
       names: ['list_agents', 'restart_agent'],
@@ -174,6 +179,23 @@ describe('AssistantToolPolicyService.grantedToolsFor', () => {
       role: UserRoleTypes.User,
     });
   });
+
+  // Nothing widens by default: only what somebody ticked counts.
+  it.each(['basic', 'standard', 'full'])(
+    'is nothing for a built-in level (%s), whatever names it holds',
+    async (level) => {
+      const { policy } = harness({
+        enabled: true,
+        names: ['list_agents', 'restart_agent'],
+        level,
+      });
+      expect(await policy.grantedToolsFor(user())).toBeNull();
+      // The same setting still narrows the list, as before.
+      expect(sorted(await policy.allowedToolsFor(user()))).toContain(
+        'restart_agent',
+      );
+    },
+  );
 
   it('is nothing with the assistant switched off for them', async () => {
     const { policy } = harness({ enabled: false, names: ['restart_agent'] });

@@ -10,9 +10,10 @@ import type { Request } from 'express';
  *
  * The answer is a set of tool names only when all of this holds: the call
  * carries the token of the installation's assistant, it is made for a
- * signed-in person a setting applies to, and that setting is switched on.
- * Otherwise it is `null`: another agent, a person's own console token, a
- * guest, the Owner, the assistant switched off for that person.
+ * signed-in person a setting applies to, that setting is switched on, and
+ * it is a custom pick: the names are what somebody ticked. Otherwise it is
+ * `null`: another agent, a person's own console token, a guest, the Owner,
+ * the assistant switched off for that person, a built-in level.
  *
  * A missing resolver, or one that throws, fails closed: nothing is granted.
  * The handler keeps the `manage-agent` names of the answer and nothing else,

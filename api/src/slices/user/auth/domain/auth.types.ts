@@ -99,8 +99,8 @@ export function isActingToken(payload: unknown): boolean {
  *
  * `grantedThroughAssistant` is not part of who the person is. It is a fact
  * about one tool call (CLEAN-254): the call came through the installation's
- * assistant, and that person's assistant setting holds the `manage-agent`
- * tool being called. Only `manageCaller` in `#/mcp/tooling` writes it, from
+ * assistant, and the `manage-agent` tool being called was ticked for that
+ * person in a custom pick of the assistant setting. Only `manageCaller` in `#/mcp/tooling` writes it, from
  * what the MCP handler noted for the call; nothing that reads a token does,
  * so a console route never carries it.
  */

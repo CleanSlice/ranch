@@ -606,46 +606,23 @@ describe('when the setting does not hold the tool', () => {
     expect(agentDeploy.restartAgent).not.toHaveBeenCalled();
   });
 
-  it('Basic, what a User has with nothing configured: the reading tools, and nothing that changes an agent', async () => {
+  it('with nothing configured a User has no manage-agent tool at all: nothing widens by default', async () => {
+    // Basic holds the reading tools by its rule, and for a User they mean
+    // what they meant before: agents the User created. This one created
+    // none, so none is listed, and none runs.
     const { list, call } = session();
-    const listed = manageOnly(await list(as('user')));
+    expect(manageOnly(await list(as('user')))).toEqual([]);
 
-    // Basic is "see and ask": every tool that only reads. Pinned by name,
-    // because each of these now answers a User about the agents they reach.
-    expect(listed).toEqual([
-      'export_agent_files',
-      'get_agent_channels',
-      'get_agent_env',
-      'get_agent_limits',
-      'get_agent_logs',
-      'get_agent_status',
-      'list_agent_delegations',
-      'list_agent_files',
-      'list_agent_mcps',
-      'list_agent_peers',
-      'list_agent_secrets',
-      'list_peer_candidates',
-      'preview_agent_card',
-      'read_agent_file',
-    ]);
-    const effects = new Map(
-      registered.map((t) => [t.metadata.name, t.metadata.effect]),
-    );
-    expect(listed.every((name) => effects.get(name) === 'read')).toBe(true);
-
-    expect(await call('restart_agent', { id: A }, as('user'))).toBe(
-      notAvailable('restart_agent'),
-    );
+    for (const [name, args] of [
+      ['restart_agent', { id: A }],
+      ['read_agent_file', { agentId: A, path: 'SOUL.md' }],
+      ['list_agent_secrets', { agentId: A }],
+      ['get_agent_status', { id: A }],
+    ] as const) {
+      expect(await call(name, args, as('user'))).toBe(notAvailable(name));
+    }
     expect(agentDeploy.restartAgent).not.toHaveBeenCalled();
-
-    // On the agent they reach a reading tool gets to its service; on the
-    // one they do not, it is the not-found of an unknown id.
-    await call('list_agent_secrets', { agentId: A }, as('user'));
-    expect(secretStore.list).toHaveBeenCalledTimes(1);
-    expect(
-      await call('list_agent_secrets', { agentId: B }, as('user')),
-    ).toMatch(/not found/i);
-    expect(secretStore.list).toHaveBeenCalledTimes(1);
+    expect(secretStore.list).not.toHaveBeenCalled();
   });
 
   it('a tool that is not for managing an agent makes nobody a manager of one', async () => {
@@ -659,24 +636,166 @@ describe('when the setting does not hold the tool', () => {
   });
 });
 
-describe('what the setting says a person has is what they can call', () => {
-  it.each(['basic', 'standard', 'full'] as const)(
-    'a User on %s is listed every agent ability the level holds, and no other',
-    async (level) => {
-      roleSettings.set(UserRoleTypes.User, {
-        enabled: true,
-        level,
-        custom: null,
-        updatedById: OWNER.id,
-        updatedAt: new Date('2026-11-26T10:00:00.000Z'),
-      });
-      const grant = await assistant.grantFor(people.user);
-      const held = manageOnly([...(grant.names ?? [])]).sort();
+/**
+ * Only what somebody ticked counts. An agent ability works on the agents a
+ * person reaches when it is in a CUSTOM pick, the account's own or the
+ * role's. A built-in level, the role's default or one somebody chose, opens
+ * no manage-agent tool for a User who created no agent.
+ */
+describe('a built-in level opens nothing; a custom pick opens what it names', () => {
+  const setting = (
+    level: IAssistantSettingData['level'],
+    on?: string[],
+  ): IAssistantSettingData => ({
+    enabled: true,
+    level,
+    custom: on ? { on, known: registered.map((t) => t.metadata.name) } : null,
+    updatedById: OWNER.id,
+    updatedAt: new Date('2026-11-26T10:00:00.000Z'),
+  });
 
-      expect(manageOnly(await session().list(as('user')))).toEqual(held);
-      if (level !== 'basic') expect(held).toContain('restart_agent');
-    },
-  );
+  describe.each(['basic', 'standard', 'full'] as const)('%s', (level) => {
+    it.each([
+      ['as the Users’ setting', () => roleSettings.set('User', setting(level))],
+      [
+        'chosen for the one account',
+        () => assistantSettings.set(USER.id, setting(level)),
+      ],
+    ])('%s: no manage-agent tool is listed or runs', async (_how, apply) => {
+      apply();
+      const { list, call } = session();
+      expect(manageOnly(await list(as('user')))).toEqual([]);
+      expect(await call('restart_agent', { id: A }, as('user'))).toBe(
+        notAvailable('restart_agent'),
+      );
+      expect(agentDeploy.restartAgent).not.toHaveBeenCalled();
+    });
+  });
+
+  it('the level still holds them by its rule: that is what the Owner sees, not what a User gets', async () => {
+    roleSettings.set('User', setting('standard'));
+    const grant = await assistant.grantFor(people.user);
+    expect(grant.names?.has('restart_agent')).toBe(true);
+    expect(manageOnly(await session().list(as('user')))).toEqual([]);
+  });
+
+  it('a custom pick as the Users’ setting gives every User exactly what it names', async () => {
+    roleSettings.set('User', setting('custom', ['restart_agent']));
+    const { list, call } = session();
+    expect(manageOnly(await list(as('user')))).toEqual(['restart_agent']);
+    expect(manageOnly(await list(as('user2')))).toEqual(['restart_agent']);
+    expect(await call('restart_agent', { id: A }, as('user'))).toContain(
+      'Restart started',
+    );
+  });
+
+  it('a custom pick that equals a level is still a custom pick, and counts', async () => {
+    roleSettings.set('User', setting('standard'));
+    const standard = [...((await assistant.grantFor(people.user)).names ?? [])];
+    roleSettings.clear();
+
+    pick(USER.id, standard);
+    const view = await assistant.myAccess(people.user);
+    expect(view).toMatchObject({ level: 'custom', matchesLevel: 'standard' });
+    expect(manageOnly(await session().list(as('user')))).toEqual(
+      manageOnly(standard).sort(),
+    );
+  });
+
+  it('an account’s own built-in level wins over a custom pick of the role', async () => {
+    roleSettings.set('User', setting('custom', ['restart_agent']));
+    assistantSettings.set(USER.id, setting('full'));
+    const { list } = session();
+    expect(manageOnly(await list(as('user')))).toEqual([]);
+    expect(manageOnly(await list(as('user2')))).toEqual(['restart_agent']);
+  });
+});
+
+describe('get_my_assistant_access says what the person can actually ask for', () => {
+  const mine = async (who: 'user' | 'admin') =>
+    JSON.parse(
+      await session().call('get_my_assistant_access', {}, as(who)),
+    ) as {
+      level: string;
+      areas: { key: string; offered: number; available: number }[];
+      notIncluded: { title: string }[];
+      onlyOnAgentsYouCreated?: { title: string }[];
+      onlyOnAgentsYouCreatedNote?: string;
+      levels: {
+        key: string;
+        ownAgentsOnly: number;
+        areas: { key: string; offered: number }[];
+      }[];
+    };
+  const titleOf = (name: string) =>
+    registered.find((t) => t.metadata.name === name)!.metadata.title;
+  const offeredIn = (
+    areas: { key: string; offered: number }[],
+    key = 'agents',
+  ) => areas.find((a) => a.key === key)?.offered ?? 0;
+
+  it('a User on a built-in level: agent abilities are named as good for their own agents only, and not counted', async () => {
+    roleSettings.set(UserRoleTypes.User, {
+      enabled: true,
+      level: 'standard',
+      custom: null,
+      updatedById: OWNER.id,
+      updatedAt: null,
+    });
+    const out = await mine('user');
+    const listed = await session().list(as('user'));
+
+    expect(out.level).toBe('standard');
+    const ownOnly = (out.onlyOnAgentsYouCreated ?? []).map((a) => a.title);
+    expect(ownOnly).toContain(titleOf('restart_agent'));
+    expect(ownOnly).toContain(titleOf('read_agent_file'));
+    expect(out.onlyOnAgentsYouCreatedNote).toMatch(/created themselves/);
+    // Not presented as left out of the level either.
+    expect(out.notIncluded.map((a) => a.title)).not.toContain(
+      titleOf('restart_agent'),
+    );
+    // What is counted as theirs is what the listing holds: of the tools
+    // here, `list_agents` and `get_agent` in the agents area.
+    expect(listed).toEqual(
+      expect.arrayContaining(['list_agents', 'get_agent']),
+    );
+    expect(manageOnly(listed)).toEqual([]);
+    const counted = registered.filter(
+      (t) =>
+        t.metadata.topic === 'agents' &&
+        listed.includes(t.metadata.name) &&
+        t.audience !== 'everyone' &&
+        t.audience !== 'agent',
+    ).length;
+    expect(offeredIn(out.areas)).toBe(counted);
+    // And the level definitions say the same about every built-in level.
+    for (const level of out.levels) {
+      expect(level.ownAgentsOnly).toBeGreaterThan(0);
+      expect(offeredIn(level.areas)).toBe(counted);
+    }
+  });
+
+  it('a User with a custom pick: what was ticked is counted, and nothing is held back', async () => {
+    pick(USER.id, ['list_agents', 'restart_agent']);
+    const out = await mine('user');
+
+    expect(out.level).toBe('custom');
+    expect(out.onlyOnAgentsYouCreated).toBeUndefined();
+    expect(out.onlyOnAgentsYouCreatedNote).toBeUndefined();
+    expect(offeredIn(out.areas)).toBe(2);
+    expect(out.notIncluded.map((a) => a.title)).toContain(
+      titleOf('delete_agent'),
+    );
+    expect(await session().list(as('user'))).toEqual(
+      expect.arrayContaining(['list_agents', 'restart_agent']),
+    );
+  });
+
+  it('an Admin manages by role: nothing is held back at any level', async () => {
+    const out = await mine('admin');
+    expect(out.onlyOnAgentsYouCreated).toBeUndefined();
+    for (const level of out.levels) expect(level.ownAgentsOnly).toBe(0);
+  });
 });
 
 describe('everybody else, as before', () => {

@@ -82,18 +82,23 @@ setting, the assistant reported it as included, and never had the tool.
 
 The rule since:
 
-- An agent ability the Owner or an Admin gave a person through the assistant
-  setting works, **through the assistant**, on every agent that person
-  **reaches** (the access lists of specs/032), whoever created it, and never
-  on the Ranch admin agent.
+- An agent ability the Owner or an Admin **ticked in a custom pick** for a
+  person, for the one account or as the role's setting, works **through the
+  assistant** on every agent that person **reaches** (the access lists of
+  specs/032), whoever created it, and never on the Ranch admin agent.
+- Nothing widens by default. A built-in level (Basic, Standard, Full), the
+  role's default or one somebody chose, opens no agent ability for a User
+  this way: for them the levels keep the meaning they had, the agents they
+  created. A custom pick that happens to equal a level is a custom pick, and
+  counts.
 - It is the ability that was given and no other: a User given "Restart an
   agent" is not offered "Delete an agent".
 - The console is unchanged. A User still has no management there; the
   management routes keep the rule of specs/032.
-- A level means for a User what its summary says. Basic holds everything
-  that only reads, which now includes reading about the agents they reach
-  (status, files, logs, secret names, connections); Standard adds changing
-  them. Before this, both were empty for a User where agents are concerned.
+- What a User is told is what they can ask for. On a built-in level the
+  assistant counts no agent ability as theirs and names those the level
+  holds as good for agents they created themselves; with a custom pick it
+  counts what was ticked.
 
 - An ability given this way is not an operator's power. It does not change
   which model credential or knowledge bases an agent uses, connect it to a
@@ -163,9 +168,10 @@ Admin reaches: it does it. Ask the Admin's assistant to create a user: it has
 no such ability to offer.
 
 *(amended, CLEAN-254)* The User's half reads: ask the assistant to restart an
-agent the User **reaches**; on Basic it has no such ability to offer. Then
-raise that User to Standard, or give them "Restart an agent" in a custom
-pick, and ask again in the same conversation: it restarts the agent. Ask it
+agent the User **reaches**; on Basic it has no such ability to offer, and
+nor on Standard, where it says the ability is for agents they created. Then
+tick "Restart an agent" for them in a custom pick and ask again in the same
+conversation: it restarts the agent. Ask it
 to restart an agent the User does not reach, or the assistant itself: it
 finds no such agent.
 
@@ -393,7 +399,7 @@ that the Owner decides it.
 - **An Admin limited by lists.** What the assistant lists and acts on for them
   is still only the agents they reach; this feature decides which abilities
   they get, never which agents.
-- *(amended, CLEAN-254)* **A User given an agent ability.** The same holds,
+- *(amended, CLEAN-254)* **A User given an agent ability in a custom pick.** The same holds,
   and it is now the whole answer to "which agents": the ones the User
   reaches, not the ones they created. The Ranch admin agent is never among
   them. An agent out of their reach, an id that names nothing and the Ranch
@@ -582,11 +588,9 @@ that the Owner decides it.
 - Users who managed agents they created through the assistant lose that on
   update, until the Owner raises Users (or the one account) to Standard. The
   update tells the Owner so once, on the assistant's page.
-  *(amended, CLEAN-254)* Still so for those Users, and the notice still says
-  what is true of them. What changed is what raising Users to Standard gives:
-  the day-to-day work on every agent a User reaches, not only on agents they
-  created. An Owner who wants less gives single abilities in a custom pick,
-  or limits the account's agents with the lists.
+  *(amended, CLEAN-254)* Still so, word for word: raising Users to Standard
+  gives them the day-to-day work on agents they created, as it did. Work on
+  agents they did not create is given ability by ability, in a custom pick.
 - "Basic" is the "minimal tools to work with the platform comfortably" of the
   request: look around, ask, get explanations, keep personal things. It
   changes nothing that belongs to anyone else.

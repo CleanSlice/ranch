@@ -292,14 +292,14 @@ export function callerManagesAgents(httpRequest: Request): boolean {
 
 // ── What the assistant setting gave a person (CLEAN-254) ────
 //
-// The Owner, or an Admin, may give a person agent abilities through the
-// assistant setting (CLEAN-240). Such an ability works through the assistant
-// on every agent that person reaches, whoever created it, and never on the
-// Ranch admin agent. Two facts carry that, both noted by the MCP handler on
+// The Owner, or an Admin, may tick agent abilities for a person in a custom
+// pick of the assistant setting (CLEAN-240). Such an ability works through
+// the assistant on every agent that person reaches, whoever created it, and
+// never on the Ranch admin agent. A built-in level opens nothing this way. Two facts carry that, both noted by the MCP handler on
 // the per-call view and never taken from the runtime or the model:
 //
-//  - the `manage-agent` tool names the person's setting holds, when the call
-//    carries the assistant's own token (`setCallerAssistantGrant`);
+//  - the `manage-agent` tool names ticked in the person's custom pick, when
+//    the call carries the assistant's own token (`setCallerAssistantGrant`);
 //  - the name of the tool this call runs (`setCalledTool`).
 //
 // A grant is always about one tool. Holding `restart_agent` lists and runs

@@ -66,7 +66,12 @@ function build(
         { name: 'delete_agent', title: 'Delete an agent', area: 'agents' },
       ],
       ownAgentsOnly: [
-        { name: 'restart_agent', title: 'Restart an agent', area: 'agents' },
+        {
+          name: 'restart_agent',
+          title: 'Restart an agent',
+          area: 'agents',
+          openedByTick: true,
+        },
       ],
     })),
     ...overrides,

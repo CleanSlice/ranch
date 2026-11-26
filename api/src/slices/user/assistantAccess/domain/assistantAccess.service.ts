@@ -170,12 +170,20 @@ export interface IAssistantMine {
   /** What the person's role has and their setting leaves out. */
   leftOut: { name: string; title: string; area: ToolTopic }[];
   /**
-   * What their level holds for agents they created and for no other agent
-   * (CLEAN-254): the agent abilities of a User on a built-in level. Not
-   * counted in `areas`, and not in `leftOut` either: it is neither theirs
-   * to use on the agents they are shown nor left out of their level.
+   * What their setting holds for agents they created and for no other agent
+   * (CLEAN-254, CLEAN-257). Not counted in `areas`, and not in `leftOut`
+   * either: it is neither theirs to use on the agents they are shown nor
+   * left out of their setting. Two kinds, told apart by `openedByTick`:
+   * the agent abilities of a User on a built-in level, which a tick for
+   * their account opens for the other agents they reach, and the ones in
+   * `CREATOR_OR_OPERATOR_TOOLS`, which no setting opens.
    */
-  ownAgentsOnly: { name: string; title: string; area: ToolTopic }[];
+  ownAgentsOnly: {
+    name: string;
+    title: string;
+    area: ToolTopic;
+    openedByTick: boolean;
+  }[];
 }
 
 const LEVEL_TITLES: Record<AssistantLevel, string> = {
@@ -335,15 +343,23 @@ export class AssistantAccessService {
    * pick. A built-in level, the role's default or one somebody chose, widens
    * nothing: for a User its agent abilities keep the meaning of specs/032,
    * the agents they made. An Admin manages by role, so nothing is held back.
+   *
+   * The tools in `CREATOR_OR_OPERATOR_TOOLS` refuse anybody below Admin
+   * who did not make the agent, ticked or not, so a tick does not take
+   * them off this list (CLEAN-257).
    */
   private ownAgentsOnly(
     role: UserRoleTypes,
     setting: { level: AssistantLevelOrCustom; custom: IAssistantCustom | null },
   ): IAbility[] {
-    if (role !== UserRoleTypes.User || setting.level === 'custom') return [];
+    if (role !== UserRoleTypes.User) return [];
+    const ticked = setting.level === 'custom';
     const offered = this.offeredNames(role, setting);
     return this.ceilingOf(role).filter(
-      (a) => a.audience === 'manage-agent' && offered.has(a.name),
+      (a) =>
+        a.audience === 'manage-agent' &&
+        offered.has(a.name) &&
+        (!ticked || CREATOR_OR_OPERATOR_TOOLS.has(a.name)),
     );
   }
 
@@ -887,7 +903,10 @@ export class AssistantAccessService {
       ),
       abilities,
       leftOut: named('not_included'),
-      ownAgentsOnly: named('own_agents_only'),
+      ownAgentsOnly: named('own_agents_only').map((a) => ({
+        ...a,
+        openedByTick: !CREATOR_OR_OPERATOR_TOOLS.has(a.name),
+      })),
     };
   }
 

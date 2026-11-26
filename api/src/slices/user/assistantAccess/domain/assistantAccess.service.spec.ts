@@ -845,6 +845,86 @@ describe('each ability of a person’s role, and how it stands for them', () => 
   });
 });
 
+describe('an ability that stays with the agent’s creator, whatever is ticked', () => {
+  const WITH_LOGS: typeof TOOLS = [
+    ...TOOLS,
+    ['get_agent_logs', 'agents', 'read', 'manage-agent'],
+  ];
+  const states = (mine: { abilities: { name: string; state: string }[] }) =>
+    Object.fromEntries(mine.abilities.map((a) => [a.name, a.state]));
+  const agentsOf = (areas: { key: string; offered: number }[]) =>
+    areas.find((a) => a.key === 'agents')?.offered;
+
+  it('a User’s custom pick: it is theirs on agents they created, and not counted', async () => {
+    const { service } = harness(WITH_LOGS);
+    await service.setAccount(asOwner, USER.id, {
+      level: 'custom',
+      on: ['restart_agent', 'get_agent_logs'],
+    });
+    const mine = await service.myAccess(person(USER));
+
+    expect(states(mine)).toEqual({
+      list_agents: 'not_included',
+      pin_agent: 'not_included',
+      restart_agent: 'included',
+      delete_agent: 'not_included',
+      get_agent_logs: 'own_agents_only',
+    });
+    // Ticked, and still not something to ask for about any agent.
+    expect(agentsOf(mine.areas)).toBe(1);
+    expect(mine.ownAgentsOnly).toEqual([
+      {
+        name: 'get_agent_logs',
+        title: 'Title of get_agent_logs',
+        area: 'agents',
+        openedByTick: false,
+      },
+    ]);
+    expect(mine.leftOut.map((a) => a.name)).not.toContain('get_agent_logs');
+    // The tool stays in their grant: the refusal is made by the tool.
+    expect(names((await service.grantFor(person(USER))).names)).toEqual([
+      'get_agent_logs',
+      'restart_agent',
+    ]);
+  });
+
+  it('a User on a built-in level: both kinds are for their own agents only, told apart', async () => {
+    const { service } = harness(WITH_LOGS);
+    await service.setRole(asOwner, UserRoleTypes.User, { level: 'standard' });
+    const mine = await service.myAccess(person(USER));
+    expect(
+      Object.fromEntries(
+        mine.ownAgentsOnly.map((a) => [a.name, a.openedByTick]),
+      ),
+    ).toEqual({
+      restart_agent: true,
+      delete_agent: true,
+      get_agent_logs: false,
+    });
+    expect(agentsOf(mine.areas)).toBe(2);
+  });
+
+  it('not ticked, it is not included like anything else', async () => {
+    const { service } = harness(WITH_LOGS);
+    await service.setAccount(asOwner, USER.id, {
+      level: 'custom',
+      on: ['list_agents'],
+    });
+    const mine = await service.myAccess(person(USER));
+    expect(states(mine).get_agent_logs).toBe('not_included');
+    expect(mine.ownAgentsOnly).toEqual([]);
+  });
+
+  it('an Admin and the Owner manage by role: it is included', async () => {
+    const { service } = harness(WITH_LOGS);
+    for (const who of [ADMIN, OWNER]) {
+      const mine = await service.myAccess(person(who));
+      expect(states(mine).get_agent_logs).toBe('included');
+      expect(mine.ownAgentsOnly).toEqual([]);
+    }
+  });
+});
+
 describe('the catalogue says which abilities stay with the agent’s creator', () => {
   it('marks the tools that refuse a person who was only given them', () => {
     const { service } = harness([

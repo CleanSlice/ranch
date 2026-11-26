@@ -326,8 +326,17 @@ User (CLEAN-257). The seven are named once, in `CREATOR_OR_OPERATOR_TOOLS`
 tool that starts refusing whole with `operatorOnly` is added to that list in
 the same change, and `creatorOrOperatorTools.spec.ts` fails until it is.
 
-The person's own card and `get_my_assistant_access` do not use that list
-yet: a User whose custom pick holds one of the seven is told it is included.
+The person is told the same (CLEAN-257). For a User the seven are never
+"included", on a built-in level or ticked: the card
+(`GET /me/assistant-access`) gives them the state `own_agents_only` and
+leaves them out of the count, and `get_my_assistant_access` names them in
+`neverOnOtherAgents`, apart from `onlyOnAgentsYouCreated`. The two lists
+have two answers. What a level holds for a User's own agents can be opened
+for other agents by a tick, and the assistant says so; the seven cannot,
+and for those it says that an Owner or Admin does it. So the editor's
+"N of M" for a User counts ticks, and the person's card counts what they
+can ask for about any agent they are shown: the two differ by exactly the
+abilities marked "only on agents you created".
 
 **What a level means for a User.** The levels are a rule over area and
 effect (see "What the assistant offers a person"), and by that rule Basic

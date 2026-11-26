@@ -31,10 +31,17 @@ export interface IAgentData {
    *  is not running. The word only; which server is a manager's question
    *  (`IAgentToolState`). */
   toolState: ToolSummaryTypes;
+  /** What the current or last launch was (CLEAN-247): the first ever, a
+   *  start of an agent that held no instance, or a restart of a live one.
+   *  The server's word, so everyone looking sees the same list of steps. */
+  launchContext: LaunchContextTypes | null;
+  /** The server's reason for a failure, shown as received. */
+  statusReason: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
+export type LaunchContextTypes = 'initial' | 'start' | 'restart';
 export type ToolSummaryTypes = 'connecting' | 'limited' | null;
 export type ToolServerStateTypes = 'connected' | 'retrying' | 'refused';
 

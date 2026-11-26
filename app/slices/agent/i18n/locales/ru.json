@@ -27,8 +27,7 @@
     "unavailable_hint": "Возможно, агент удалён или среда выполнения offline.",
     "restart": "Перезапустить",
     "restarting": "Перезапуск…",
-    "restart_failed": "Перезапуск не удался",
-    "elapsed": "Прошло {seconds} с · агент загрузит память из S3"
+    "restart_failed": "Перезапуск не удался"
   },
   "status": {
     "running": "Запущен",
@@ -55,15 +54,25 @@
     "rail_connecting_hint": "Только запущен и всё ещё подключается к части серверов инструментов",
     "rail_limited_hint": "Работает без части серверов инструментов — откройте агента, чтобы узнать, каких"
   },
-  "restart_stage": {
-    "stopping_title": "Остановка текущего пода…",
-    "stopping_body": "Отмена запущенного workflow.",
-    "deploying_title": "Развёртывание нового пода…",
-    "deploying_body": "Планирование в кластере.",
-    "starting_title": "Запуск…",
-    "starting_body": "Контейнер загружается и инициализируется.",
-    "almost_title": "Почти готово…",
-    "almost_body": "Ожидание выхода агента в сеть."
+  "launch": {
+    "heading_initial": "Настройка агента",
+    "heading_start": "Запуск агента",
+    "heading_restart": "Перезапуск агента",
+    "heading_failed": "Не удалось запустить агента",
+    "step_accepted_doing": "Отправка запроса",
+    "step_accepted_done": "Запрос принят",
+    "step_stopped_doing": "Остановка предыдущего экземпляра",
+    "step_stopped_done": "Предыдущий экземпляр остановлен",
+    "step_scheduled_doing": "Планирование",
+    "step_scheduled_done": "Запланировано",
+    "step_container_doing": "Подготовка контейнера",
+    "step_container_done": "Контейнер готов",
+    "step_online_doing": "Подключение к Ranch",
+    "step_online_done": "Подключено к Ranch",
+    "step_ready_doing": "Подготовка к работе",
+    "step_ready_done": "Готово",
+    "no_reason": "Причина не указана.",
+    "stale": "Обновления в реальном времени приостановлены. Переподключение…"
   },
   "rail": {
     "search": "Поиск агентов",

@@ -74,6 +74,40 @@ describe('AgentDeployService bridle settings warning', () => {
   });
 });
 
+// What the consoles are told a launch is (CLEAN-247): the step list shows
+// "previous instance stopped" for a restart only, and only the server knows
+// what the agent was before the launch.
+describe('AgentDeployService launch context', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  async function launchContextFor(overrides: Record<string, unknown>) {
+    const bed = createDeployBed(null);
+    bed.agentGateway.findById.mockResolvedValue(makeAgent(overrides));
+    await bed.service.deploy('a1');
+    return bed.agentGateway.markDeployStarted.mock.calls[0][1] as string;
+  }
+
+  test('never deployed → initial, whatever the status', async () => {
+    await expect(
+      launchContextFor({ firstDeployedAt: null, status: 'pending' }),
+    ).resolves.toBe('initial');
+  });
+
+  test.each(['stopped', 'failed'])(
+    'deployed before and %s → start: there is no instance to replace',
+    async (status) => {
+      await expect(launchContextFor({ status })).resolves.toBe('start');
+    },
+  );
+
+  test.each(['running', 'deploying', 'unreachable', 'pending'])(
+    'deployed before and %s → restart',
+    async (status) => {
+      await expect(launchContextFor({ status })).resolves.toBe('restart');
+    },
+  );
+});
+
 describe('WorkflowService.checkBridleSettings', () => {
   function createWorkflowService(values: Record<string, string | undefined>) {
     const settingGateway = {

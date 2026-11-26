@@ -9,10 +9,12 @@ export type AgentStatusTypes =
   | 'unreachable';
 
 // Why the current/last deploy ran: 'initial' = first-ever deploy of this
-// agent, 'restart' = any subsequent deploy (manual restart, start after stop,
-// config-change redeploy). Server-derived so the UI can distinguish a first
-// start from a restart even after a page reload.
-export type LaunchContextTypes = 'initial' | 'restart';
+// agent, 'start' = a later deploy of an agent that held no instance (it was
+// stopped or failed), 'restart' = a deploy that replaces a live instance
+// (manual restart, config-change redeploy). Server-derived so the UI can tell
+// the three apart even after a page reload, and for someone who did not press
+// the button (CLEAN-247).
+export type LaunchContextTypes = 'initial' | 'start' | 'restart';
 
 export interface IAgentData {
   id: string;

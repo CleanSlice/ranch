@@ -53,6 +53,13 @@ export class AgentMapper {
         o.toolState === 'connecting' || o.toolState === 'limited'
           ? o.toolState
           : null,
+      launchContext:
+        o.launchContext === 'initial' ||
+        o.launchContext === 'start' ||
+        o.launchContext === 'restart'
+          ? o.launchContext
+          : null,
+      statusReason: typeof o.statusReason === 'string' ? o.statusReason : null,
       createdAt: typeof o.createdAt === 'string' ? o.createdAt : '',
       updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : '',
     };

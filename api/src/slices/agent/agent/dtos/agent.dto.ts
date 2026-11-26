@@ -84,11 +84,11 @@ export class AgentDto {
 
   @ApiProperty({
     nullable: true,
-    enum: ['initial', 'restart'],
+    enum: ['initial', 'start', 'restart'],
     description:
-      "Why the current/last deploy ran: 'initial' = first-ever start, 'restart' = any subsequent deploy (restart, start after stop, config-change redeploy). Null only for agents never deployed since this field existed.",
+      "Why the current/last deploy ran: 'initial' = first-ever start, 'start' = a later start of an agent that held no instance (stopped or failed), 'restart' = a deploy that replaces a live instance (restart, config-change redeploy). Null only for agents never deployed since this field existed.",
   })
-  launchContext: 'initial' | 'restart' | null;
+  launchContext: 'initial' | 'start' | 'restart' | null;
 
   @ApiProperty({
     nullable: true,

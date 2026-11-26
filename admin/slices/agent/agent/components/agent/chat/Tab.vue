@@ -192,6 +192,16 @@ watch(
             left: overlayBox.left + 'px',
           }"
         >
+          <!-- A launch is a list of steps (CLEAN-247): the same overlay, the
+               same place, with what the agent has really got through. -->
+          <AgentLaunchSteps
+            v-if="'launch' in overlay && overlay.launch"
+            :launch="overlay.launch"
+            :can-manage="canManage"
+            :restarting="restarting"
+            @restart="emit('restart')"
+          />
+          <template v-else>
           <IconLoader2
             v-if="overlay.kind === 'starting' || overlay.kind === 'tools'"
             class="size-10 animate-spin text-primary"
@@ -225,6 +235,7 @@ watch(
             <IconRefresh v-else class="size-4" />
             {{ restarting ? 'Restarting…' : 'Restart agent' }}
           </Button>
+          </template>
         </div>
       </Transition>
     </div>

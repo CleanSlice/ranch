@@ -1,4 +1,8 @@
-import { toStatusFrame, toStatusFrameMessage } from './agentStatusFrame';
+import {
+  podSuperseded,
+  toStatusFrame,
+  toStatusFrameMessage,
+} from './agentStatusFrame';
 import { READER_HIDDEN_FIELDS } from './agentReaderView';
 import type { IAgentStatus } from './agentStatus.service';
 import type { IAgentData } from './agent.types';
@@ -69,6 +73,7 @@ describe('toStatusFrame: what the public status stream says of an agent', () => 
       'phase',
       'ready',
       'restartCount',
+      'superseded',
     ]);
   });
 
@@ -80,10 +85,40 @@ describe('toStatusFrame: what the public status stream says of an agent', () => 
         ready: false,
         restartCount: 3,
         containerWaitingReason: 'ImagePullBackOff',
+        superseded: false,
       },
       bridleConnected: true,
       tools: null,
     });
+  });
+
+  // CLEAN-247: a console that shows a launch step by step must not take the
+  // pod being replaced for the new one.
+  it('marks the pod of a replaced launch, in one word and nothing more', () => {
+    const base = status();
+    const launch = new Date('2026-11-26T10:00:05.200Z');
+    const frameFor = (pod: Partial<NonNullable<IAgentStatus['pod']>>) =>
+      toStatusFrame({
+        ...base,
+        agent: { ...base.agent, lastDeployStartedAt: launch },
+        pod: { ...base.pod!, ...pod },
+      });
+
+    expect(
+      frameFor({ startedAt: '2026-11-26T09:00:00Z' }).pod?.superseded,
+    ).toBe(true);
+    expect(
+      frameFor({ startedAt: '2026-11-26T10:00:09Z' }).pod?.superseded,
+    ).toBe(false);
+    expect(
+      frameFor({ startedAt: '2026-11-26T10:00:09Z', terminating: true }).pod
+        ?.superseded,
+    ).toBe(true);
+    const text = JSON.stringify(
+      frameFor({ startedAt: '2026-11-26T09:00:00Z' }),
+    );
+    expect(text).not.toContain('startedAt');
+    expect(text).not.toContain('terminating');
   });
 
   it('says nothing a reader is not given, nor a name, a creator or pod text', () => {
@@ -118,6 +153,34 @@ describe('toStatusFrame: what the public status stream says of an agent', () => 
 
   it('has no pod when there is none', () => {
     expect(toStatusFrame({ ...status(), pod: null }).pod).toBeNull();
+  });
+});
+
+describe('podSuperseded', () => {
+  const launch = new Date('2026-11-26T10:00:05.200Z');
+  const pod = (startedAt: string | null, terminating = false) => ({
+    startedAt,
+    terminating,
+  });
+
+  it('a pod being deleted is superseded, whenever it started', () => {
+    expect(podSuperseded(pod('2026-11-26T10:00:30Z', true), launch)).toBe(true);
+    expect(podSuperseded(pod(null, true), null)).toBe(true);
+  });
+
+  it('a pod that started before the launch began is the one being replaced', () => {
+    expect(podSuperseded(pod('2026-11-26T10:00:04Z'), launch)).toBe(true);
+  });
+
+  it('a pod that started in the second the launch began is its own pod', () => {
+    // Kubernetes says 10:00:05 for a pod that started at 10:00:05.900.
+    expect(podSuperseded(pod('2026-11-26T10:00:05Z'), launch)).toBe(false);
+  });
+
+  it('a pod not yet started, or an agent never launched, proves nothing', () => {
+    expect(podSuperseded(pod(null), launch)).toBe(false);
+    expect(podSuperseded(pod('2026-11-26T09:00:00Z'), null)).toBe(false);
+    expect(podSuperseded(pod('not a date'), launch)).toBe(false);
   });
 });
 

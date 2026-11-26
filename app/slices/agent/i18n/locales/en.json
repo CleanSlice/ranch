@@ -27,8 +27,7 @@
     "unavailable_hint": "This agent may have been removed or the runtime is offline.",
     "restart": "Restart",
     "restarting": "Restarting…",
-    "restart_failed": "Restart failed",
-    "elapsed": "Elapsed {seconds}s · agent will reload memory from S3"
+    "restart_failed": "Restart failed"
   },
   "status": {
     "running": "Running",
@@ -55,15 +54,25 @@
     "rail_connecting_hint": "Just started and still reaching some of its tool servers",
     "rail_limited_hint": "Running without some of its tool servers — open the agent to see which"
   },
-  "restart_stage": {
-    "stopping_title": "Stopping current pod…",
-    "stopping_body": "Cancelling the running workflow.",
-    "deploying_title": "Deploying new pod…",
-    "deploying_body": "Scheduling on the cluster.",
-    "starting_title": "Starting up…",
-    "starting_body": "The container is pulling and initialising.",
-    "almost_title": "Almost ready…",
-    "almost_body": "Waiting for the agent to come online."
+  "launch": {
+    "heading_initial": "Setting up agent",
+    "heading_start": "Starting agent",
+    "heading_restart": "Restarting agent",
+    "heading_failed": "Agent failed to start",
+    "step_accepted_doing": "Sending request",
+    "step_accepted_done": "Request accepted",
+    "step_stopped_doing": "Stopping previous instance",
+    "step_stopped_done": "Previous instance stopped",
+    "step_scheduled_doing": "Scheduling",
+    "step_scheduled_done": "Scheduled",
+    "step_container_doing": "Preparing container",
+    "step_container_done": "Container ready",
+    "step_online_doing": "Connecting to Ranch",
+    "step_online_done": "Connected to Ranch",
+    "step_ready_doing": "Getting ready",
+    "step_ready_done": "Ready",
+    "no_reason": "No reason was reported.",
+    "stale": "Live updates paused. Reconnecting…"
   },
   "rail": {
     "search": "Search agents",

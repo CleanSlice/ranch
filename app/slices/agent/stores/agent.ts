@@ -44,6 +44,13 @@ export const useAgentStore = defineStore('agent', () => {
   const toolStates = ref<Record<string, IAgentToolState>>({});
   const loading = ref(false);
   const error = ref<string | null>(null);
+  // Agents whose last refresh did not get through, by agent id (CLEAN-260).
+  // The record is still the one the console holds, so the chat stays; the
+  // sheet says that what it shows may be behind. Beside the records for the
+  // reason `limitsEnabled` is: `upsert` replaces a record whole. Not for a
+  // 401 (the session-ended dialog tells that story) and not for a 404 (the
+  // hub says "not yours" and the page leaves, CLEAN-231).
+  const refreshFailed = ref<Record<string, true>>({});
   // Bumped by `resetForAccount`: the answer to a request that was open when
   // the account changed is about the previous account and is dropped.
   let accountGeneration = 0;
@@ -59,6 +66,7 @@ export const useAgentStore = defineStore('agent', () => {
     links.value = [];
     limitsEnabled.value = {};
     toolStates.value = {};
+    refreshFailed.value = {};
     loading.value = false;
     error.value = null;
   }
@@ -174,7 +182,11 @@ export const useAgentStore = defineStore('agent', () => {
     const generation = accountGeneration;
     try {
       const next = await getService().findAll();
-      if (generation === accountGeneration) agents.value = next;
+      if (generation === accountGeneration) {
+        agents.value = next;
+        // Every record was just read again.
+        refreshFailed.value = {};
+      }
     } catch (err) {
       // Keep the rows we have: this runs on a 30s poll, and the open chat
       // renders from the same collection — one failed poll must not unmount it.
@@ -208,13 +220,30 @@ export const useAgentStore = defineStore('agent', () => {
     try {
       const agent = await getService().findById(id);
       if (generation !== accountGeneration) return null;
+      delete refreshFailed.value[id];
       return agent ? upsert(agent) : null;
     } catch (err) {
       error.value = (err as Error).message;
+      const status = (err as { response?: { status?: number } } | null)
+        ?.response?.status;
+      if (
+        generation === accountGeneration &&
+        status !== 401 &&
+        status !== 404 &&
+        byId(id)
+      ) {
+        refreshFailed.value[id] = true;
+      }
       return null;
     } finally {
       loading.value = false;
     }
+  }
+
+  // Whether the last request for this agent's record failed while the
+  // console holds one. Reactive: the sheet renders from it.
+  function refreshFailedFor(id: string): boolean {
+    return refreshFailed.value[id] === true;
   }
 
   async function create(input: IAgentCreateInput) {
@@ -264,6 +293,7 @@ export const useAgentStore = defineStore('agent', () => {
       (l) => l.agentId !== id && l.peerAgentId !== id,
     );
     delete limitsEnabled.value[id];
+    delete refreshFailed.value[id];
   }
 
   // Optimistic: flip to 'deploying' so every screen showing this agent reacts
@@ -324,6 +354,7 @@ export const useAgentStore = defineStore('agent', () => {
     fetchAll,
     fetchPublic,
     fetchById,
+    refreshFailedFor,
     fetchCapacity,
     fetchLinks,
     limitsEnabled,

@@ -132,6 +132,23 @@ watch(
   { immediate: true },
 );
 
+// The last request for this agent's record failed (CLEAN-260): a fact of the
+// store, so it outlives the chat being remounted and goes with the next
+// answer, whoever asked for it.
+const refreshFailed = computed(() =>
+  props.agent ? agentStore.refreshFailedFor(props.agent.id) : false,
+);
+const refreshing = ref(false);
+async function retryRefresh() {
+  if (!props.agent || refreshing.value) return;
+  refreshing.value = true;
+  try {
+    await agentStore.fetchById(props.agent.id);
+  } finally {
+    refreshing.value = false;
+  }
+}
+
 const failedKey = computed(() => {
   switch (controls.failed.value?.action) {
     case 'restart':
@@ -395,6 +412,26 @@ const failedKey = computed(() => {
       role="alert"
     >
       {{ $t(failedKey) }}<template v-if="controls.failed.value?.message">: {{ controls.failed.value.message }}</template>
+    </p>
+
+    <!-- The agent's record could not be read again (CLEAN-260). The chat
+         below goes on from what the console holds; this says that it may be
+         behind, in the place this sheet says what failed. -->
+    <p
+      v-if="refreshFailed"
+      class="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pb-2 text-xs text-rose-700 dark:text-rose-400"
+      role="status"
+      data-agent-refresh-failed
+    >
+      <span>{{ $t('sheet.refresh_failed') }}</span>
+      <button
+        type="button"
+        class="rounded-full border border-current/30 px-2 py-0.5 font-medium transition hover:bg-rose-500/10 disabled:opacity-60"
+        :disabled="refreshing"
+        @click="retryRefresh"
+      >
+        {{ $t('sheet.refresh_retry') }}
+      </button>
     </p>
 
     <div v-if="open && agent" class="px-4 pb-3">

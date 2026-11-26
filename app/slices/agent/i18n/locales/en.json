@@ -120,6 +120,8 @@
     "unpin": "Unpin",
     "pinned": "Pinned",
     "pin_failed": "Pin failed",
+    "refresh_failed": "Couldn't refresh this agent. What you see was loaded earlier.",
+    "refresh_retry": "Try again",
     "view_label": "What the panel shows",
     "view_chat": "Chat",
     "view_history": "History",

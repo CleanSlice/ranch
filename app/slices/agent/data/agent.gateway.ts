@@ -64,7 +64,14 @@ export class AgentGateway extends BaseGateway implements IAgentGateway {
 
   findById(id: string): Promise<IAgentData | null> {
     return this.execute(async () => {
-      const res = await AgentsService.agentControllerFindById({ path: { id } });
+      // `throwOnError` is the point (CLEAN-260): the generated client
+      // otherwise hands a refusal back as an ordinary result with no data,
+      // and a request that failed read exactly like an agent that is not
+      // there. The store tells them apart by the status.
+      const res = await AgentsService.agentControllerFindById({
+        path: { id },
+        throwOnError: true,
+      });
       return this.mapper.toEntity(unwrapEnvelope(res.data));
     });
   }

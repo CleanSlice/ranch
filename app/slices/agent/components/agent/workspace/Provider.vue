@@ -24,8 +24,13 @@ const canCreate = computed(() =>
 // cadence, same role gate as before the move. The request gives `pending`;
 // the map and the rail render the store's collection (docs/state.md), the
 // same records the open chat reads by id.
+//
+// Not awaited (CLEAN-260): a cold load by address waited for the list with
+// nothing of the page on screen, and then again for the agent. The rail and
+// the map have their own placeholders for `pending`, the sheet says
+// "Loading…", and the chat shows the conversation the browser keeps, or its
+// placeholders, with the composer in place.
 const fleet = useAgentFleet();
-await fleet.ready;
 const { pending, agents, capacity, links } = fleet;
 
 // The open agent, for the sheet: the same store record the chat below
@@ -379,7 +384,7 @@ function onSelect(id: string) {
         @to-list="toList"
       />
 
-      <div class="min-h-0 flex-1">
+      <div class="min-h-0 flex-1" data-agent-pane>
         <!-- The chat stays mounted under the history, hidden: its socket, the
              text typed but not sent, the queue and the scroll position are
              all there when the person comes back, and an answer that was on

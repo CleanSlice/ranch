@@ -659,6 +659,14 @@ export interface IBridleConversation {
   transcriptCursor: string | null
   hasMoreOlder: boolean
   loadingOlder: boolean
+  /**
+   * Requests for the newest transcript page that have not answered yet
+   * (CLEAN-260). While it is above zero a chat with no message to show draws
+   * placeholders instead of "Start a conversation", which would be a claim
+   * that the conversation is empty. A count, not a flag: the chat opening
+   * and a reconnect may ask at the same time.
+   */
+  transcriptLoads: number
   isConnected: boolean
   /**
    * Whether the agent runtime is currently registered with the bridle hub.
@@ -735,6 +743,7 @@ function createConversation(agentId: string, channel: string): IBridleConversati
     transcriptCursor: null,
     hasMoreOlder: false,
     loadingOlder: false,
+    transcriptLoads: 0,
     isConnected: false,
     isAgentConnected: false,
     agentTools: null,
@@ -2453,13 +2462,18 @@ export const useBridleStore = defineStore('bridle', {
       const c = this.conversation(agentId, channel)
       const generation = accountGeneration
       let page: ITranscriptPage | null = null
+      c.transcriptLoads += 1
       try {
         page = await fetchTranscriptPage(apiUrl, agentId, channel)
       } catch (err) {
         console.warn('[bridle] failed to load transcript', err)
       }
-      // The account changed while the page was on its way (CLEAN-231).
+      // The account changed while the page was on its way (CLEAN-231): the
+      // record was made anew for the next account, its count with it.
       if (generation !== accountGeneration) return
+      // Answered, or failed: nothing more to wait for. Before the merge
+      // below, so the render that shows the page takes the loader away.
+      c.transcriptLoads = Math.max(0, c.transcriptLoads - 1)
 
       // Outbox entries that are not in memory were written by a previous page.
       // Whatever was still in flight then can no longer be acknowledged.

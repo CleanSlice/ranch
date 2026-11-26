@@ -106,6 +106,7 @@ export class AgentStatusMapper {
         typeof o.containerWaitingReason === 'string'
           ? o.containerWaitingReason
           : null,
+      superseded: o.superseded === true,
     };
   }
 }

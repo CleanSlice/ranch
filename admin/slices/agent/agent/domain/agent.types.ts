@@ -16,7 +16,7 @@ export type AgentStatusTypes =
 
 /** Why the current/last deploy ran — server-derived, so the UI can tell a
  *  first start from a restart even after a page reload. */
-export type LaunchContextTypes = 'initial' | 'restart';
+export type LaunchContextTypes = 'initial' | 'start' | 'restart';
 
 export interface IAgentResources {
   cpu: string;

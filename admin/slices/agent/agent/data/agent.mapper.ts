@@ -32,6 +32,8 @@ const KNOWN_STATUSES = new Set<AgentStatusTypes>([
 
 const KNOWN_LAUNCH_CONTEXTS = new Set<LaunchContextTypes>([
   'initial',
+  // A later start of an agent that held no instance (CLEAN-247).
+  'start',
   'restart',
 ]);
 

@@ -17,6 +17,11 @@ export interface IAgentPodStatus {
   ready: boolean;
   restartCount: number;
   containerWaitingReason: string | null;
+  /** The pod of a launch that has been replaced (being deleted, or started
+   *  before the current launch began): the server's word (CLEAN-247).
+   *  Optional so an older API, which does not say, reads as "not known to
+   *  be". */
+  superseded?: boolean;
 }
 
 // The stream is public (an EventSource cannot send a token), so a frame

@@ -803,6 +803,19 @@ export class PeerService {
     if (!row || row.agentId !== agentId) throw this.notFound();
     const visibility = peerVisibility(row, viewer);
     if (visibility === PeerVisibilities.Hidden) throw this.notFound();
+    // A connection whose other end is the Ranch admin agent was made by the
+    // Owner (`connect`), and stays the Owner's to refresh or remove for a
+    // person who manages `agentId` only because the assistant setting gave
+    // them the tool (CLEAN-254). Such a person reaches the assistant like
+    // everybody it is switched on for, so reach alone would let them in.
+    if (
+      party.kind === 'person' &&
+      party.grantedThroughAssistant === true &&
+      row.peerAgentId !== null &&
+      (await this.agents.findById(row.peerAgentId))?.isAdmin === true
+    ) {
+      throw this.notFound();
+    }
     return { row, viewer, visibility };
   }
 

@@ -5,11 +5,12 @@ import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
   agentNotFound,
-  callerManagesAgents,
+  callerHoldsManageTools,
   CONFIRM_SENTENCE,
   confirmed,
   manageCaller,
   ok,
+  operatorOnly,
   requireOperator,
   type ToolResult,
   callerParty,
@@ -179,7 +180,7 @@ export class AgentLimitTool implements IConditionallyListedTool {
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     // The widest audience in the class; each tool's own audience has already
     // been checked by the time this runs.
-    return Promise.resolve(callerManagesAgents(httpRequest));
+    return Promise.resolve(callerHoldsManageTools(httpRequest));
   }
 
   @Tool({
@@ -446,6 +447,15 @@ export class AgentLimitTool implements IConditionallyListedTool {
     const found = await this.resolveAgent(args.agent, httpRequest);
     if ('refusal' in found) return found.refusal;
     const { agent } = found;
+    // Public, and for which sites: who can talk to the agent without
+    // signing in. That is a decision about access, and the assistant
+    // setting gives abilities, never access (CLEAN-254).
+    const notTheirs = operatorOnly(
+      httpRequest,
+      agent,
+      'Making an agent public or private, and choosing the sites that may embed it',
+    );
+    if (notTheirs) return notTheirs;
     const current = this.limits.getLimits(agent.id);
     const asItIs = {
       agentId: agent.id,

@@ -48,16 +48,32 @@ const GUEST: ICallerParty = { kind: 'guest' };
  *         AND caller reaches the agent)
  *     OR (agent is not the Ranch admin agent AND caller created the agent
  *         AND caller reaches the agent)
+ *     OR (agent is not the Ranch admin agent AND the tool this call runs
+ *         was ticked for the caller in a custom pick of the assistant
+ *         setting AND caller reaches the agent)
  *
  * The caller is a party (`ICallerParty`): a person, a trusted agent, or a
  * guest. A trusted party is the Ranch admin agent acting for itself and is
  * allowed, as before. A guest never is.
  *
+ * The last line is for tools only, and for one tool at a time (CLEAN-254).
+ * The Owner or an Admin ticks agent abilities for a person in a custom pick
+ * of the assistant setting (CLEAN-240); such an ability works through the
+ * assistant on every agent that person reaches, whoever created it. A
+ * built-in level (basic, standard, full) never does: nothing widens by
+ * default, and for a User a level's agent abilities stay with line three. It arrives here as
+ * `grantedThroughAssistant` on the party, which `manageCaller` sets when the
+ * call came through the assistant and a custom pick holds the very tool
+ * being called. `callerOfBearer` never sets it, so the management routes and
+ * `AgentManageGuard` keep the first three lines: a User manages nothing in
+ * the console by having been given `restart_agent` in the chat. Nor does
+ * the line widen which agents: those are the ones the access lists give.
+ *
  * The Ranch admin agent is the Owner's alone. Its workspace files, secrets,
  * schedule and restart are Owner power for whoever edits them: an Admin who
  * could rewrite its HEARTBEAT.md would get a scheduled turn that runs as a
- * trusted party. So neither the Admin line nor the creator line applies to
- * it, whoever created it.
+ * trusted party. So neither the Admin line, nor the creator line, nor the
+ * assistant-setting line applies to it, whoever created it.
  *
  * The creator line does little today, because only an Owner or Admin can
  * create an agent. It is what keeps an agent with the person who made it
@@ -90,7 +106,10 @@ export class AgentPermissionService implements IAgentManagerResolver {
       typeof agent.createdById === 'string' &&
       agent.createdById !== '' &&
       agent.createdById === caller.userId;
-    if (!isAdmin && !isCreator) return false;
+    // Set by `manageCaller` for one tool call and by nothing else: the tool
+    // being called is one the assistant setting gave this person.
+    const isGranted = caller.grantedThroughAssistant === true;
+    if (!isAdmin && !isCreator && !isGranted) return false;
     return (
       (await this.reach.reaches(
         { userId: caller.userId, role: caller.role },

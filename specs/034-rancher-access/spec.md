@@ -70,6 +70,48 @@ Terms used below:
   already edit under specs/032, and never above what the Admin gets
   themselves. Roles, other Admins and their own account stay the Owner's.
 
+### Amended 2026-11-26 (CLEAN-254)
+
+The first answer above, and three places further down that follow from it,
+speak of a User "managing agents they created". That was the rule of
+specs/032 (`canManage`, the creator line) carried over unexamined, and it
+made every agent ability the editor offers for a User a switch that did
+nothing: no User can create an agent, so none ever had an agent to manage.
+Found on production: a User was given "Restart an agent" in a custom
+setting, the assistant reported it as included, and never had the tool.
+
+The rule since:
+
+- An agent ability the Owner or an Admin **ticked in a custom pick** for a
+  person, for the one account or as the role's setting, works **through the
+  assistant** on every agent that person **reaches** (the access lists of
+  specs/032), whoever created it, and never on the Ranch admin agent.
+- Nothing widens by default. A built-in level (Basic, Standard, Full), the
+  role's default or one somebody chose, opens no agent ability for a User
+  this way: for them the levels keep the meaning they had, the agents they
+  created. A custom pick that happens to equal a level is a custom pick, and
+  counts.
+- It is the ability that was given and no other: a User given "Restart an
+  agent" is not offered "Delete an agent".
+- The console is unchanged. A User still has no management there; the
+  management routes keep the rule of specs/032.
+- What a User is told is what they can ask for. On a built-in level the
+  assistant counts no agent ability as theirs and names those the level
+  holds as good for agents they created themselves; with a custom pick it
+  counts what was ticked.
+
+- An ability given this way is not an operator's power. It does not change
+  which model credential or knowledge bases an agent uses, connect it to a
+  messenger bot or to an agent outside the Ranch for everybody, or make it
+  public; and what the assistant says back about the agent is what a reader
+  of it sees. Abilities that are only that (the pod's environment, its log,
+  its tool servers, channels, visibility, importing an outside agent) answer
+  a User that they are for an Owner or Admin. `docs/agent-tools.md` has the
+  table.
+
+Read the passages marked "(amended, CLEAN-254)" below with this in place of
+"an agent the User created". The text is left as it was written.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Limiting an account to some agents no longer takes the assistant away (Priority: P1)
@@ -124,6 +166,14 @@ User and ask the assistant to restart an agent the User created: it has no
 such ability to offer. Sign in as an Admin and ask the same about an agent the
 Admin reaches: it does it. Ask the Admin's assistant to create a user: it has
 no such ability to offer.
+
+*(amended, CLEAN-254)* The User's half reads: ask the assistant to restart an
+agent the User **reaches**; on Basic it has no such ability to offer, and
+nor on Standard, where it says the ability is for agents they created. Then
+tick "Restart an agent" for them in a custom pick and ask again in the same
+conversation: it restarts the agent. Ask it
+to restart an agent the User does not reach, or the assistant itself: it
+finds no such agent.
 
 **Acceptance Scenarios**:
 
@@ -349,6 +399,11 @@ that the Owner decides it.
 - **An Admin limited by lists.** What the assistant lists and acts on for them
   is still only the agents they reach; this feature decides which abilities
   they get, never which agents.
+- *(amended, CLEAN-254)* **A User given an agent ability in a custom pick.** The same holds,
+  and it is now the whole answer to "which agents": the ones the User
+  reaches, not the ones they created. The Ranch admin agent is never among
+  them. An agent out of their reach, an id that names nothing and the Ranch
+  admin agent are answered alike.
 
 ## Requirements *(mandatory)*
 
@@ -533,6 +588,9 @@ that the Owner decides it.
 - Users who managed agents they created through the assistant lose that on
   update, until the Owner raises Users (or the one account) to Standard. The
   update tells the Owner so once, on the assistant's page.
+  *(amended, CLEAN-254)* Still so, word for word: raising Users to Standard
+  gives them the day-to-day work on agents they created, as it did. Work on
+  agents they did not create is given ability by ability, in a custom pick.
 - "Basic" is the "minimal tools to work with the platform comfortably" of the
   request: look around, ask, get explanations, keep personal things. It
   changes nothing that belongs to anyone else.

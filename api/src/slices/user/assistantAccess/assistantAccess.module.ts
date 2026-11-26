@@ -10,6 +10,7 @@ import { AssistantAccessService } from './domain/assistantAccess.service';
 import { AssistantToolPolicyService } from './domain/assistantToolPolicy.service';
 import { AssistantAccessWiring } from './assistantAccess.wiring';
 import { IActingAssistant } from '#/bridle/domain/bridle.types';
+import { ASSISTANT_GRANT_RESOLVER } from '#/mcp/interfaces/assistant-grant.interface';
 
 // Who has the Ranch assistant and what it offers them (CLEAN-240).
 //
@@ -32,7 +33,14 @@ import { IActingAssistant } from '#/bridle/domain/bridle.types';
     { provide: IAssistantAccessGateway, useClass: AssistantAccessGateway },
     // The hub asks this for the level it says beside an acting token.
     { provide: IActingAssistant, useExisting: AssistantAccessService },
+    // The MCP tool layer asks "which agent abilities did the setting give
+    // this person" through this token (CLEAN-254), so the mcp slice does not
+    // depend on this one.
+    {
+      provide: ASSISTANT_GRANT_RESOLVER,
+      useExisting: AssistantToolPolicyService,
+    },
   ],
-  exports: [AssistantAccessService, IActingAssistant],
+  exports: [AssistantAccessService, IActingAssistant, ASSISTANT_GRANT_RESOLVER],
 })
 export class AssistantAccessModule {}

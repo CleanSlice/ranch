@@ -8,6 +8,7 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { McpToolsHandler } from './mcp-tools.handler';
 import { McpRegistryService } from '../mcp-registry.service';
+import { ToolCatalogService } from '../tool-catalog.service';
 import { TOOL_LISTING_RECORDER } from '../../interfaces/tool-listing-recorder.interface';
 import {
   ACTING_PARTY_RESOLVER,
@@ -18,11 +19,15 @@ import {
   type IAgentManagerResolver,
 } from '../../interfaces/agent-manager.interface';
 import {
+  ASSISTANT_GRANT_RESOLVER,
+  type IAssistantGrantResolver,
+} from '../../interfaces/assistant-grant.interface';
+import {
   PEER_PARTY_RESOLVER,
   type IPeerPartyResolver,
 } from '../../interfaces/peer-party.interface';
 import type { ToolAudienceTypes } from '../../decorators';
-import { callerParty, callerTurnClient } from '../../tooling';
+import { callerParty, callerTurnClient, manageCaller } from '../../tooling';
 import type { ICallerParty } from '#/user/auth/domain/auth.types';
 import { UserRoleTypes } from '#/user/user/domain';
 
@@ -55,6 +60,13 @@ interface HarnessOptions {
   manager?: IAgentManagerResolver;
   /** Whose question a call is part of (CLEAN-236). None wired: a guest's. */
   peers?: IPeerPartyResolver;
+  /** What the assistant setting gave a person (CLEAN-254). None wired: nothing. */
+  grants?: IAssistantGrantResolver;
+  /** The application's catalogue, built over the harness's own registry. */
+  sharedCatalog?: (
+    moduleRef: ModuleRef,
+    registry: McpRegistryService,
+  ) => ToolCatalogService;
 }
 
 /** `_meta["ranch/actor"]`, as a runtime states it. */
@@ -124,9 +136,14 @@ function makeHarness(tools: FakeTool[], options: HarnessOptions = {}) {
         return options.manager;
       }
       if (token === PEER_PARTY_RESOLVER && options.peers) return options.peers;
+      if (token === ASSISTANT_GRANT_RESOLVER && options.grants) {
+        return options.grants;
+      }
+      if (token === ToolCatalogService && shared) return shared;
       throw new Error('no such provider');
     }),
   } as unknown as ModuleRef;
+  const shared = options.sharedCatalog?.(moduleRef, registry);
 
   const handlers = new Map<unknown, Handler>();
   const mcpServer = {
@@ -983,5 +1000,241 @@ describe('McpToolsHandler — the conversation a call belongs to (CLEAN-236)', (
     await call('ask_agent', undefined, { client: 'admin' });
 
     expect(seen).toEqual([{ client: 'admin', party: { kind: 'guest' } }]);
+  });
+});
+
+describe('McpToolsHandler — a tool the assistant setting gave (CLEAN-254)', () => {
+  const RANCH = {
+    user: { sub: 'agent:ranch', email: '', roles: [UserRoleTypes.Owner] },
+  };
+  const people: Record<string, ICallerParty> = {
+    user: { kind: 'person', userId: 'user-u', role: UserRoleTypes.User },
+    other: { kind: 'person', userId: 'user-x', role: UserRoleTypes.User },
+    admin: { kind: 'person', userId: 'user-a', role: UserRoleTypes.Admin },
+  };
+  const as = (token: string): Actor => ({ kind: 'person', token });
+  /** `user-u` was given restart_agent, and two names that are not agent tools. */
+  const grants = () => ({
+    grantedToolsFor: jest.fn((req: Request) => {
+      const party = callerParty(req);
+      return Promise.resolve(
+        party.kind === 'person' && party.userId === 'user-u'
+          ? new Set(['restart_agent', 'create_user', 'list_agents'])
+          : null,
+      );
+    }),
+  });
+
+  const ranch = (
+    options: Pick<HarnessOptions, 'grants' | 'request' | 'manager'> = {},
+  ) => {
+    const seen: ICallerParty[] = [];
+    const run = jest.fn(
+      async (_args: unknown, _context: unknown, req: Request) => {
+        seen.push(manageCaller(req));
+        return ok('done');
+      },
+    );
+    return {
+      run,
+      seen,
+      ...makeHarness(
+        [
+          { name: 'query_knowledge', instance: { run }, audience: 'everyone' },
+          { name: 'list_agents', instance: { run }, audience: 'reader' },
+          {
+            name: 'restart_agent',
+            instance: { run },
+            audience: 'manage-agent',
+          },
+          { name: 'delete_agent', instance: { run }, audience: 'manage-agent' },
+          { name: 'create_user', instance: { run }, audience: 'admin' },
+        ],
+        { request: RANCH, resolver: partyResolver(people), ...options },
+      ),
+    };
+  };
+  const namesOf = (result: { tools: { name: string }[] }) =>
+    result.tools.map((t) => t.name);
+  const refused = (name: string) =>
+    `Tool "${name}" is not available to this caller.`;
+
+  it('lists the one manage-agent tool the setting holds, and runs it as a granted call', async () => {
+    const { list, call, seen } = ranch({ grants: grants() });
+
+    expect(namesOf(await list(as('user')))).toEqual([
+      'query_knowledge',
+      'list_agents',
+      'restart_agent',
+    ]);
+    const result = await call('restart_agent', as('user'));
+    expect(result.isError).toBeUndefined();
+    expect(seen).toEqual([
+      {
+        kind: 'person',
+        userId: 'user-u',
+        role: UserRoleTypes.User,
+        grantedThroughAssistant: true,
+      },
+    ]);
+  });
+
+  it('refuses the manage-agent tool it does not hold, by name', async () => {
+    const { call, run } = ranch({ grants: grants() });
+
+    const result = await call('delete_agent', as('user'));
+    expect(result.content[0].text).toBe(refused('delete_agent'));
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('keeps only manage-agent names: a setting lifts nobody into admin', async () => {
+    const { list, call, run } = ranch({ grants: grants() });
+
+    expect(namesOf(await list(as('user')))).not.toContain('create_user');
+    const result = await call('create_user', as('user'));
+    expect(result.content[0].text).toBe(refused('create_user'));
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('a tool of another audience runs without the mark, though the setting names it', async () => {
+    const { call, seen } = ranch({ grants: grants() });
+
+    await call('list_agents', as('user'));
+    expect(seen).toEqual([
+      { kind: 'person', userId: 'user-u', role: UserRoleTypes.User },
+    ]);
+  });
+
+  it('a person the setting gave nothing has none, and is refused by name', async () => {
+    const { list, call, run } = ranch({ grants: grants() });
+
+    expect(namesOf(await list(as('other')))).toEqual([
+      'query_knowledge',
+      'list_agents',
+    ]);
+    const result = await call('restart_agent', as('other'));
+    expect(result.content[0].text).toBe(refused('restart_agent'));
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('asks about a person below Admin behind an agent, and about nobody else', async () => {
+    const asked = grants();
+    const { list } = ranch({ grants: asked });
+
+    await list(as('admin'));
+    await list(TRUSTED);
+    await list();
+    expect(asked.grantedToolsFor).not.toHaveBeenCalled();
+
+    await list(as('user'));
+    expect(asked.grantedToolsFor).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not asked for a person on their own console token', async () => {
+    const asked = grants();
+    const { list, call, run } = ranch({
+      grants: asked,
+      request: {
+        user: { sub: 'user-u', email: '', roles: [UserRoleTypes.User] },
+      },
+    });
+
+    expect(namesOf(await list())).toEqual(['query_knowledge', 'list_agents']);
+    const result = await call('restart_agent');
+    expect(result.content[0].text).toBe(refused('restart_agent'));
+    expect(asked.grantedToolsFor).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('fails closed with nothing wired to answer, when the answer cannot be had, and for an answer that is no set', async () => {
+    const none = ranch();
+    expect(namesOf(await none.list(as('user')))).not.toContain('restart_agent');
+
+    const broken = ranch({
+      grants: {
+        grantedToolsFor: jest.fn(() => Promise.reject(new Error('db is down'))),
+      },
+    });
+    expect(namesOf(await broken.list(as('user')))).not.toContain(
+      'restart_agent',
+    );
+    const result = await broken.call('restart_agent', as('user'));
+    expect(result.content[0].text).toBe(refused('restart_agent'));
+
+    const odd = ranch({
+      grants: {
+        grantedToolsFor: jest.fn(() =>
+          Promise.resolve(['restart_agent'] as never),
+        ),
+      },
+    });
+    expect(namesOf(await odd.list(as('user')))).not.toContain('restart_agent');
+  });
+
+  it('a creator keeps every manage-agent tool, marked only for the one the setting holds', async () => {
+    const { list, call, seen } = ranch({
+      grants: grants(),
+      manager: { managesAny: jest.fn(() => Promise.resolve(true)) },
+    });
+
+    expect(namesOf(await list(as('user')))).toEqual([
+      'query_knowledge',
+      'list_agents',
+      'restart_agent',
+      'delete_agent',
+    ]);
+    await call('delete_agent', as('user'));
+    expect(seen[0]).toEqual({
+      kind: 'person',
+      userId: 'user-u',
+      role: UserRoleTypes.User,
+    });
+  });
+
+  it('one session, two people: what one was given never reaches the other', async () => {
+    const { list } = ranch({ grants: grants() });
+
+    const [forUser, forOther] = await Promise.all([
+      list(as('user')),
+      list(as('other')),
+    ]);
+    expect(namesOf(forUser)).toContain('restart_agent');
+    expect(namesOf(forOther)).not.toContain('restart_agent');
+  });
+});
+
+describe('McpToolsHandler — the catalogue it lists from (CLEAN-254)', () => {
+  const tools = (run = jest.fn(async () => ok('done'))): FakeTool[] => [
+    { name: 'kept', instance: { run } },
+    { name: 'taken_away', instance: { run } },
+  ];
+  /** A policy a slice registered at start, as the assistant's is. */
+  const withPolicy = (moduleRef: ModuleRef, registry: McpRegistryService) => {
+    const catalog = new ToolCatalogService(moduleRef, registry);
+    catalog.addPolicy({
+      allowedToolsFor: () => Promise.resolve(new Set(['kept'])),
+    });
+    return catalog;
+  };
+
+  it('is the application’s one catalogue, so a policy registered on it narrows tools/list and tools/call', async () => {
+    const run = jest.fn(async () => ok('done'));
+    const { list, call } = makeHarness(tools(run), {
+      sharedCatalog: withPolicy,
+    });
+
+    expect((await list()).tools.map((t: { name: string }) => t.name)).toEqual([
+      'kept',
+    ]);
+    const result = await call('taken_away');
+    expect(result.content[0].text).toBe(
+      'Tool "taken_away" is not available to this caller.',
+    );
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('builds its own only where no application provides one', async () => {
+    const { list } = makeHarness(tools());
+    expect((await list()).tools).toHaveLength(2);
   });
 });

@@ -19,7 +19,9 @@ export const MCP_TOOL_AUDIENCE_METADATA_KEY = 'mcp:tool-audience';
  *   Admin, an agent trusted to act as one, or a person who created an agent.
  *   That lists the tool; each call then checks the agent it names with
  *   `AgentPermissionService`, and answers "not found" for one the caller may
- *   not manage.
+ *   not manage. One tool at a time it is also for a person for whom that
+ *   tool was ticked in a custom pick of the assistant setting, when they
+ *   talk through the assistant (CLEAN-254): listed by its name, and good for the agents they reach.
  * - `admin`: an Owner or Admin, or an agent trusted to act as one.
  * - `owner`: the Owner, or an agent trusted to act as one.
  */

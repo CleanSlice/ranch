@@ -10,7 +10,9 @@ import {
   CONFIRM_SENTENCE,
   confirmed,
   manageCaller,
+  managesByGrantOnly,
   ok,
+  operatorOnly,
   requireOperator,
   requirePerson,
 } from '#/mcp/tooling';
@@ -18,7 +20,9 @@ import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.servic
 import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAgentGateway } from './domain';
+import type { IAgentData } from './domain/agent.types';
 import { AgentPermissionService } from './domain/agentPermission.service';
+import { toGrantedView } from './domain/agentReaderView';
 import { AgentDeployService } from './domain/agentDeploy.service';
 import { AgentStatusService } from './domain/agentStatus.service';
 import { AgentToolStateService } from './domain/agentToolState.service';
@@ -97,6 +101,20 @@ export class AgentAdminTool implements IConditionallyListedTool {
     return this.permission.manageable(manageCaller(httpRequest), id);
   }
 
+  /**
+   * The row a lifecycle tool hands back: whole for whoever manages the agent
+   * by role or by having made it, the reader view for a person the assistant
+   * setting let in (CLEAN-254).
+   */
+  private shownTo(
+    httpRequest: Request,
+    managed: IAgentData,
+    row: IAgentData | null,
+  ) {
+    if (!row) return row;
+    return managesByGrantOnly(httpRequest, managed) ? toGrantedView(row) : row;
+  }
+
   // ─── Lifecycle ───────────────────────────────────────────────────────
 
   @ToolAudience('manage-agent')
@@ -137,7 +155,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     const after = await this.agents.findById(args.id);
     return ok({
       ok: true,
-      agent: after,
+      agent: this.shownTo(httpRequest, agent, after),
       message: `Agent «${agent.name}» stopped — its pod is gone and its slot is free. Call start_agent to bring it back.`,
     });
   }
@@ -169,7 +187,7 @@ export class AgentAdminTool implements IConditionallyListedTool {
     const after = await this.agents.findById(id);
     return ok({
       ok: true,
-      agent: after,
+      agent: this.shownTo(httpRequest, agent, after),
       message: `Agent «${agent.name}» is deploying — it will boot shortly.`,
     });
   }
@@ -356,6 +374,25 @@ export class AgentAdminTool implements IConditionallyListedTool {
       this.pods.getMetrics(id),
     ]);
     const pod = pods.find((p) => p.agentId === id) ?? null;
+    // A person the assistant setting let in gets what the status stream
+    // gives every signed-in account (`GET agents/status`): is it up, is it
+    // ready, how often it restarted. Why it failed, when it was deployed,
+    // node metrics and the state of its tool servers are the operator's.
+    if (managesByGrantOnly(httpRequest, agent)) {
+      return ok({
+        id: agent.id,
+        name: agent.name,
+        status: agent.status,
+        pod: pod
+          ? {
+              phase: pod.phase,
+              ready: pod.ready,
+              restartCount: pod.restartCount,
+              containerWaitingReason: pod.containerWaitingReason,
+            }
+          : null,
+      });
+    }
     return ok({
       id: agent.id,
       name: agent.name,
@@ -403,6 +440,14 @@ export class AgentAdminTool implements IConditionallyListedTool {
   ) {
     const agent = await this.manageable(httpRequest, id);
     if (!agent) return agentNotFound(httpRequest, id);
+    // Addresses, ids and every setting the pod is started with: an
+    // operator's view of the installation, masked credentials or not.
+    const refusal = operatorOnly(
+      httpRequest,
+      agent,
+      'The environment an agent’s pod runs with',
+    );
+    if (refusal) return refusal;
     const env = await this.workflows.previewAgentEnv(agent);
     return ok(
       env.map((v) => ({
@@ -440,6 +485,14 @@ export class AgentAdminTool implements IConditionallyListedTool {
   ) {
     const agent = await this.manageable(httpRequest, id);
     if (!agent) return agentNotFound(httpRequest, id);
+    // Which tool servers the installation has is `list_mcp_servers`, an
+    // `admin` tool; this would name them to somebody who cannot list them.
+    const refusal = operatorOnly(
+      httpRequest,
+      agent,
+      'The list of tool servers an agent is given',
+    );
+    if (refusal) return refusal;
 
     const [servers, pods] = await Promise.all([
       this.mcpResolver.resolveForAgent(agent),

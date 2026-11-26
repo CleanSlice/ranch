@@ -11,7 +11,9 @@ import {
   CONFIRM_SENTENCE,
   confirmed,
   manageCaller,
+  managesByGrantOnly,
   ok,
+  operatorOnly,
   requireOperator,
   requireOwner,
   requirePersonOrOperator,
@@ -19,7 +21,10 @@ import {
 } from '#/mcp/tooling';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
-import { toReaderView } from '#/agent/agent/domain/agentReaderView';
+import {
+  toGrantedView,
+  toReaderView,
+} from '#/agent/agent/domain/agentReaderView';
 import type { IAgentData } from '#/agent/agent/domain/agent.types';
 import { IAgentGateway } from '#/agent/agent/domain';
 import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
@@ -363,7 +368,10 @@ export class RancherTool {
       'Update an agent: rename, describe, switch LLM credential, or bind ' +
       'knowledge bases. knowledgeIds REPLACES the full list (fetch current via ' +
       'get_agent first). Binding/credential changes apply on the next ' +
-      'restart — offer restart_agent.',
+      'restart — offer restart_agent. The credential and the knowledge ' +
+      'bases are an Owner’s or Admin’s to change: for anybody else only ' +
+      'the name and the description are, and a call that names the other ' +
+      'two is refused whole.',
     parameters: z.object({
       id: z.string(),
       name: z.string().optional(),
@@ -412,6 +420,27 @@ export class RancherTool {
       id,
     );
     if (!existing) return agentNotFound(httpRequest, id);
+    // Which model credential an agent spends and which knowledge bases it
+    // reads are bindings to things only an operator can list (`list_llms`,
+    // `list_knowledges` are `admin`), and the reader view keeps both from
+    // everybody else. A person here by the assistant setting alone renames
+    // and describes; a call naming either binding changes nothing at all.
+    if (llmCredentialId !== undefined) {
+      const refusal = operatorOnly(
+        httpRequest,
+        existing,
+        'Changing the model credential of an agent (llmCredentialId)',
+      );
+      if (refusal) return refusal;
+    }
+    if (knowledgeIds !== undefined) {
+      const refusal = operatorOnly(
+        httpRequest,
+        existing,
+        'Changing the knowledge bases of an agent (knowledgeIds)',
+      );
+      if (refusal) return refusal;
+    }
     const updated = await this.agents.update(id, {
       name,
       llmCredentialId,
@@ -424,7 +453,11 @@ export class RancherTool {
       knowledgeIds !== undefined || llmCredentialId !== undefined;
     return ok({
       ok: true,
-      agent: updated,
+      // The whole row for whoever manages the agent by role or by having
+      // made it; what a reader gets for a person the setting let in.
+      agent: managesByGrantOnly(httpRequest, existing)
+        ? toGrantedView(updated)
+        : updated,
       ...(needsRestart && {
         notice:
           'Saved. Knowledge/credential changes apply on the next start — ' +

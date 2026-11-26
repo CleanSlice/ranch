@@ -774,3 +774,81 @@ describe('the level the hub says beside an acting token', () => {
     ).toBeNull();
   });
 });
+
+/**
+ * CLEAN-254: an agent ability works on the agents a person reaches only
+ * when it was ticked in a custom pick. A built-in level holds such abilities
+ * for a User as it always did, for agents the User created, so what a User
+ * is told about a level must not count them as theirs to ask for.
+ */
+describe('what a User is told about agent abilities', () => {
+  const agentsOf = (areas: { key: string; offered: number }[]) =>
+    areas.find((a) => a.key === 'agents')?.offered;
+
+  it('on a built-in level they are named apart, and not counted', async () => {
+    const { service } = harness();
+    await service.setRole(asOwner, UserRoleTypes.User, { level: 'standard' });
+    const mine = await service.myAccess(person(USER));
+
+    expect(mine.level).toBe('standard');
+    expect(mine.ownAgentsOnly.map((a) => a.name).sort()).toEqual([
+      'delete_agent',
+      'restart_agent',
+    ]);
+    // `list_agents` and `pin_agent`: what the assistant does for them.
+    expect(agentsOf(mine.areas)).toBe(2);
+    // Held by the level, so not "left out" of it either.
+    expect(mine.leftOut.map((a) => a.name)).toEqual([]);
+  });
+
+  it('in a custom pick they are counted like anything else that was ticked', async () => {
+    const { service } = harness();
+    await service.setAccount(asOwner, USER.id, {
+      level: 'custom',
+      on: ['list_agents', 'restart_agent'],
+    });
+    const mine = await service.myAccess(person(USER));
+
+    expect(mine.level).toBe('custom');
+    expect(mine.ownAgentsOnly).toEqual([]);
+    expect(agentsOf(mine.areas)).toBe(2);
+    expect(mine.leftOut.map((a) => a.name).sort()).toEqual([
+      'delete_agent',
+      'pin_agent',
+    ]);
+  });
+
+  it('a custom pick that equals a level is a custom pick here too', async () => {
+    const { service } = harness();
+    await service.setAccount(asOwner, USER.id, {
+      level: 'custom',
+      on: ['list_agents', 'pin_agent', 'restart_agent', 'delete_agent'],
+    });
+    const mine = await service.myAccess(person(USER));
+    expect(mine).toMatchObject({ level: 'custom', matchesLevel: 'standard' });
+    expect(mine.ownAgentsOnly).toEqual([]);
+    expect(agentsOf(mine.areas)).toBe(4);
+  });
+
+  it('the level definitions say the same: a level opens no agent ability for a User', async () => {
+    const { service } = harness();
+    const [basic, standard, full] = service.levelsFor(UserRoleTypes.User);
+    expect([basic, standard, full].map((l) => agentsOf(l.areas))).toEqual([
+      2, 2, 2,
+    ]);
+    expect([basic, standard, full].map((l) => l.ownAgentsOnly)).toEqual([
+      0, 2, 2,
+    ]);
+  });
+
+  it('an Admin manages by role: every level counts its agent abilities', async () => {
+    const { service } = harness();
+    await service.setRole(asOwner, UserRoleTypes.Admin, { level: 'standard' });
+    const mine = await service.myAccess(person(ADMIN));
+    expect(mine.ownAgentsOnly).toEqual([]);
+    expect(agentsOf(mine.areas)).toBe(4);
+    expect(
+      service.levelsFor(UserRoleTypes.Admin).map((l) => l.ownAgentsOnly),
+    ).toEqual([0, 0, 0]);
+  });
+});

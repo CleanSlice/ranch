@@ -69,6 +69,10 @@ const USER_2 = {
 };
 const PEOPLE = [OWNER, ADMIN, ADMIN_2, USER, USER_2];
 
+/** Agent ids the reach stub hides from everybody; empty between specs. */
+const outOfReach = new Set<string>();
+afterEach(() => outOfReach.clear());
+
 function harness(tools = TOOLS) {
   const roles = new Map<AssistantRole, IAssistantSettingData>();
   const accounts = new Map<string, IAssistantAccountData>();
@@ -97,7 +101,16 @@ function harness(tools = TOOLS) {
     users as never,
     {
       findAdmin: async () => ({ id: 'assistant', name: 'Rancher' }),
-      findAll: async () => [{ id: 'agent-1', createdById: USER.id }],
+      findAll: async () => [
+        { id: 'agent-1', name: 'Orders', createdById: USER.id },
+        { id: 'agent-2', name: 'Billing', createdById: 'owner' },
+        {
+          id: 'assistant',
+          name: 'Rancher',
+          isAdmin: true,
+          createdById: USER.id,
+        },
+      ],
     } as never,
     {
       getTools: () =>
@@ -113,7 +126,18 @@ function harness(tools = TOOLS) {
         })),
     } as never,
   );
-  return { tool: new AssistantAccessTool(service), service, roles, accounts };
+  const reach = {
+    reachableIds: async () => ({
+      filter: <T>(items: T[], idOf: (item: T) => string) =>
+        items.filter((item) => !outOfReach.has(idOf(item))),
+    }),
+  };
+  return {
+    tool: new AssistantAccessTool(service, reach as never),
+    service,
+    roles,
+    accounts,
+  };
 }
 
 /** The assistant's own request: its token carries Owner. */
@@ -545,5 +569,93 @@ describe('get_my_assistant_access', () => {
       await tool.getMyAssistantAccess({}, null, forPerson(OWNER)),
     );
     expect(out).toMatchObject({ level: 'owner', notIncluded: [] });
+  });
+});
+
+/**
+ * CLEAN-254: an ability a level holds for a User works on agents the User
+ * created. Asked for on any other agent, the assistant has to say exactly
+ * that, and it can only do so if the tool tells it which agents those are.
+ */
+describe('get_my_assistant_access: abilities that work only on agents the person created', () => {
+  const NOTE =
+    'These work only on agents this person created themselves, the ones in ' +
+    '`agentsYouCreated` (empty: they have created no agent). They are not ' +
+    'counted in `areas`. When the person asks for one of them on an agent ' +
+    'that is not in `agentsYouCreated`, answer in one sentence: this works ' +
+    'only on agents you created, and this agent was not created by you; ' +
+    'the Owner can allow it for other agents by ticking it for your ' +
+    'account. Do not say it is not included, and do not stop at "the Owner ' +
+    'decides".';
+  const onStandard = async () => {
+    const built = harness();
+    await built.service.setRole(
+      { kind: 'trusted' },
+      UserRoleTypes.User as AssistantRole,
+      { level: 'standard' },
+    );
+    return built;
+  };
+
+  it('names them, the agents they do work on, and what to say about any other agent', async () => {
+    const { tool } = await onStandard();
+    const out = json(
+      await tool.getMyAssistantAccess({}, null, forPerson(USER)),
+    );
+
+    expect(out.onlyOnAgentsYouCreated).toEqual([
+      { title: 'Title of restart_agent', area: 'agents' },
+      { title: 'Title of delete_agent', area: 'agents' },
+    ]);
+    // Their own agent; not somebody else's, and never the Ranch admin agent.
+    expect(out.agentsYouCreated).toEqual([{ id: 'agent-1', name: 'Orders' }]);
+    expect(out.onlyOnAgentsYouCreatedNote).toBe(NOTE);
+    expect(out.notIncluded).toEqual([]);
+  });
+
+  it('an empty list is the answer "you have created no agent"', async () => {
+    const { tool } = await onStandard();
+    const out = json(
+      await tool.getMyAssistantAccess({}, null, forPerson(USER_2)),
+    );
+    expect(out.onlyOnAgentsYouCreated).toHaveLength(2);
+    expect(out.agentsYouCreated).toEqual([]);
+  });
+
+  it('an agent they created and no longer reach is not named', async () => {
+    outOfReach.add('agent-1');
+    const { tool } = await onStandard();
+    const out = json(
+      await tool.getMyAssistantAccess({}, null, forPerson(USER)),
+    );
+    expect(out.agentsYouCreated).toEqual([]);
+  });
+
+  it('says nothing of the kind where nothing is held back: a custom pick, an Admin, the Owner', async () => {
+    const { tool, service } = harness();
+    await service.setAccount({ kind: 'trusted' }, USER.id, {
+      level: 'custom',
+      on: ['list_agents', 'restart_agent'],
+    });
+    for (const who of [USER, ADMIN, OWNER]) {
+      const out = json(
+        await tool.getMyAssistantAccess({}, null, forPerson(who)),
+      );
+      expect(out).not.toHaveProperty('onlyOnAgentsYouCreated');
+      expect(out).not.toHaveProperty('agentsYouCreated');
+      expect(out).not.toHaveProperty('onlyOnAgentsYouCreatedNote');
+    }
+  });
+
+  it('the description gives the sentence, and keeps the rule about other people', () => {
+    const description = metadataOf('getMyAssistantAccess').description;
+    expect(description).toContain(
+      'this works only on agents you created, and this agent was not ' +
+        'created by you; the Owner can allow it for other agents by ticking ' +
+        'it for your account',
+    );
+    expect(description).toContain('an empty list means they have created none');
+    expect(description).toContain('Never describe what other people have.');
+    expect(description).not.toMatch(/new chat|new session|start over/i);
   });
 });

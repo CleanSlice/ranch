@@ -5,9 +5,10 @@ import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
   agentNotFound,
-  callerManagesAgents,
+  callerHoldsManageTools,
   manageCaller,
   ok,
+  operatorOnly,
   stripSecrets,
   type ToolResult,
 } from '#/mcp/tooling';
@@ -89,7 +90,7 @@ export class AgentChannelTool implements IConditionallyListedTool {
   ) {}
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
-    return Promise.resolve(callerManagesAgents(httpRequest));
+    return Promise.resolve(callerHoldsManageTools(httpRequest));
   }
 
   @Tool({
@@ -164,6 +165,16 @@ export class AgentChannelTool implements IConditionallyListedTool {
       agentId,
     );
     if (!agent) return agentNotFound(httpRequest, agentId);
+    // A channel is a bot somebody outside the Ranch controls: its token
+    // decides who may talk to the agent from a messenger, and where what
+    // the agent says goes. An operator binds one, not a person the
+    // assistant setting let in (CLEAN-254).
+    const refusal = operatorOnly(
+      httpRequest,
+      agent,
+      'Connecting an agent to a messenger bot, or disconnecting it',
+    );
+    if (refusal) return refusal;
     const saved = await this.channels.setForAgent(
       agentId,
       channels as IAgentChannel[],

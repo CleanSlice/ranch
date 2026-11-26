@@ -172,7 +172,7 @@ One per tool, declared with `@ToolAudience`:
 | `agent` | an agent runtime, for itself (the token names the agent, whoever it is answering) | `requireAgent(httpRequest)` |
 | `person` | a signed-in person of any role | `const { userId } = requirePerson(httpRequest)` |
 | `reader` | a signed-in person of any role, or whoever `admin` admits (so the Ranch admin agent on its own schedule keeps the tool) | `requirePersonOrOperator(httpRequest)`, then only what `AgentAccessService` says the caller reaches |
-| `manage-agent` | whoever may manage at least one agent: an Owner or Admin, an agent with an Owner token acting for itself, a person who created an agent | `const agent = await this.permission.manageable(manageCaller(httpRequest), id)` and the tool's own "not found" when it is null |
+| `manage-agent` | whoever may manage at least one agent: an Owner or Admin, an agent with an Owner token acting for itself, a person who created an agent. And, tool by tool, a person for whom that tool was ticked in a custom pick of the assistant setting, when they talk through the assistant (CLEAN-254) | `const agent = await this.permission.manageable(manageCaller(httpRequest), id)` and the tool's own "not found" when it is null |
 | `admin` | an Owner or Admin; an agent with an Owner token acting for itself | `requireOperator(httpRequest)` |
 | `owner` | the Owner; an agent with an Owner token acting for itself | `requireOwner(httpRequest)` |
 
@@ -239,6 +239,25 @@ agent slice once per call and notes on the call's request
 (`callerManagesAgents`). A plain agent's token manages nothing, whoever it
 names.
 
+One more caller is listed single tools of this audience (CLEAN-254): a person
+below Admin who talks **through the assistant** and for whom the tool was
+**ticked in a custom pick** of the assistant setting, the account's own or
+the role's. The Owner or an Admin ticks "Restart an agent" for a User; that
+User created no agent and never will, so without this the switch did
+nothing. Only a custom pick counts: a built-in level (Basic, Standard, Full),
+the role's default or one somebody chose, opens no `manage-agent` tool this
+way, so nothing widens for anybody by default. It is decided from the stored
+level, in one place (`AssistantToolPolicyService.grantedToolsFor`), not by
+comparing sets: a custom pick that happens to equal Standard is a custom
+pick and counts. The handler asks the assistantAccess slice once per call
+(`ASSISTANT_GRANT_RESOLVER`), keeps the names whose audience is
+`manage-agent`, and notes them on the call's request; `audienceAllows` is
+asked with the tool's name and answers for that tool alone
+(`callerGrantedTool`). Holding `restart_agent` lists `restart_agent`, not
+`delete_agent`. It is true for nobody else: not through another agent, not
+with the person's own console token, not for a guest, not with the assistant
+switched off for them, not on a built-in level.
+
 Whether this call may touch the agent it names: one rule,
 `AgentPermissionService.canManage`, the same one the console routes marked
 `@ManagesAgent('id' | 'agentId')` go through.
@@ -248,10 +267,76 @@ canManage(caller, agent) =
      caller is the Owner
   OR (agent is not the Ranch admin agent AND caller is an Admin AND caller reaches the agent)
   OR (agent is not the Ranch admin agent AND caller created the agent AND caller reaches the agent)
+  OR (agent is not the Ranch admin agent AND the tool this call runs was
+      ticked for the caller in a custom pick of the assistant setting
+      AND caller reaches the agent)
 ```
 
-A trusted party is allowed, a guest never. `reaches` answers yes for
-everybody until the access lists of CLEAN-231 replace it (`IAgentReach`).
+A trusted party is allowed, a guest never. `reaches` is the access lists of
+CLEAN-231 (`IAgentReach`, provided by `AgentAccessService`).
+
+The fourth line exists for tools only. `manageCaller(httpRequest)` puts
+`grantedThroughAssistant` on the party when the tool the handler is running
+is one of the names it noted for this call, so the line is about that tool:
+a User given `restart_agent` who gets `delete_agent` called for them by any
+route is refused at the audience, and would be refused here too. A console
+request builds its caller with `AgentPermissionService.callerOfBearer`,
+which never sets it: a User manages nothing on the management routes by
+having been given an ability in the chat. Which agents is not widened either:
+they are the ones the person reaches, and never the Ranch admin agent.
+
+So a class that holds only `manage-agent` tools answers its listing hook with
+`callerHoldsManageTools(httpRequest)`: the caller manages an agent, or the
+setting gave them at least one such tool. The audience has already decided
+about the tool at hand by the time the hook runs.
+
+**A grant is not an operator's power.** A person let in by the fourth line
+may do to the agent what the tool is named for, and is still not an Owner or
+Admin. Three things follow, and a `manage-agent` tool has to hold all three
+(`managesByGrantOnly(httpRequest, agent)` says whether the caller is such a
+person; `operatorOnly(httpRequest, agent, what)` is the refusal):
+
+- It binds the agent to nothing that person has no route to read or decide:
+  not a model credential, not a knowledge base, not a messenger bot, not an
+  address outside the Ranch, not who may reach the agent. A parameter that
+  names such a thing is refused by name, and the call saves nothing.
+- Another agent it names is one the person reaches, and never the Ranch
+  admin agent (`PeerService.connect`, `locate`, `setVisitors`).
+- Its reply holds no more than a reader gets: `toGrantedView(agent)` in
+  place of the row, and nothing from inside the pod.
+
+| Tool | For a person the setting let in |
+|---|---|
+| `update_agent` | `name` and `description` only; `llmCredentialId` and `knowledgeIds` are refused by name. Reply: reader view |
+| `stop_agent`, `start_agent` | allowed. Reply: reader view |
+| `get_agent_status` | `status` and the pod's `phase`, `ready`, `restartCount`, `containerWaitingReason`: what `GET agents/status` gives every account. No reason, deploy time, metrics or tool-server state |
+| `get_agent_env`, `list_agent_mcps`, `get_agent_logs` | refused: the inside of the pod, and the names of servers only an operator can list |
+| `set_agent_channels` | refused: a bot token decides who talks to the agent from outside |
+| `set_agent_visibility` | refused: public or private, and for which sites, is access |
+| `import_external_agent`, `import_agent_from_card` | refused: an outside peer added by a manager serves everybody who talks to the agent. Their own is `import_my_peer_by_address` |
+| `connect_agent_peer`, `refresh_agent_peer`, `remove_agent_peer`, `set_agent_peer_visitors` | allowed for a peer they reach; the Ranch admin agent at the other end is not found |
+
+The refused tools stay listed for a person whose setting holds them, and
+answer with the refusal; nothing in the editor marks them yet. An operator,
+and the person who created the agent, are not affected by any of this.
+
+**What a level means for a User.** The levels are a rule over area and
+effect (see "What the assistant offers a person"), and by that rule Basic
+holds the reading `manage-agent` tools and Standard the rest. For a User
+that still means what it meant before CLEAN-254: the agents the User
+created, of which there are none while only an Owner or Admin can create
+one. So a User on Basic, Standard or Full who created nothing is listed no
+`manage-agent` tool. `get_my_assistant_access` says so: it leaves those
+abilities out of the area counts, of the person's own level and of the level
+definitions alike, and names them under `onlyOnAgentsYouCreated`, next to
+`agentsYouCreated`: the agents that person made and still reaches, an empty
+list when there are none. Asked for such an ability on any other agent, the
+assistant says that it works only on agents the person created, that this
+one was not created by them, and that the Owner can allow it for other
+agents by ticking it for their account; not "it is not included". With a
+custom pick there is nothing to hold back and the fields are absent. The
+console's editor still counts them in a User's level, which is the rule's
+answer and not what that User can ask for.
 
 **The Ranch admin agent is the Owner's alone.** Its workspace files are its
 instructions, and its secrets, schedule and restart are Owner power for
@@ -349,7 +434,13 @@ level or a custom pick.
 - It only takes away. The audience filters first; `AssistantToolPolicyService`
   is a `CallerToolPolicy` the catalogue asks afterwards, for `tools/list` and
   `tools/call` alike. Nothing in a setting can give a role what it does not
-  have.
+  have. The policy is registered on the application's one `ToolCatalogService`
+  at start, and the MCP handler lists from that same instance: a catalogue
+  built anywhere else knows no policy and narrows nothing.
+- One thing it does open, inside the role's ceiling (CLEAN-254): a
+  `manage-agent` tool ticked in a custom pick works for a person who manages
+  no agent, on the agents they reach. A built-in level opens nothing. See "Managing one agent". A setting never
+  decides which agents; the access lists do.
 - A level is a rule over a tool's `topic`, `effect` and audience
   (`assistantLevels.ts`): **Basic** = every `read` plus every `person` tool;
   **Standard** = Basic plus `write` in agents, agent workspace, knowledge,

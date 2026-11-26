@@ -37,6 +37,21 @@ export function toReaderView<T extends IAgentData>(agent: T): T {
   };
 }
 
+/**
+ * An agent as a tool hands it back to a person who manages it only because
+ * the assistant setting gave them that tool (CLEAN-254): the reader view,
+ * and no creator id. They may restart or rename the agent; that does not
+ * make its configuration, its credential or its deploy history theirs to
+ * read.
+ */
+export function toGrantedView<T extends IAgentData>(
+  agent: T,
+): Omit<T, 'createdById'> {
+  const view: Partial<T> = { ...toReaderView(agent) };
+  delete view.createdById;
+  return view as Omit<T, 'createdById'>;
+}
+
 /** The fields `toReaderView` empties. Pinned by agentReaderView.spec.ts. */
 export const READER_HIDDEN_FIELDS = [
   'llmCredentialId',

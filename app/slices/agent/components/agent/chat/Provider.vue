@@ -16,14 +16,41 @@ const props = defineProps<{
 const agentStore = useAgentStore();
 const authStore = useAuthStore();
 
-// The request is for `pending` / `error` / `refresh`; what renders is the
-// store's record (docs/state.md) — the same object the rail row shows, so the
-// header pill and the row cannot disagree. `fetchById` upserts into it.
-const { pending, error, refresh } = await useAsyncData(
+// The request is for `refresh` and for knowing when it has answered; what
+// renders is the store's record (docs/state.md) — the same object the rail
+// row shows, so the header pill and the row cannot disagree. `fetchById`
+// upserts into it.
+//
+// Not awaited (CLEAN-260). This component is remounted for every agent, and
+// an awaited request at the top of its setup left the pane under the sheet
+// empty (no feed, no composer, no loader) for as long as the request took,
+// on every switch. The record is in the store already (the list brought it)
+// and the conversation is kept in the browser, so the chat is drawn at once
+// and the request refreshes the record behind it. A request that fails
+// leaves the record alone and is told by the sheet (`refreshFailedFor`).
+const { refresh, status } = useAsyncData(
   `agent-${props.id}`,
   () => agentStore.fetchById(props.id),
+  { lazy: true },
+);
+// Latched on the first answer: the 3 s status poll below asks again and
+// again, and "pending" then is not "nothing is known yet". Read off the
+// request's own status, which every holder of this key shares, so a second
+// mount while the first one's request is still open hears the same answer.
+const settled = ref(false);
+watch(
+  status,
+  (now) => {
+    if (now === 'success' || now === 'error') settled.value = true;
+  },
+  { immediate: true },
 );
 const agent = computed(() => agentStore.byId(props.id));
+// Nothing is known of this agent yet and the answer is still on its way: a
+// cold load by address. The chat is there all the same (the conversation the
+// browser keeps, or placeholders, and the composer); "unavailable" is said
+// only once the request has answered without a record.
+const waiting = computed(() => !agent.value && !settled.value);
 
 /**
  * The conversation this page shows — the same `{ key: agentId, agentId }` the
@@ -198,7 +225,7 @@ const initials = computed(() => {
           <div class="flex items-center gap-2">
             <h1 class="truncate text-sm font-semibold">
               <template v-if="agent">{{ agent.name }}</template>
-              <template v-else-if="pending">{{ $t('chat.loading') }}</template>
+              <template v-else-if="waiting">{{ $t('chat.loading') }}</template>
               <template v-else>{{ $t('chat.not_found') }}</template>
             </h1>
             <span
@@ -278,12 +305,10 @@ const initials = computed(() => {
 
     <!-- Chat — expands to fill remaining height -->
     <div class="relative flex-1 min-h-0 overflow-hidden bg-[radial-gradient(60%_40%_at_50%_0%,rgba(245,161,107,0.07),transparent_70%)]">
-      <div v-if="pending && !agent" class="flex h-full items-center justify-center">
-        <Icon name="loader-2" :size="20" class="animate-spin text-muted-foreground" />
-      </div>
       <div
-        v-else-if="error || !agent"
+        v-if="!agent && !waiting"
         class="flex h-full flex-col items-center justify-center gap-3 text-center px-4"
+        data-chat-unavailable
       >
         <div class="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
           <Icon name="bot-off" :size="22" />
@@ -295,11 +320,14 @@ const initials = computed(() => {
           </p>
         </div>
       </div>
+      <!-- By the id of the address, not the record's: the same chat stands
+           while the record is on its way and after it has come, so nothing
+           is mounted twice and the socket is asked for once. -->
       <BridleChatProvider
         v-else
-        :agent-id="agent.id"
-        :title="agent.name"
-        :subtitle="agent.templateId"
+        :agent-id="id"
+        :title="agent?.name"
+        :subtitle="agent?.templateId"
         :show-header="false"
         :tool-view="toolView"
         :agent-state="queueAgentState"

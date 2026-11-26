@@ -109,6 +109,28 @@ way from every direction — the view that asked, another tab, the other
 console — through one function, so two screens cannot disagree about what
 "empty" left behind (CLEAN-136).
 
+## The first frame
+
+A component that is mounted again for every entity (the app's chat under the
+sheet is keyed by agent id) must draw from the store in its first frame. A
+`useAsyncData` awaited at the top of its setup draws nothing until the request
+answers: no feed, no composer, no loader, on every switch (CLEAN-260). So:
+
+- the request is not awaited (`{ lazy: true }`), in both consoles: it
+  refreshes the record behind what is already on screen;
+- "not found" / "unavailable" is said only once the request has answered
+  without a record, never while it is still open;
+- a request that fails for a record the store holds leaves the record alone
+  and is told where the screen tells such things (`refreshFailedFor` in the
+  app's agent store, shown by the sheet), not by replacing the screen;
+- a conversation with nothing to show yet says "loading" until the server's
+  newest page has answered (`isOpening` in the app's bridle store,
+  `transcriptLoads` on the admin's conversation record), and only then
+  "empty". The composer is there throughout.
+
+`specs/032-agent-user-access/e2e/switch-agent.mjs` holds the requests back
+and reads every animation frame for an empty pane.
+
 ## An account change
 
 Two people may use one browser, one after the other. Two rules keep the

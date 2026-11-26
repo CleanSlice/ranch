@@ -105,8 +105,6 @@ async function loadOlder() {
 const loadingFirst = computed(
   () => (opening.value || loading.value) && !messages.value.length,
 );
-// Widths of the placeholder bubbles, alternating sides like a conversation.
-const PLACEHOLDER_BUBBLES = ['w-2/5', 'w-3/5', 'w-1/3', 'w-1/2', 'w-2/5'];
 
 // Current user's 👍/👎 per messageId.
 const feedbackByMsg = ref<Record<string, number>>({});
@@ -350,31 +348,10 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- The first page is on its way. -->
-            <div
+            <BridleChatPlaceholder
               v-if="loadingFirst"
-              class="flex flex-col gap-4"
-              role="status"
-              aria-busy="true"
               data-conversation-state="loading"
-            >
-              <span class="sr-only">{{ $t('session.loading') }}</span>
-              <div
-                v-for="(width, i) in PLACEHOLDER_BUBBLES"
-                :key="i"
-                class="flex items-start gap-2.5"
-                :class="i % 2 === 0 ? 'justify-end' : undefined"
-                aria-hidden="true"
-              >
-                <div
-                  v-if="i % 2 === 1"
-                  class="h-7 w-7 shrink-0 animate-pulse rounded-full bg-muted"
-                />
-                <div
-                  class="h-11 animate-pulse rounded-2xl"
-                  :class="[width, i % 2 === 0 ? 'bg-primary/20' : 'bg-muted']"
-                />
-              </div>
-            </div>
+            />
 
             <div
               v-else-if="!messages.length"

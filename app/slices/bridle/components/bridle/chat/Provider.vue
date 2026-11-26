@@ -197,6 +197,19 @@ const loadingOlder = computed(() => {
   return key ? bridleStore.isLoadingOlder(key) : false;
 });
 
+// ── Opening (CLEAN-260) ───────────────────────────────────────
+// What the feed says while it has no message to show. The copy the browser
+// keeps is on screen from the first frame; when there is none, the server has
+// not answered yet and "say hello" would be a claim that the conversation is
+// empty. So: placeholders until the newest page is merged (or it is known
+// that none will come), and only then the starter. The composer is there
+// throughout: what is written meanwhile waits in the queue.
+const feedState = computed<'messages' | 'loading' | 'empty'>(() => {
+  if (messages.value.length) return 'messages';
+  const key = activeConversation.value?.key;
+  return key && bridleStore.isOpening(key) ? 'loading' : 'empty';
+});
+
 /** How close to the top counts as "asking for what came before". */
 const NEAR_TOP_PX = 8;
 
@@ -334,12 +347,20 @@ watch(
     // A delivery line appearing under the last message grows it too.
     messages.value[messages.value.length - 1]?.delivery,
   ],
-  async () => {
+  async (now, before) => {
     // Measured BEFORE the DOM grows (a watcher runs ahead of the render):
     // afterwards the new content itself would push a reader who was at the
     // bottom out of range. Someone scrolled up to read is left where they are.
     const follow = isNearBottom();
     await nextTick();
+    // The conversation arriving in place of the placeholders is not new
+    // content to be led to: it stands at its end at once, the way a kept
+    // conversation does on mount, with no ride down the whole page.
+    if (before[0] === 0 && (now[0] as number) > 0) {
+      const el = scrollEl.value;
+      if (el) el.scrollTop = el.scrollHeight;
+      return;
+    }
     if (follow) scrollToBottom();
   },
 );
@@ -458,11 +479,12 @@ onBeforeUnmount(() => {
       <div
         ref="scrollEl"
         class="flex-1 min-h-0 overflow-y-auto bg-linear-to-b from-muted/20 via-background to-background"
-        :class="{ 'flex': !messages.length }"
+        :class="{ 'flex': feedState === 'empty' }"
+        :data-chat-state="feedState"
         @scroll.passive="onScroll"
       >
         <div class="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6"
-        :class="{ 'justify-center': !messages.length }"
+        :class="{ 'justify-center': feedState === 'empty' }"
         >
           <!-- Earlier pages of the conversation. A button as well as a hint:
                a short page on a tall screen has nothing to scroll, and a
@@ -484,9 +506,12 @@ onBeforeUnmount(() => {
             {{ $t('chat.older_hint') }}
           </button>
 
+          <!-- The conversation is on its way: where its messages will stand. -->
+          <BridleChatPlaceholder v-if="feedState === 'loading'" />
+
           <!-- Conversation starter when no messages yet -->
           <div
-            v-if="!messages.length"
+            v-else-if="feedState === 'empty'"
             class="mt-8 flex flex-col items-center text-center"
           >
             <div

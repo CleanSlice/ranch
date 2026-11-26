@@ -15,6 +15,7 @@ import DebugPanel from './DebugPanel.vue'
 import { Card, CardContent, CardFooter, CardHeader } from '#theme/components/ui/card'
 import { ScrollArea } from '#theme/components/ui/scroll-area'
 import { Button } from '#theme/components/ui/button'
+import { Skeleton } from '#theme/components/ui/skeleton'
 import { Bot, Circle, MessageSquarePlus, RotateCw } from 'lucide-vue-next'
 import { cn } from '#theme/utils/cn'
 import { authedFetch } from '#auth/utils/authedFetch'
@@ -110,7 +111,19 @@ const {
   loadingOlder,
   thinkingBlocks,
   notice,
+  transcriptLoads,
 } = toRefs(conversation)
+
+// ── Opening (CLEAN-260) ──────────────────────────────────────────────
+// What the feed says while it has no message to show: placeholders until the
+// newest transcript page has answered, and only then the invitation. Twin of
+// `feedState` in the app console's chat. The composer is there throughout.
+const feedState = computed<'messages' | 'loading' | 'empty'>(() => {
+  if (messages.value.length) return 'messages'
+  return transcriptLoads.value > 0 ? 'loading' : 'empty'
+})
+// Widths of the placeholder bubbles; even ones are the operator's, on the right.
+const PLACEHOLDER_BUBBLES = ['w-2/5', 'w-3/5', 'w-1/3', 'w-1/2', 'w-2/5']
 
 // ── Thinking timeline (CLEAN-10) ─────────────────────────────────────
 // Messages and thinking blocks interleaved by arrival order (`seq`) — a frozen
@@ -652,9 +665,30 @@ async function onConfirmReset() {
             Scroll up to load older messages
           </div>
 
+          <!-- The transcript is on its way (CLEAN-260): where its messages
+               will stand, instead of an invitation that says "empty". -->
           <div
-            v-if="messages.length === 0 && !loadingOlder"
+            v-if="feedState === 'loading'"
+            class="flex flex-col gap-4"
+            role="status"
+            aria-busy="true"
+            data-chat-state="loading"
+          >
+            <span class="sr-only">Loading the conversation…</span>
+            <div
+              v-for="(width, i) in PLACEHOLDER_BUBBLES"
+              :key="i"
+              class="flex"
+              :class="i % 2 === 0 ? 'justify-end' : undefined"
+              aria-hidden="true"
+            >
+              <Skeleton class="h-11 rounded-2xl" :class="width" />
+            </div>
+          </div>
+          <div
+            v-else-if="feedState === 'empty' && !loadingOlder"
             class="flex-1 flex items-center justify-center text-muted-foreground text-sm py-12"
+            data-chat-state="empty"
           >
             Start a conversation with the agent
           </div>

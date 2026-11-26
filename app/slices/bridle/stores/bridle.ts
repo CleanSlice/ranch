@@ -170,6 +170,13 @@ const SHARE_DEAD_CODES = new Set(['SHARE_LINK_INVALID', 'SHARE_VISITOR_INVALID']
  */
 const STORED_COPY_MAX = 100;
 
+/**
+ * How long a conversation with nothing to show may say "loading" before it
+ * says "empty" (CLEAN-260). A hub that is not there answers nothing, and a
+ * loader that never ends would hide the composer's own "not delivered".
+ */
+const OPENING_MAX_MS = 10_000;
+
 /** The longest delay a browser timer takes; a longer one fires at once. */
 const MAX_TIMER_MS = 2_147_483_647;
 
@@ -448,6 +455,16 @@ export const useBridleStore = defineStore('bridle', () => {
   /** History loads in flight — never two for one conversation. */
   const historyLoading = new Set<string>();
   /**
+   * Conversations whose first word from the server is still on its way
+   * (CLEAN-260): from the moment the channel is asked for until the newest
+   * page has been merged, or it is known that none will come. A chat with
+   * nothing to show yet reads this to draw a loader instead of the "say
+   * hello" starter, which would be a claim that the conversation is empty.
+   * Bounded by `OPENING_MAX_MS`: a hub that cannot be reached fires no event.
+   */
+  const opening = ref<Record<string, boolean>>({});
+  const openingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /**
    * A full request limit, by AGENT id — not by conversation: the allowance is
    * the agent's, so every view of it in this browser waits together
    * (CLEAN-224). Written by a `RATE_LIMITED` ack and by the hub's
@@ -512,6 +529,23 @@ export const useBridleStore = defineStore('bridle', () => {
   const hasOlder = (key: string) => history.value[key]?.hasMore === true;
   const isLoadingOlder = (key: string) =>
     history.value[key]?.loadingOlder === true;
+  /** The conversation is being opened and the server has not answered yet. */
+  const isOpening = (key: string) => opening.value[key] === true;
+
+  function setOpening(key: string, on: boolean) {
+    const timer = openingTimers.get(key);
+    if (timer) clearTimeout(timer);
+    openingTimers.delete(key);
+    if (!on) {
+      delete opening.value[key];
+      return;
+    }
+    opening.value[key] = true;
+    openingTimers.set(
+      key,
+      setTimeout(() => setOpening(key, false), OPENING_MAX_MS),
+    );
+  }
 
   function clearDraft(key: string) {
     delete drafts.value[key];
@@ -1035,10 +1069,20 @@ export const useBridleStore = defineStore('bridle', () => {
   async function loadHistory(conv: IBridleConversation) {
     const key = conv.key;
     const channel = hubClientIds.get(key);
-    if (!channel || channel.startsWith(ANONYMOUS_CLIENT_PREFIX)) return;
-    if (history.value[key]?.loaded || historyLoading.has(key)) return;
+    // Nothing to wait for: no history exists for this identity, or it is
+    // on screen already.
+    if (
+      !channel ||
+      channel.startsWith(ANONYMOUS_CLIENT_PREFIX) ||
+      history.value[key]?.loaded
+    ) {
+      setOpening(key, false);
+      return;
+    }
+    if (historyLoading.has(key)) return;
 
     historyLoading.add(key);
+    setOpening(key, true);
     // A reset while the request is open makes its answer a page of the
     // conversation that was just closed; an account change makes it a page
     // of somebody else's.
@@ -1090,7 +1134,12 @@ export const useBridleStore = defineStore('bridle', () => {
       console.warn('[bridle] history load failed', err);
     } finally {
       // Not the next account's load of the same key.
-      if (generation === accountGeneration) historyLoading.delete(key);
+      if (generation === accountGeneration) {
+        historyLoading.delete(key);
+        // Merged, or failed: either way there is nothing more to wait for,
+        // and the same render that shows the page takes the loader away.
+        setOpening(key, false);
+      }
     }
   }
 
@@ -1500,6 +1549,7 @@ export const useBridleStore = defineStore('bridle', () => {
     const key = conv.key;
     pending.value[key] = false;
     closeAllTurns(key);
+    setOpening(key, false);
 
     if (conv.share) {
       if (SHARE_DEAD_CODES.has(code)) {
@@ -1575,6 +1625,8 @@ export const useBridleStore = defineStore('bridle', () => {
         // left open: if it really died, the watchdog says so — after asking
         // the transcript (CLEAN-102, research F4).
         connection.value[key] = BridleChannelStates.Offline;
+        // The answer being waited for was this socket's to bring.
+        setOpening(key, false);
       },
       onWelcome: (welcome) => onWelcome(conv, welcome),
       onRejected: (code) => void onRejected(conv, code),
@@ -1737,6 +1789,16 @@ export const useBridleStore = defineStore('bridle', () => {
     const hold: IChannelHold = { channel: null, holders: 1 };
     channels.set(key, hold);
     connection.value[key] = BridleChannelStates.Connecting;
+    // Until the hub has said which conversation this is and its newest page
+    // is merged, an empty screen is "not known yet", not "empty". Not for an
+    // anonymous visitor (the landing preview): the hub mints that identity
+    // per connection and there is no history behind it.
+    if (
+      !history.value[key]?.loaded &&
+      (conv.share || useAuthStore().user)
+    ) {
+      setOpening(key, true);
+    }
     if (!conv.share) await useAuthStore().ensureFresh();
     // Released and closed while that was in flight.
     if (channels.get(key) !== hold) return;
@@ -1751,6 +1813,7 @@ export const useBridleStore = defineStore('bridle', () => {
     if (!conv.share && !auth.accessToken && auth.user) {
       channels.delete(key);
       connection.value[key] = BridleChannelStates.Offline;
+      setOpening(key, false);
       auth.endSession('TOKEN_MISSING');
       return;
     }
@@ -1786,6 +1849,7 @@ export const useBridleStore = defineStore('bridle', () => {
       held.channel?.close();
       channels.delete(key);
       connection.value[key] = BridleChannelStates.Offline;
+      setOpening(key, false);
       // Without a channel nothing says whether the agent is reachable.
       delete agentOnline.value[key];
       delete agentTools.value[key];
@@ -2142,6 +2206,7 @@ export const useBridleStore = defineStore('bridle', () => {
     hubClientIds.delete(key);
     authRetried.delete(key);
     historyLoading.delete(key);
+    setOpening(key, false);
     clearLimit(conv.agentId);
     unreachable.value[conv.agentId] = true;
   }
@@ -2171,6 +2236,9 @@ export const useBridleStore = defineStore('bridle', () => {
     limitTimers.clear();
     for (const timer of limitRechecks.values()) clearTimeout(timer);
     limitRechecks.clear();
+    for (const timer of openingTimers.values()) clearTimeout(timer);
+    openingTimers.clear();
+    opening.value = {};
     // Object URLs of files picked or on their way would otherwise leak.
     for (const list of Object.values(staged.value)) list.forEach(revoke);
     for (const list of heldStaged.values()) list.forEach(revoke);
@@ -2230,6 +2298,7 @@ export const useBridleStore = defineStore('bridle', () => {
       loadingOlder: false,
       tailTs: 0,
     };
+    setOpening(key, false);
     epochs.value[key] = epochFor(key) + 1;
   }
 
@@ -2607,6 +2676,7 @@ export const useBridleStore = defineStore('bridle', () => {
     // history
     hasOlder,
     isLoadingOlder,
+    isOpening,
     loadOlder,
     // agent state off the hub
     agentOnlineFor,

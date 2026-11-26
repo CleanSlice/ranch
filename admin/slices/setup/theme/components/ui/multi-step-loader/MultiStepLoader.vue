@@ -1,8 +1,24 @@
 <script setup lang="ts">
-import { cn } from "@inspira-ui/plugins";
-import { onUnmounted, ref, watch } from "vue";
+/**
+ * Inspira UI's Multi Step Loader, vendored: unovue/inspira-ui,
+ * app/components/inspira/ui/multi-step-loader, commit 5ea509ce (MIT).
+ * Its props, events, markup and motion are upstream's. What was added, and
+ * nothing else (specs/037-agent-launch-steps/research.md R2):
+ *   - `contained`: fill a positioned parent instead of the viewport;
+ *   - theme tokens where upstream had black, white and gray;
+ *   - `Step.error`: the current step shows as failed and does not advance;
+ *   - `Step.id` and the `data-step*` attributes, for the checks;
+ *   - a live region and `motion-reduce` variants;
+ *   - `cn` from the theme.
+ * This file is byte-identical in admin and app
+ * (scripts/launch-steps-twin.test.ts): edit one, copy to the other.
+ */
+import { cn } from "#theme/utils";
+import { computed, onUnmounted, ref, watch } from "vue";
 
 interface Step {
+  id?: string; // Stable name of the step, exposed as data-step
+  error?: string; // The step failed: shown under it, and it does not advance
   text: string; // Display text for the step
   afterText?: string; // Text to show after step completion
   async?: boolean; // If true, waits for external trigger to proceed
@@ -14,11 +30,13 @@ interface Props {
   loading?: boolean;
   defaultDuration?: number;
   preventClose?: boolean;
+  contained?: boolean; // Fill the positioned parent instead of the viewport
 }
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   defaultDuration: 1500,
   preventClose: false,
+  contained: false,
 });
 
 const emit = defineEmits<{
@@ -78,6 +96,23 @@ function close() {
   emit("close");
 }
 
+type StepState = "upcoming" | "current" | "done" | "failed";
+
+function stepState(index: number): StepState {
+  const last = index === props.steps.length - 1;
+  if (index < currentState.value) return "done";
+  if (index > currentState.value) return "upcoming";
+  if (last && isLastStepComplete.value) return "done";
+  return props.steps[index]?.error ? "failed" : "current";
+}
+
+// What a screen reader is told: the step being worked on, and why it failed.
+const liveText = computed(() => {
+  const step = props.steps[currentState.value];
+  if (!step) return "";
+  return step.error ? `${step.text}: ${step.error}` : step.text;
+});
+
 // Watch for changes in the async property
 watch(
   () => props.steps[currentState.value]?.async,
@@ -127,8 +162,21 @@ onUnmounted(() => {
   >
     <div
       v-if="loading && steps.length > 0"
-      class="fixed inset-0 z-100 flex size-full items-center justify-center backdrop-blur-2xl"
+      :class="
+        cn(
+          'flex size-full items-center justify-center',
+          contained
+            ? 'absolute inset-0 z-0 overflow-hidden'
+            : 'fixed inset-0 z-100 backdrop-blur-2xl',
+        )
+      "
     >
+      <span
+        class="sr-only"
+        aria-live="polite"
+      >
+        {{ liveText }}
+      </span>
       <!-- Closing Button -->
       <button
         v-show="!preventClose"
@@ -152,15 +200,32 @@ onUnmounted(() => {
           />
         </svg>
       </button>
-      <div class="relative h-96">
-        <div class="relative mx-auto mt-40 flex max-w-xl flex-col justify-start">
+      <div :class="cn('relative', contained ? 'size-full max-w-sm px-4' : 'h-96')">
+        <div
+          :class="
+            cn(
+              'relative mx-auto flex flex-col justify-start',
+              contained ? 'mt-20' : 'mt-40 max-w-xl',
+            )
+          "
+          role="list"
+        >
           <div
             v-for="(step, index) in steps"
             :key="index"
           >
             <div
               v-if="step"
-              class="mb-4 flex items-center gap-2 text-left transition-all duration-300 ease-in-out"
+              role="listitem"
+              :data-step="step.id"
+              :data-step-state="stepState(index)"
+              :aria-current="index === currentState ? 'step' : undefined"
+              :class="
+                cn(
+                  'mb-4 flex gap-2 text-left transition-all duration-300 ease-in-out motion-reduce:transition-none',
+                  stepState(index) === 'failed' ? 'items-start' : 'items-center',
+                )
+              "
               :style="{
                 opacity:
                   index === currentState
@@ -171,16 +236,30 @@ onUnmounted(() => {
                 }px)`,
               }"
             >
+              <!-- exclamation-triangle-solid-heroicons -->
+              <svg
+                v-if="stepState(index) === 'failed'"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                class="text-destructive size-6 shrink-0"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003ZM12 8.25a.75.75 0 0 1 .75.75v3.75a.75.75 0 0 1-1.5 0V9a.75.75 0 0 1 .75-.75Zm0 8.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
               <!--  check-circle-solid-heroicons -->
               <svg
-                v-if="
+                v-else-if="
                   index < currentState ||
                   (index === steps.length - 1 && index === currentState && isLastStepComplete)
                 "
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
                 fill="currentColor"
-                class="text-primary size-6"
+                class="text-primary size-6 shrink-0"
               >
                 <path
                   fill-rule="evenodd"
@@ -196,7 +275,7 @@ onUnmounted(() => {
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
                 fill="currentColor"
-                class="text-primary size-6 animate-spin"
+                class="text-primary size-6 shrink-0 animate-spin motion-reduce:animate-none"
               >
                 <path
                   fill-rule="evenodd"
@@ -212,7 +291,7 @@ onUnmounted(() => {
                 viewBox="0 0 24 24"
                 stroke-width="1.5"
                 stroke="currentColor"
-                class="size-6 text-black opacity-50 dark:text-white"
+                class="text-foreground size-6 shrink-0 opacity-50"
               >
                 <path
                   stroke-linecap="round"
@@ -220,13 +299,23 @@ onUnmounted(() => {
                   d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
                 />
               </svg>
-              <div class="flex flex-col">
+              <div class="flex min-w-0 flex-col">
                 <span
                   :class="
-                    cn(`text-lg text-black dark:text-white`, index > currentState && 'opacity-50')
+                    cn(
+                      'text-foreground',
+                      contained ? 'text-sm leading-6' : 'text-lg',
+                      index > currentState && 'opacity-50',
+                    )
                   "
                 >
                   {{ step.text }}
+                </span>
+                <span
+                  v-if="stepState(index) === 'failed'"
+                  class="text-destructive mt-0.5 text-xs break-words"
+                >
+                  {{ step.error }}
                 </span>
                 <Transition
                   enter-active-class="transition-all duration-300"
@@ -241,7 +330,7 @@ onUnmounted(() => {
                           index === currentState &&
                           isLastStepComplete))
                     "
-                    class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+                    class="text-muted-foreground mt-1 text-sm"
                   >
                     {{ step.afterText }}
                   </span>
@@ -252,7 +341,8 @@ onUnmounted(() => {
         </div>
       </div>
       <div
-        class="absolute inset-x-0 bottom-0 z-[-1] h-full bg-white bg-linear-to-t mask-[radial-gradient(900px_at_center,white_30%,transparent)] dark:bg-black"
+        v-if="!contained"
+        class="bg-background absolute inset-x-0 bottom-0 z-[-1] h-full bg-linear-to-t mask-[radial-gradient(900px_at_center,white_30%,transparent)]"
       />
     </div>
   </Transition>

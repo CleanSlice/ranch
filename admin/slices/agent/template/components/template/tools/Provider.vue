@@ -20,6 +20,10 @@ const { pending } = useAsyncData('admin-template-tools-list', () => mcpServerSto
   lazy: true,
 });
 
+// Shown to look at, not to change (CLEAN-271): the switches stay where they
+// are and do nothing; the filter above them keeps working.
+const props = defineProps<{ readOnly?: boolean }>();
+
 const limited = computed(() => selected.value !== null);
 const selectedSet = computed(() => new Set(selected.value ?? []));
 
@@ -39,18 +43,19 @@ const groups = computed(() => {
 });
 
 function setLimited(on: boolean) {
+  if (props.readOnly) return;
   selected.value = on ? [...selectedSet.value] : null;
 }
 
 function toggle(t: IMcpToolSummary) {
-  if (!limited.value) return;
+  if (props.readOnly || !limited.value) return;
   selected.value = selectedSet.value.has(t.name)
     ? (selected.value ?? []).filter((n) => n !== t.name)
     : [...(selected.value ?? []), t.name];
 }
 
 function toggleGroup(items: IMcpToolSummary[]) {
-  if (!limited.value) return;
+  if (props.readOnly || !limited.value) return;
   const names = items.map((t) => t.name);
   const allOn = names.every((n) => selectedSet.value.has(n));
   const rest = (selected.value ?? []).filter((n) => !names.includes(n));
@@ -64,6 +69,7 @@ function toggleGroup(items: IMcpToolSummary[]) {
       <button
         type="button"
         role="switch"
+        :disabled="readOnly"
         :aria-checked="!limited"
         class="flex w-full items-center gap-3.5 border-b px-[18px] py-3.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40"
         @click="setLimited(false)"
@@ -79,6 +85,7 @@ function toggleGroup(items: IMcpToolSummary[]) {
       <button
         type="button"
         role="switch"
+        :disabled="readOnly"
         :aria-checked="limited"
         class="flex w-full items-center gap-3.5 px-[18px] py-3.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40"
         @click="setLimited(true)"
@@ -115,7 +122,7 @@ function toggleGroup(items: IMcpToolSummary[]) {
             {{ limited ? `${g.on} of ${g.items.length}` : `${g.items.length}` }}
           </span>
           <button
-            v-if="limited"
+            v-if="limited && !readOnly"
             type="button"
             class="ml-auto text-[12.5px] text-primary hover:underline"
             @click="toggleGroup(g.items)"
@@ -129,6 +136,7 @@ function toggleGroup(items: IMcpToolSummary[]) {
             :key="t.name"
             type="button"
             role="switch"
+        :disabled="readOnly"
             :aria-checked="!limited || selectedSet.has(t.name)"
             :aria-disabled="!limited"
             class="flex w-full items-center gap-3.5 border-b px-[18px] py-3 text-left transition-colors last:border-b-0 focus-visible:outline-none focus-visible:bg-muted/40"

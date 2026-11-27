@@ -476,19 +476,11 @@ async function onRemove() {
         @manage-mcps="selectTab('mcp')"
       />
 
-      <!-- A disabled fieldset switches off every switch of the three tabs at
-           once: what is attached stays readable, nothing can be toggled. -->
-      <fieldset v-else-if="tab === 'skills'" :disabled="locked" class="contents">
-        <TemplateSkillsProvider v-model:selected="draftSkills" />
-      </fieldset>
+      <TemplateSkillsProvider v-else-if="tab === 'skills'" v-model:selected="draftSkills" :read-only="locked" />
 
-      <fieldset v-else-if="tab === 'mcp'" :disabled="locked" class="contents">
-        <TemplateMcpsProvider v-model:selected="draftMcps" />
-      </fieldset>
+      <TemplateMcpsProvider v-else-if="tab === 'mcp'" v-model:selected="draftMcps" :read-only="locked" />
 
-      <fieldset v-else-if="tab === 'tools'" :disabled="locked" class="contents">
-        <TemplateToolsProvider v-model:selected="draftTools" />
-      </fieldset>
+      <TemplateToolsProvider v-else-if="tab === 'tools'" v-model:selected="draftTools" :read-only="locked" />
 
       <div v-else-if="tab === 'knowledge'" class="flex flex-col gap-3">
         <div

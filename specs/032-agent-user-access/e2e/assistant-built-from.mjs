@@ -360,8 +360,8 @@ try {
       await shot(page, `admin-template-ranch-${width}`);
 
       for (const [tab, what] of [['skills', 'Skills'], ['mcp', 'MCP servers'], ['tools', 'Tools']]) {
-        await open(page, `/templates/${ids.ranchTemplate}?tab=${tab}`, async () => (await count(page, 'fieldset [role="switch"]')) > 0);
-        const switches = page.locator('fieldset [role="switch"]');
+        await open(page, `/templates/${ids.ranchTemplate}?tab=${tab}`, async () => (await count(page, '[role="switch"]')) > 0);
+        const switches = page.locator('[role="switch"]');
         const total = await switches.count();
         const off = await switches.evaluateAll((nodes) => nodes.filter((n) => n.matches(':disabled')).length);
         check(total > 0 && off === total, `${what}: every switch is off for the viewer (${off} of ${total})`);
@@ -388,8 +388,8 @@ try {
 
       await open(page, `/templates/${ids.otherTemplate}`, async () => (await bodyText(page)).includes(TEMPLATE.name));
       check(!(await hasNote(page)) && (await has(page, 'Edit')), 'an ordinary template: no line, Edit is offered');
-      await open(page, `/templates/${ids.otherTemplate}?tab=skills`, async () => (await count(page, 'fieldset [role="switch"]')) > 0);
-      check((await page.locator('fieldset [role="switch"]:disabled').count()) === 0, 'and its skills toggle');
+      await open(page, `/templates/${ids.otherTemplate}?tab=skills`, async () => (await count(page, '[role="switch"]')) > 0);
+      check((await page.locator('[role="switch"]:disabled').count()) === 0, 'and its skills toggle');
       await open(page, `/templates/${ids.otherTemplate}?tab=files`);
       await openSoul(page, width);
       check((await has(page, 'Upload .agent folder')) && (await has(page, 'Save')), 'and its files can be uploaded and saved');
@@ -504,8 +504,8 @@ try {
       section(`Management console, ${width} px, as the Owner: everything edits`);
       await open(page, `/templates/${ids.ranchTemplate}`, async () => (await bodyText(page)).includes(R.template.name));
       check(!(await hasNote(page)) && (await has(page, 'Edit')), 'the assistant’s template: no line, Edit is offered');
-      await open(page, `/templates/${ids.ranchTemplate}?tab=skills`, async () => (await count(page, 'fieldset [role="switch"]')) > 0);
-      check((await page.locator('fieldset [role="switch"]:disabled').count()) === 0, 'its skills toggle');
+      await open(page, `/templates/${ids.ranchTemplate}?tab=skills`, async () => (await count(page, '[role="switch"]')) > 0);
+      check((await page.locator('[role="switch"]:disabled').count()) === 0, 'its skills toggle');
       await open(page, `/templates/${ids.ranchTemplate}?tab=files`);
       await openSoul(page, width);
       check((await has(page, 'Upload .agent folder')) && (await has(page, 'Save')), 'its files can be uploaded and saved');

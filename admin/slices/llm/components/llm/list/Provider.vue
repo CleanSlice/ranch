@@ -80,7 +80,7 @@ const {
             </TableCell>
             <TableCell class="text-muted-foreground">{{ item.label ?? '—' }}</TableCell>
             <TableCell>
-              <code class="text-xs text-muted-foreground">{{ mask(item.apiKey) }}</code>
+              <code class="text-xs text-muted-foreground">{{ lockedFor(item) ? 'withheld' : mask(item.apiKey) }}</code>
             </TableCell>
             <TableCell>
               <Badge :variant="item.status === 'active' ? 'default' : 'outline'">

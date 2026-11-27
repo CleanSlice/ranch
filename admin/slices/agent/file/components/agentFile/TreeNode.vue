@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { IconFile, IconFolder, IconFolderOpen, IconTrash } from '@tabler/icons-vue';
+import { IconFile, IconFolder, IconFolderOpen } from '@tabler/icons-vue';
 import { formatDateTime } from '#common/utils/format';
 
 defineOptions({ name: 'TreeNode' });
@@ -31,7 +31,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'select', path: string): void;
   (e: 'toggle', path: string): void;
-  (e: 'delete', path: string, type: 'file' | 'folder'): void;
 }>();
 
 const isExpanded = computed(() =>
@@ -67,14 +66,6 @@ function fileTitle(node: FileNodeT): string {
         <IconFolder v-else class="size-4 shrink-0 text-muted-foreground" />
         <span class="truncate">{{ node.name }}</span>
       </button>
-      <button
-        type="button"
-        class="mr-1 hidden shrink-0 rounded p-1 text-muted-foreground hover:text-destructive group-hover:block"
-        :title="`Delete folder ${node.path}`"
-        @click.stop="emit('delete', node.path, 'folder')"
-      >
-        <IconTrash class="size-4" />
-      </button>
     </div>
     <template v-if="isExpanded">
       <TreeNode
@@ -86,7 +77,6 @@ function fileTitle(node: FileNodeT): string {
         :expanded-map="expandedMap"
         @select="(p) => emit('select', p)"
         @toggle="(p) => emit('toggle', p)"
-        @delete="(p, t) => emit('delete', p, t)"
       />
     </template>
   </template>
@@ -104,15 +94,7 @@ function fileTitle(node: FileNodeT): string {
     >
       <IconFile class="size-4 shrink-0 text-muted-foreground" />
       <span class="flex-1 truncate">{{ node.name }}</span>
-      <span class="text-xs text-muted-foreground group-hover:hidden">{{ formatSize(node.size) }}</span>
-    </button>
-    <button
-      type="button"
-      class="mr-1 hidden shrink-0 rounded p-1 text-muted-foreground hover:text-destructive group-hover:block"
-      :title="`Delete ${node.path}`"
-      @click.stop="emit('delete', node.path, 'file')"
-    >
-      <IconTrash class="size-4" />
+      <span class="text-xs text-muted-foreground">{{ formatSize(node.size) }}</span>
     </button>
   </div>
 </template>

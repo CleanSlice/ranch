@@ -34,7 +34,11 @@ export class TemplateController {
   @ApiOperation({ summary: 'List all agent templates' })
   @ApiOkResponse({ type: [TemplateDto] })
   async findAll() {
-    return this.build.mark('template', await this.templateGateway.findAll());
+    return this.build.mark(
+      'template',
+      await this.templateGateway.findAll(),
+      undefined,
+    );
   }
 
   @Get(':id')
@@ -43,7 +47,7 @@ export class TemplateController {
   async findById(@Param('id') id: string) {
     const template = await this.templateGateway.findById(id);
     if (!template) throw new NotFoundException('Template not found');
-    return this.build.markOne('template', template);
+    return this.build.markOne('template', template, undefined);
   }
 
   @Post()
@@ -62,6 +66,7 @@ export class TemplateController {
     return this.build.markOne(
       'template',
       await this.templateGateway.update(id, dto),
+      undefined,
     );
   }
 
@@ -77,6 +82,7 @@ export class TemplateController {
     return this.build.markOne(
       'template',
       await this.templateGateway.setSkills(id, dto.skillIds),
+      undefined,
     );
   }
 
@@ -92,6 +98,7 @@ export class TemplateController {
     return this.build.markOne(
       'template',
       await this.templateGateway.setMcps(id, dto.mcpServerIds),
+      undefined,
     );
   }
 
@@ -107,6 +114,7 @@ export class TemplateController {
     return this.build.markOne(
       'template',
       await this.templateGateway.setToolAllowlist(id, dto.toolNames),
+      undefined,
     );
   }
 

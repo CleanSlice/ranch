@@ -829,6 +829,18 @@ describe('routes that name their resource elsewhere than in the path', () => {
       'hash-1',
     );
 
+    // The image the assistant's template is generated with.
+    expect(
+      await refused(() =>
+        c.settings.upsert('agent_defaults', 'image', dto, req(ADMIN)),
+      ),
+    ).toMatchObject({ statusCode: 403, code: ASSISTANT_BUILT_FROM_CODE });
+    expect(
+      await refused(() =>
+        c.settings.upsert('agent_defaults', 'cpu', dto, req(ADMIN)),
+      ),
+    ).toBe('went through');
+
     // Every other group is an Admin's, as before.
     expect(
       await refused(() =>
@@ -840,6 +852,107 @@ describe('routes that name their resource elsewhere than in the path', () => {
         c.settings.upsert('rancher', 'seeded_hash', dto, req(OWNER)),
       ),
     ).toBe('went through');
+  });
+});
+
+// ── A secret of the assistant's is not sent to anybody but the Owner ──
+
+describe('the secrets of the assistant’s ingredients are the Owner’s to read', () => {
+  const KEY = 'sk-of-llm-ranch';
+  const SERVER_KEY = 'key-of-mcp-owner-tools';
+  const WITHHELD = '(withheld: only the Owner can read it)';
+  const decoded = (env: { name: string; value: string }[]) =>
+    JSON.stringify(env) +
+    Buffer.from(
+      env.find((e) => e.name === 'MCP_SERVERS_B64')?.value ?? '',
+      'base64',
+    ).toString('utf8');
+
+  it('GET /llms and /llms/:id: an Admin gets a fixed placeholder for the assistant’s key, and an ordinary key as before', async () => {
+    const c = controllers();
+    const list = await c.llms.findAll(req(ADMIN));
+    const one = await c.llms.findById(OF_RANCH.llmCredential, req(ADMIN));
+    expect(JSON.stringify([list, one])).not.toContain(KEY);
+    expect(one).toMatchObject({ apiKey: WITHHELD, assistantDependency: true });
+    expect(
+      await c.llms.findById(OF_ALPHA.llmCredential, req(ADMIN)),
+    ).toMatchObject({ apiKey: 'sk-of-llm-alpha' });
+    // Nobody named is not the Owner.
+    expect(JSON.stringify(await c.llms.findAll())).not.toContain(KEY);
+    expect(
+      await c.llms.findById(OF_RANCH.llmCredential, req(OWNER)),
+    ).toMatchObject({ apiKey: KEY });
+  });
+
+  it('GET /mcp-servers and /mcp-servers/:id: the same for the credential of a server it is handed', async () => {
+    const c = controllers();
+    const list = await c.servers.findAll(req(ADMIN));
+    const one = await c.servers.findById(OF_RANCH.mcpServer, req(ADMIN));
+    expect(JSON.stringify([list, one])).not.toContain(SERVER_KEY);
+    expect(one).toMatchObject({ authValue: WITHHELD });
+    // A server with no credential has nothing to withhold.
+    expect(
+      await c.servers.findById(CLEANSLICE_MCP_ID, req(ADMIN)),
+    ).toMatchObject({ authValue: null });
+    expect(
+      await c.servers.findById(OF_ALPHA.mcpServer, req(ADMIN)),
+    ).toMatchObject({ authValue: 'key-of-mcp-alpha-tools' });
+    expect(
+      await c.servers.findById(OF_RANCH.mcpServer, req(OWNER)),
+    ).toMatchObject({ authValue: SERVER_KEY });
+  });
+
+  it('GET /agents/:id/env and /mcps of an ordinary agent that shares them: the assistant’s key and server credential are withheld', async () => {
+    // One key for the whole Ranch, and a server both templates attach.
+    await world.agents.update('agent-alpha', {
+      llmCredentialId: OF_RANCH.llmCredential,
+    });
+    await world.templates.setMcps(OF_ALPHA.template, [
+      OF_ALPHA.mcpServer,
+      OF_RANCH.mcpServer,
+    ]);
+    const alpha = (await world.agents.findById('agent-alpha'))!;
+    const preview = await world.workflows.previewAgentEnv(alpha);
+    // The preview does carry both, which is what makes this a leak.
+    expect(decoded(preview)).toContain(KEY);
+    expect(decoded(preview)).toContain(SERVER_KEY);
+
+    const admins = await world.build.envFor(alpha, preview, bearer(ADMIN));
+    expect(decoded(admins)).not.toContain(KEY);
+    expect(decoded(admins)).not.toContain(SERVER_KEY);
+    expect(admins.find((e) => e.name === 'LLM_API_KEY')!.value).toBe(WITHHELD);
+    // Its own server's credential, and everything else, is as it was.
+    expect(decoded(admins)).toContain('key-of-mcp-alpha-tools');
+    expect(admins.map((e) => e.name)).toEqual(preview.map((e) => e.name));
+    expect(await world.build.envFor(alpha, preview, bearer(OWNER))).toEqual(
+      preview,
+    );
+
+    const servers = await world.mcpResolver.resolveForAgent(alpha);
+    const read = await world.build.serversFor(servers, bearer(ADMIN));
+    expect(JSON.stringify(read)).not.toContain(SERVER_KEY);
+    expect(JSON.stringify(read)).toContain('key-of-mcp-alpha-tools');
+    expect(await world.build.serversFor(servers, bearer(OWNER))).toEqual(
+      servers,
+    );
+  });
+
+  it('an agent that shares nothing with the assistant: its preview is untouched for an Admin', async () => {
+    const alpha = (await world.agents.findById('agent-alpha'))!;
+    const preview = await world.workflows.previewAgentEnv(alpha);
+    const admins = await world.build.envFor(alpha, preview, bearer(ADMIN));
+    expect(admins.find((e) => e.name === 'LLM_API_KEY')!.value).toBe(
+      'sk-of-llm-alpha',
+    );
+    expect(decoded(admins)).toContain('key-of-mcp-alpha-tools');
+  });
+
+  it('the env preview never carries the agent’s service token, for anybody', async () => {
+    const ranch = (await world.agents.findAdmin())!;
+    const preview = await world.workflows.previewAgentEnv(ranch);
+    expect(preview.map((e) => e.name)).not.toContain('RANCH_API_TOKEN');
+    // The Ranch server's credential is the placeholder with nothing in it.
+    expect(decoded(preview)).not.toContain('TOKEN"');
   });
 });
 

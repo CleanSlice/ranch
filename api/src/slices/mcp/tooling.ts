@@ -901,6 +901,29 @@ function notedBuild(httpRequest: Request): INotedBuild | null {
 }
 
 /**
+ * The ids noted for this call, for a tool that withholds a SECRET of the
+ * assistant's ingredients from what it shows (an env preview that would
+ * carry the assistant's key through an agent that shares it). Null for the
+ * Owner and the assistant acting for itself, who read everything; `unknown`
+ * when the lookup failed, and the tool then withholds as if every id were
+ * the assistant's.
+ */
+export function assistantBuildFor(httpRequest: Request): {
+  unknown: boolean;
+  llmCredential: string[];
+  mcpServer: string[];
+} | null {
+  if (callerIsOwner(httpRequest)) return null;
+  const noted = notedBuild(httpRequest);
+  if (!noted) return null;
+  return {
+    unknown: noted.unknown,
+    llmCredential: [...noted.ids.llmCredential],
+    mcpServer: [...noted.ids.mcpServer],
+  };
+}
+
+/**
  * "The skill «deploy» is part of what Rancher, the Ranch assistant, is built
  * from. Only the Owner can change it." `thing` is the resource as the person
  * would name it, with its kind; `assistantName` only for a caller who has

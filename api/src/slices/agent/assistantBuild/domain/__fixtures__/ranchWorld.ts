@@ -800,6 +800,23 @@ export function ranchWorld() {
     }
   }
 
+  const workflowGateway = () =>
+    new CapturingWorkflowGateway(
+      { getArgoUrl: () => Promise.resolve('http://argo') } as never,
+      settings,
+      llms,
+      mcpResolver,
+      { getForAgent: () => Promise.resolve([]) } as never,
+      {
+        findAll: () =>
+          Promise.resolve([
+            { id: 'user-owner', role: UserRoleTypes.Owner, createdAt: AT },
+          ]),
+      } as never,
+    );
+  /** The service behind `GET /agents/:id/env` and `get_agent_env`. */
+  const workflows = new WorkflowService(workflowGateway(), settings);
+
   /**
    * Everything the assistant's next pod would be made of, as one string:
    * its workspace after the restart's resync, the skills written into it,
@@ -828,19 +845,7 @@ export function ranchWorld() {
         return Promise.resolve(bundles.length);
       },
     };
-    const gateway = new CapturingWorkflowGateway(
-      { getArgoUrl: () => Promise.resolve('http://argo') } as never,
-      settings,
-      llms,
-      mcpResolver,
-      { getForAgent: () => Promise.resolve([]) } as never,
-      {
-        findAll: () =>
-          Promise.resolve([
-            { id: 'user-owner', role: UserRoleTypes.Owner, createdAt: AT },
-          ]),
-      } as never,
-    );
+    const gateway = workflowGateway();
     const deploy = new AgentDeployService(
       agents,
       templates,
@@ -897,6 +902,7 @@ export function ranchWorld() {
     settings,
     build,
     mcpResolver,
+    workflows,
     assembled,
   };
 }

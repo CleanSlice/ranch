@@ -46,9 +46,8 @@ import {
   ISettingGateway,
   describeSettingCatalog,
   findSettingDefinition,
-  isOwnerOnlySettingGroup,
   nearestSettingDefinition,
-  OWNER_ONLY_SETTING_TEXT,
+  ownerOnlySettingRefusal,
 } from '#/setting/domain';
 import { IUsageGateway } from '#/usage/domain';
 import { IFileGateway } from '#/agent/file/domain';
@@ -1110,8 +1109,9 @@ export class RancherTool {
     requireOperator(httpRequest);
     // The bookkeeping of the assistant's template is the Owner's
     // (CLEAN-271): rewriting it makes the next start reseed the template.
-    if (isOwnerOnlySettingGroup(group) && !callerIsOwner(httpRequest)) {
-      return ok({ error: OWNER_ONLY_SETTING_TEXT, reason: OWNER_ONLY_REASON });
+    const ownerOnly = ownerOnlySettingRefusal(group, name);
+    if (ownerOnly && !callerIsOwner(httpRequest)) {
+      return ok({ error: ownerOnly, reason: OWNER_ONLY_REASON });
     }
     const saved = await this.settings.upsert(group, name, {
       value,

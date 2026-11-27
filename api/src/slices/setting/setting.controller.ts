@@ -18,9 +18,8 @@ import { Public } from '#/user/auth/guards';
 import {
   IInfraConfigGateway,
   ISettingGateway,
-  isOwnerOnlySettingGroup,
   OWNER_ONLY_SETTING_CODE,
-  OWNER_ONLY_SETTING_TEXT,
+  ownerOnlySettingRefusal,
 } from './domain';
 import { UpsertSettingDto } from './dtos';
 
@@ -83,7 +82,7 @@ export class SettingController {
     @Body() dto: UpsertSettingDto,
     @Req() req?: Request & { user?: IAuthTokenPayload },
   ) {
-    this.assertMayWrite(group, req);
+    this.assertMayWrite(group, name, req);
     const result = await this.gateway.upsert(group, name, dto);
     if (group === 'infrastructure') this.infraConfig.invalidate();
     return result;
@@ -96,27 +95,30 @@ export class SettingController {
     @Param('name') name: string,
     @Req() req?: Request & { user?: IAuthTokenPayload },
   ) {
-    this.assertMayWrite(group, req);
+    this.assertMayWrite(group, name, req);
     await this.gateway.delete(group, name);
     if (group === 'infrastructure') this.infraConfig.invalidate();
   }
 
   /**
-   * The `rancher` group is the bookkeeping of the Ranch assistant's
-   * template and is written by the Owner only (CLEAN-271,
-   * `ownerOnlySettings.ts`). Every other group is as it was.
+   * The `rancher` group (the bookkeeping of the Ranch assistant's template)
+   * and `agent_defaults.image` (the image that template is generated with)
+   * are written by the Owner only (CLEAN-271, `ownerOnlySettings.ts`).
+   * Every other setting is as it was.
    */
   private assertMayWrite(
     group: string,
+    name: string,
     req?: Request & { user?: IAuthTokenPayload },
   ): void {
-    if (!isOwnerOnlySettingGroup(group)) return;
+    const message = ownerOnlySettingRefusal(group, name);
+    if (!message) return;
     if (rolesAdmit([UserRoleTypes.Owner], heldRoles(req?.user))) return;
     throw new ForbiddenException({
       statusCode: 403,
       error: 'Forbidden',
       code: OWNER_ONLY_SETTING_CODE,
-      message: OWNER_ONLY_SETTING_TEXT,
+      message,
     });
   }
 }

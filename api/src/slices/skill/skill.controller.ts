@@ -53,7 +53,7 @@ export class SkillController {
   })
   @ApiOkResponse({ type: [SkillDto] })
   async findAll() {
-    return this.build.mark('skill', await this.gateway.findAll());
+    return this.build.mark('skill', await this.gateway.findAll(), undefined);
   }
 
   // The three static routes below sit above `:id` on purpose: NestJS matches
@@ -205,7 +205,7 @@ export class SkillController {
   async findById(@Param('id') id: string) {
     const record = await this.gateway.findById(id);
     if (!record) throw new NotFoundException('Skill not found');
-    return this.build.markOne('skill', record);
+    return this.build.markOne('skill', record, undefined);
   }
 
   @Get(':id/agents')

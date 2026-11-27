@@ -67,7 +67,10 @@ export class KnowledgeController {
       page: dto.page,
       perPage: dto.perPage,
     });
-    return { ...page, items: await this.build.mark('knowledge', page.items) };
+    return {
+      ...page,
+      items: await this.build.mark('knowledge', page.items, undefined),
+    };
   }
 
   @Get('status')
@@ -176,6 +179,7 @@ export class KnowledgeController {
     return this.build.markOne(
       'knowledge',
       await this.service.getWithDerivedStatus(id),
+      undefined,
     );
   }
 
@@ -195,7 +199,11 @@ export class KnowledgeController {
   })
   async update(@Param('id') id: string, @Body() dto: UpdateKnowledgeDto) {
     await this.requireEnabled();
-    return this.build.markOne('knowledge', await this.service.update(id, dto));
+    return this.build.markOne(
+      'knowledge',
+      await this.service.update(id, dto),
+      undefined,
+    );
   }
 
   @Delete(':id')

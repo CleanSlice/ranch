@@ -48,6 +48,61 @@ export function builtFromForbidden(
 type Bearer = Pick<IAuthTokenPayload, 'sub' | 'roles'> | null | undefined;
 
 /**
+ * What stands where a secret of the assistant's ingredients would be, for
+ * anybody but the Owner. A fixed string: never a prefix, a suffix or the
+ * length of the real value.
+ */
+export const WITHHELD_SECRET = '(withheld: only the Owner can read it)';
+
+/** The field of each kind that holds a secret. */
+const SECRET_FIELD: Partial<Record<AssistantIngredientTypes, string>> = {
+  llmCredential: 'apiKey',
+  mcpServer: 'authValue',
+};
+
+/** `row` with its secret field replaced, when it holds one. */
+function withheld<T extends object>(kind: AssistantIngredientTypes, row: T): T {
+  const field = SECRET_FIELD[kind];
+  if (!field) return row;
+  const value = (row as Record<string, unknown>)[field];
+  if (typeof value !== 'string' || value === '') return row;
+  return { ...row, [field]: WITHHELD_SECRET };
+}
+
+/** One entry of `MCP_SERVERS_B64`, as much of it as is read here. */
+interface IRuntimeServer {
+  id?: unknown;
+  authValue?: unknown;
+}
+
+/**
+ * `MCP_SERVERS_B64` with the credential of each server in `ids` withheld.
+ * The value is base64 of the JSON the pod boots with; a value that does not
+ * decode to a list is withheld whole rather than passed on unread.
+ */
+export function withholdServerAuth(
+  encoded: string,
+  ids: ReadonlySet<string>,
+): string {
+  let servers: unknown;
+  try {
+    servers = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+  } catch {
+    return WITHHELD_SECRET;
+  }
+  if (!Array.isArray(servers)) return WITHHELD_SECRET;
+  const masked = (servers as IRuntimeServer[]).map((server) =>
+    typeof server?.id === 'string' &&
+    ids.has(server.id) &&
+    typeof server.authValue === 'string' &&
+    server.authValue !== ''
+      ? { ...server, authValue: WITHHELD_SECRET }
+      : server,
+  );
+  return Buffer.from(JSON.stringify(masked)).toString('base64');
+}
+
+/**
  * What the Ranch assistant is built from, and who may change it (CLEAN-271).
  *
  * The assistant (the agent with `isAdmin`) is the Owner's alone: its row,
@@ -153,27 +208,106 @@ export class AssistantBuildService implements IAssistantBuildResolver {
   }
 
   /**
-   * `rows` with `assistantDependency` on each: what tells a console which
-   * resources to show read-only to anybody but the Owner. The same for every
-   * viewer, the Owner included; who may write is the role's to say.
+   * `rows` as `viewer` reads them: `assistantDependency` on each, which
+   * tells a console what to show read-only to anybody but the Owner, and the
+   * secret of each ingredient withheld from anybody but the Owner.
+   *
+   * The mark is the same for every viewer. The secret is not: the key the
+   * assistant runs on and the credential of a server it is handed were sent
+   * in full to every Admin who listed credentials or servers (CLEAN-271).
+   * Not being able to change a key is little use while one can read it. An
+   * ordinary credential or server is sent as before: an Admin manages it.
+   *
+   * `viewer` is required on purpose: a caller that forgot it would send
+   * the secret.
    */
   async mark<T extends { id: string }>(
     kind: AssistantIngredientTypes,
     rows: readonly T[],
+    viewer: Bearer,
   ): Promise<(T & { assistantDependency: boolean })[]> {
     const built = new Set((await this.ingredients())[kind]);
-    return rows.map((row) => ({
-      ...row,
-      assistantDependency: built.has(row.id),
-    }));
+    const owner = AssistantBuildService.isOwner(viewer);
+    return rows.map((row) => {
+      const assistantDependency = built.has(row.id);
+      return {
+        ...(assistantDependency && !owner ? withheld(kind, row) : row),
+        assistantDependency,
+      };
+    });
   }
 
   async markOne<T extends { id: string }>(
     kind: AssistantIngredientTypes,
     row: T,
+    viewer: Bearer,
   ): Promise<T & { assistantDependency: boolean }> {
-    return (await this.mark(kind, [row]))[0];
+    return (await this.mark(kind, [row], viewer))[0];
   }
+
+  /**
+   * The env preview of `agent` as `viewer` reads it. An ordinary agent may
+   * run on the credential the assistant runs on, or be handed a server the
+   * assistant is handed (one key for the whole Ranch is the common case):
+   * its preview would then carry the assistant's secret to whoever manages
+   * that agent. For anybody but the Owner those values are withheld; the
+   * rest of the preview is as it was.
+   */
+  async envFor<T extends { name: string; value: string }>(
+    agent: { llmCredentialId: string | null },
+    env: readonly T[],
+    viewer: Bearer,
+  ): Promise<T[]> {
+    if (AssistantBuildService.isOwner(viewer)) return [...env];
+    return withholdEnv(agent, env, await this.ingredients());
+  }
+
+  /**
+   * The servers of an agent as a person reads them: the credential of one
+   * the assistant is handed is withheld from anybody but the Owner. Not for
+   * the runtime reading its own list, which needs the values.
+   */
+  async serversFor<T extends { id: string; authValue: string | null }>(
+    servers: readonly T[],
+    viewer: Bearer,
+  ): Promise<T[]> {
+    if (AssistantBuildService.isOwner(viewer)) return [...servers];
+    const built = new Set((await this.ingredients()).mcpServer);
+    return servers.map((server) =>
+      built.has(server.id) ? withheld('mcpServer', server) : server,
+    );
+  }
+}
+
+/** The names of the env vars that carry the model credential's key. */
+const LLM_KEY_VARS = new Set(['LLM_API_KEY', 'LLM_AUX_API_KEY']);
+
+/**
+ * `env` with what belongs to the assistant's ingredients withheld: the key,
+ * when `agent` runs on the assistant's credential, and inside
+ * `MCP_SERVERS_B64` the credential of each server the assistant is handed.
+ * Pure, so the tool that shows the same preview applies the same cut from
+ * the ids the MCP handler noted.
+ */
+export function withholdEnv<T extends { name: string; value: string }>(
+  agent: { llmCredentialId: string | null },
+  env: readonly T[],
+  build: Pick<IAssistantBuild, 'llmCredential' | 'mcpServer'>,
+): T[] {
+  const sharesKey =
+    agent.llmCredentialId !== null &&
+    build.llmCredential.includes(agent.llmCredentialId);
+  const servers = new Set(build.mcpServer);
+  return env.map((entry) => {
+    if (!entry.value) return entry;
+    if (sharesKey && LLM_KEY_VARS.has(entry.name)) {
+      return { ...entry, value: WITHHELD_SECRET };
+    }
+    if (entry.name === 'MCP_SERVERS_B64') {
+      return { ...entry, value: withholdServerAuth(entry.value, servers) };
+    }
+    return entry;
+  });
 }
 
 function unique(ids: readonly (string | null | undefined)[]): string[] {

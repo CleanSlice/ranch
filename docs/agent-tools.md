@@ -623,6 +623,7 @@ What a restart assembles (`AgentDeployService.restartAgent`,
 | Its model credential | `LLM_*` | the Owner |
 | Its knowledge bases and their documents | what `query_knowledge` retrieves into its turns | the Owner |
 | `rancher.seeded_hash` | a changed hash makes the next API start wipe and reseed the Rancher template | the Owner (the `rancher` setting group) |
+| `agent_defaults.image` | the image `RancherService.ensureTemplate` gives the Rancher template when the Owner generates it; read nowhere else | the Owner (that one key) |
 | The settings every pod is built with: `integrations.*` (hub address and key, bucket, S3 endpoint and keys, `ranch_api_url`, secret provider), `infrastructure.*` | env of every pod | **an Admin still**: see "Left open" below |
 
 Which resources those are is read off the rows at the moment of the call
@@ -663,7 +664,7 @@ for itself are noted nothing and refused nothing.
 | `update_mcp_server`, `delete_mcp_server` | a server its template attaches, and each injected built-in |
 | `update_llm`, `delete_llm` | its credential |
 | `update_knowledge`, `set_knowledge_reader_access`, `index_knowledge`, `delete_knowledge`, and the five source tools | its knowledge bases, the template's defaults included |
-| `upsert_setting`, `delete_setting` | the `rancher` group |
+| `upsert_setting`, `delete_setting` | the `rancher` group, and `agent_defaults.image` |
 
 **Binding is a write.** A new skill, server, credential or base is an
 Admin's to create: it has a new id and is attached to nothing. Making it the
@@ -683,6 +684,30 @@ one that names it elsewhere calls `AssistantBuildService.assertMayChange`.
 `assistantDependency`, and the management console shows such a resource
 read-only with one line ("Part of what Rancher, the Ranch assistant, is
 built from: only the Owner can change it.", `useBuiltFrom`).
+
+**Its secrets are the Owner's to read.** Not being able to change a key is
+little use while one can read it, and the routes sent both in full: the key
+of the credential the assistant runs on (`GET /llms`, `/llms/:id`) and the
+credential of a server it is handed (`GET /mcp-servers`, `/mcp-servers/:id`).
+For anybody but the Owner those two fields of an ingredient hold
+`WITHHELD_SECRET`, a fixed string, never a part or the length of the value
+(`AssistantBuildService.mark`, which takes the viewer and will not compile
+without one). The same cut is made where an ordinary agent carries them:
+`GET /agents/:id/env` and `get_agent_env` of an agent that runs on the
+assistant's credential or is handed one of its servers (`LLM_API_KEY`, and
+inside `MCP_SERVERS_B64`, which no name-based mask sees), and
+`GET /agents/:id/mcps` read by a person. The runtime reading its own list
+gets it whole. An ordinary credential or server is sent to an Admin as
+before: the console's edit forms are filled from it. The tools never showed
+either field (`stripSecrets`). The assistant's service token is minted at
+deploy and written into the pod's env only: no route or tool returns it,
+the env preview is built with an empty token, and the Ranch server's row
+holds the placeholder `${RANCH_API_TOKEN}`, not a token.
+
+**The platform upgrade is not an ingredient.** `POST /upgrade` and
+`run_upgrade` (Owner, Admin) pull `origin/main` into a local checkout and
+are refused in deployed mode. They change when a release lands, not what is
+in it: nothing a caller passes reaches the assistant.
 
 **Shared resources.** The rule follows the resource, not the agent: one
 credential for every agent, the assistant included, is the Owner's to edit

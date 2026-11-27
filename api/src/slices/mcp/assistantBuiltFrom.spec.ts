@@ -57,6 +57,7 @@ import {
   SPARE,
   ranchWorld,
 } from '#/agent/assistantBuild/domain/__fixtures__/ranchWorld';
+import { AgentAdminTool } from '#/agent/agent/agentAdmin.tool';
 import { TemplateAdminTool } from '#/agent/template/templateAdmin.tool';
 import { ManifestGateway } from '#/agent/templateInstall/data/manifest.gateway';
 import { TemplateInstallService } from '#/agent/templateInstall/domain/templateInstall.service';
@@ -263,6 +264,22 @@ const instances = new Map<unknown, unknown>([
     ),
   ],
   [TemplateInstallTool, new TemplateInstallTool(installs, world.templates)],
+  [
+    AgentAdminTool,
+    new AgentAdminTool(
+      world.agents,
+      agentDeploy as never,
+      unused('agentStatus'),
+      unused('pods'),
+      world.workflows,
+      unused('files'),
+      unused('mcpResolver'),
+      permission,
+      access,
+      unused('pins'),
+      unused('toolState'),
+    ),
+  ],
   [
     SkillTool,
     new SkillTool(world.skills, github as never, unused('skillOrder')),
@@ -1106,6 +1123,53 @@ describe('an Admin cannot take over the key an ingredient is found by', () => {
   });
 });
 
+// ── Reading is not changing, except for a secret ─────────────
+
+describe('get_agent_env of an agent that shares an ingredient with the assistant', () => {
+  const SERVER_KEY = 'key-of-mcp-owner-tools';
+  const servers = (said: string) => {
+    const env = JSON.parse(said) as { name: string; value: string }[];
+    return Buffer.from(
+      env.find((e) => e.name === 'MCP_SERVERS_B64')!.value,
+      'base64',
+    ).toString('utf8');
+  };
+
+  beforeEach(async () => {
+    await world.agents.update(ALPHA, {
+      llmCredentialId: OF_RANCH.llmCredential,
+    });
+    await world.templates.setMcps(OF_ALPHA.template, [
+      OF_ALPHA.mcpServer,
+      OF_RANCH.mcpServer,
+    ]);
+  });
+
+  it('an Admin is shown the agent’s env without the credential of the server the assistant is handed', async () => {
+    const said = await asAdmin('get_agent_env', { id: ALPHA });
+    expect(said).not.toContain('sk-of-llm-ranch');
+    expect(servers(said)).not.toContain(SERVER_KEY);
+    expect(servers(said)).toContain('(withheld: only the Owner can read it)');
+    // The agent's own server is as the tool always showed it.
+    expect(servers(said)).toContain('key-of-mcp-alpha-tools');
+  });
+
+  it('the Owner is shown it as before', async () => {
+    expect(servers(await asOwner('get_agent_env', { id: ALPHA }))).toContain(
+      SERVER_KEY,
+    );
+  });
+
+  it('a lookup that failed withholds the servers whole', async () => {
+    buildResolver = {
+      ingredients: () => Promise.reject(new Error('database away')),
+    };
+    const said = await asAdmin('get_agent_env', { id: ALPHA });
+    expect(said).not.toContain(Buffer.from(SERVER_KEY).toString('base64'));
+    expect(said).toContain('(withheld: only the Owner can read it)');
+  });
+});
+
 // ── The bulk tools ───────────────────────────────────────────
 
 describe('the bulk restarts cannot push anything into the assistant', () => {
@@ -1168,6 +1232,46 @@ describe('the `rancher` settings are the Owner’s', () => {
       }),
     ).toBe(REFUSAL);
     expect(everything()).toBe(rows);
+  });
+
+  it('agent_defaults.image is the image the assistant’s template is generated with: the Owner’s too', async () => {
+    const rows = everything();
+    const refused = json({
+      error:
+        '«agent_defaults.image» decides what the Ranch assistant is built ' +
+        'from. Only the Owner can change it.',
+      reason: 'owner_only',
+    });
+    expect(
+      await asAdmin('upsert_setting', {
+        group: 'agent_defaults',
+        name: 'image',
+        value: 'attacker/runtime:latest',
+      }),
+    ).toBe(refused);
+    expect(
+      await asAdmin('delete_setting', {
+        group: 'agent_defaults',
+        name: 'image',
+        confirm: true,
+      }),
+    ).toBe(refused);
+    expect(everything()).toBe(rows);
+    // The rest of that group is an Admin's.
+    expect(
+      await asAdmin('upsert_setting', {
+        group: 'agent_defaults',
+        name: 'cpu',
+        value: '1000m',
+      }),
+    ).not.toContain('owner_only');
+    expect(
+      await asOwner('upsert_setting', {
+        group: 'agent_defaults',
+        name: 'image',
+        value: 'ghcr.io/cleanslice/runtime:1.2.3',
+      }),
+    ).not.toContain('owner_only');
   });
 
   it('every other group is an Admin’s as before, and the Owner writes this one', async () => {
@@ -1260,7 +1364,7 @@ function writeTools(source: string): { name: string; asks: boolean }[] {
     }
   }
   const ASKS =
-    /builtFromRefusal\(|isBuiltIntoAssistant\(|this\.builtFrom\(|this\.upsertSkill\(\s*httpRequest|isOwnerOnlySettingGroup\(/;
+    /builtFromRefusal\(|isBuiltIntoAssistant\(|this\.builtFrom\(|this\.upsertSkill\(\s*httpRequest|ownerOnlySettingRefusal\(/;
   return members.flatMap((member) => {
     if (!member.includes('@Tool({')) return [];
     if (!/effect: 'write'/.test(member)) return [];

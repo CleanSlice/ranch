@@ -7,7 +7,10 @@ import {
   Body,
   Param,
   NotFoundException,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
 import { ChangesAssistantIngredient } from '#/agent/assistantBuild/guards';
 import { AssistantBuildService } from '#/agent/assistantBuild/domain/assistantBuild.service';
@@ -31,17 +34,26 @@ export class LlmController {
   @Get()
   @ApiOperation({ summary: 'List all LLM credentials' })
   @ApiOkResponse({ type: [LlmCredentialDto] })
-  async findAll() {
-    return this.build.mark('llmCredential', await this.gateway.findAll());
+  async findAll(@Req() req?: Request & { user?: IAuthTokenPayload }) {
+    // The key of the credential the Ranch assistant runs on is withheld
+    // from anybody but the Owner (CLEAN-271).
+    return this.build.mark(
+      'llmCredential',
+      await this.gateway.findAll(),
+      req?.user,
+    );
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get LLM credential by ID' })
   @ApiOkResponse({ type: LlmCredentialDto })
-  async findById(@Param('id') id: string) {
+  async findById(
+    @Param('id') id: string,
+    @Req() req?: Request & { user?: IAuthTokenPayload },
+  ) {
     const record = await this.gateway.findById(id);
     if (!record) throw new NotFoundException('LLM credential not found');
-    return this.build.markOne('llmCredential', record);
+    return this.build.markOne('llmCredential', record, req?.user);
   }
 
   @Post()

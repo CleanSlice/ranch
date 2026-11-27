@@ -1,3 +1,4 @@
+import { noAssistantBuild } from '#/agent/assistantBuild/domain/__fixtures__/assistantBuild';
 import type { Request } from 'express';
 import {
   BadRequestException,
@@ -85,6 +86,7 @@ function build(opts: { resolved?: IMcpServerData[]; agent?: unknown } = {}) {
     openAccess(),
     noPins(),
     toolState as never,
+    noAssistantBuild(),
   );
   return { controller, mcpResolver, agentGateway, toolState };
 }
@@ -229,6 +231,7 @@ function buildForLimits(
     openAccess(),
     noPins(),
     { summary: () => null, detail: () => null } as never,
+    noAssistantBuild(),
   );
   return { controller, agentGateway, agentLimits, deploy, order, userGateway };
 }

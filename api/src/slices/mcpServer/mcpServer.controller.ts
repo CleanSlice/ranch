@@ -8,8 +8,11 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -40,8 +43,14 @@ export class McpServerController {
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
   @ApiOperation({ summary: 'List all MCP servers registered in this Ranch.' })
   @ApiOkResponse({ type: [McpServerDto] })
-  async findAll() {
-    return this.build.mark('mcpServer', await this.gateway.findAll());
+  async findAll(@Req() req?: Request & { user?: IAuthTokenPayload }) {
+    // The credential of a server the Ranch assistant is handed is withheld
+    // from anybody but the Owner (CLEAN-271).
+    return this.build.mark(
+      'mcpServer',
+      await this.gateway.findAll(),
+      req?.user,
+    );
   }
 
   // Before `:id`, or Express reads "tools" as an id.
@@ -72,10 +81,13 @@ export class McpServerController {
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
   @ApiOperation({ summary: 'Get an MCP server by id.' })
   @ApiOkResponse({ type: McpServerDto })
-  async findById(@Param('id') id: string) {
+  async findById(
+    @Param('id') id: string,
+    @Req() req?: Request & { user?: IAuthTokenPayload },
+  ) {
     const server = await this.gateway.findById(id);
     if (!server) throw new NotFoundException('MCP server not found');
-    return this.build.markOne('mcpServer', server);
+    return this.build.markOne('mcpServer', server, req?.user);
   }
 
   @Post()

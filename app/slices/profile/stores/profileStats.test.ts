@@ -30,13 +30,27 @@ function stats(period: StatsPeriod, conversations: number): IPersonalStats {
       previousFrom: new Date('2026-09-29T00:00:00.000Z'),
     },
     notes: [],
+    // Summaries off, as on an installation that produces none: every part
+    // read from them is zero or empty.
+    summaries: { enabled: false, topicsReady: false, summarised: 0, waiting: 0, tooShort: 0 },
     board: {
       conversations: { value: conversations, previous: 0 },
       messages: { value: conversations * 3, previous: 0 },
       agents: { value: 1, reachable: 2 },
+      resolved: { resolved: 0, summarised: 0 },
     },
     activity: { days: [], weekdays: [0, 0, 0, 0, 0, 0, 0], activeDays: 0 },
     agents: [],
+    topics: [],
+    outcome: {
+      resolved: 0,
+      open: 0,
+      unknown: 0,
+      notSummarised: 0,
+      sentiment: { positive: 0, neutral: 0, mixed: 0, negative: 0 },
+      languages: [],
+    },
+    openQuestions: { items: [], more: 0 },
     help: {
       cited: { conversations: 0, sources: [] },
       handovers: { total: 0, answered: 0, topPeer: null },
@@ -57,6 +71,7 @@ function installation(period: StatsPeriod, modelCalls: number): IInstallationSta
     },
     reach: { limited: false, agents: 3, ownerOnly: [] },
     notes: [],
+    summaries: { enabled: false },
     board: {
       tokens: { input: modelCalls * 1000, output: modelCalls * 100 },
       calls: { value: modelCalls, previous: 0 },

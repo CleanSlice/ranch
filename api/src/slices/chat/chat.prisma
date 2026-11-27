@@ -30,6 +30,18 @@ model ChatSession {
   summary          String?   @db.Text                // LLM gist (Phase 4)
   summaryAt        DateTime?
   insights         Json?                             // { topics[], sentiment, resolved, language }
+  // What version 2 of the summary adds (CLEAN-270, spec 038 research R7), as
+  // columns so that a period view reads them without opening the Json.
+  // `insights` is still written beside them, in its old shape, for the admin
+  // console's chat pages.
+  outcome          String?                           // resolved | open | unknown; null while there is no summary
+  question         String?                           // the person's main question: one line, at most 120 chars, their language
+  topicIds         String[]  @default([])            // ChatTopic.id of each clear fit, at most two
+  // Which prompt wrote the summary: 0 none, 1 before CLEAN-270 (free-text
+  // topics, a boolean for resolved, no question), 2 with question, outcome
+  // and the vocabulary. The batch takes a conversation below the current
+  // version again, so the number is what moves old summaries forward.
+  insightVersion   Int       @default(0)
   archived         Boolean   @default(false)         // *.archived.jsonl sessions get their own row
   // When the settle pass last read this conversation's transcript into
   // ChatActivityHour (CLEAN-261). Null = due: it never was read, or something

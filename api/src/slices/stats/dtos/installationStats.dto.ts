@@ -15,6 +15,7 @@ import {
   IInstallationIncident,
   IInstallationModel,
   IInstallationQuality,
+  IInstallationSummaries,
   IInstallationReach,
   IInstallationRefusals,
   IInstallationStats,
@@ -345,10 +346,11 @@ export class InstallationStatsHealthDto implements IInstallationHealth {
   refusals: InstallationStatsRefusalsDto[];
 }
 
-// `open` and `summarised` (the share of conversations left open) are not in
-// this answer yet: they are read from a conversation's summary of version 2,
-// which ships in a later pull request. Until then the page shows that
-// column as "not counted yet". Nothing here reads `insights` meanwhile.
+// `open` and `summarised` (the share of conversations left open) are read
+// from the outcome a version 2 summary stores (CLEAN-270), and are always in
+// the row. Where the installation produces no summaries both are 0 and
+// `summaries.enabled` is false: the page decides by that field, never by a
+// zero, between "none was left open" and "not counted".
 export class InstallationStatsQualityDto implements IInstallationQuality {
   @ApiProperty() agentId: string;
 
@@ -373,6 +375,40 @@ export class InstallationStatsQualityDto implements IInstallationQuality {
     example: 31,
   })
   rated: number;
+
+  @ApiProperty({
+    description:
+      'Of `summarised`, the conversations whose summary says the person ' +
+      'was left without what they asked for. A summary that could not ' +
+      'tell is not among them. 0 when `summaries.enabled` is false: not ' +
+      'counted, which is not "none".',
+    example: 21,
+  })
+  open: number;
+
+  @ApiProperty({
+    description:
+      'Of `conversations`, the ones that have a summary: what the open ' +
+      'share is a share of. Show it with the share: 1 open of 3 summarised ' +
+      'and 100 of 300 are the same share and not the same news. 0 when ' +
+      '`summaries.enabled` is false, and while no conversation of the ' +
+      'agent has a summary: no share to show either way.',
+    example: 300,
+  })
+  summarised: number;
+}
+
+export class InstallationStatsSummariesDto implements IInstallationSummaries {
+  @ApiProperty({
+    description:
+      'Whether this installation produces conversation summaries: the ' +
+      'batch is scheduled and has a credential it can use. False: `open` ' +
+      'and `summarised` of every `quality` row are 0 because nothing was ' +
+      'counted. Say "summaries are not produced" there, never "no ' +
+      'conversation was left open".',
+    example: true,
+  })
+  enabled: boolean;
 }
 
 export class InstallationStatsChannelDto implements IInstallationChannel {
@@ -413,6 +449,14 @@ export class InstallationStatsDto implements IInstallationStats {
       'or the previous period. Empty when every figure covers both.',
   })
   notes: InstallationStatsNoteDto[];
+
+  @ApiProperty({
+    type: InstallationStatsSummariesDto,
+    description:
+      'Whether conversation summaries are produced here: what the open ' +
+      'share of `quality` is read from.',
+  })
+  summaries: InstallationStatsSummariesDto;
 
   @ApiProperty({ type: InstallationStatsBoardDto })
   board: InstallationStatsBoardDto;
@@ -461,8 +505,9 @@ export class InstallationStatsDto implements IInstallationStats {
     type: [InstallationStatsQualityDto],
     description:
       'Per agent with a conversation or a rating in the period: how many ' +
-      'conversations, and how its answers were rated. Most conversations ' +
-      'first.',
+      'conversations, how its answers were rated, and how many of the ' +
+      'conversations that have a summary were left open. Most ' +
+      'conversations first.',
   })
   quality: InstallationStatsQualityDto[];
 

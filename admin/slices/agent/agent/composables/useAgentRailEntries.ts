@@ -78,14 +78,19 @@ export const TONE: Record<AgentStatusTypes, IRailStatusTone> = {
   },
 };
 
-/** 1–2 uppercase letters; falls back to the id when the name is empty. */
+/**
+ * 1–2 uppercase letters; falls back to the id when the name is empty. An
+ * initial is the word's first code point, not its first UTF-16 unit: a name
+ * that starts with an emoji gave half a character (CLEAN-270; the app
+ * console's twin is `app/slices/agent/utils/agentStatus.ts`).
+ */
 export function agentInitials(name: string, id: string): string {
   const source = name?.trim() || id;
   return (
     source
       .split(/\s+/)
       .filter(Boolean)
-      .map((part) => part[0]?.toUpperCase() ?? '')
+      .map((part) => Array.from(part)[0]?.toUpperCase() ?? '')
       .slice(0, 2)
       .join('') || '?'
   );

@@ -10,11 +10,13 @@ import {
   IChatFeedbackData,
   IChatFilter,
   IChatInsightGate,
-  IChatInsights,
   IChatListResult,
   IChatReconcileInput,
   IChatSessionData,
+  IChatSessionOutcome,
   IChatSessionRef,
+  IChatSummaryData,
+  INSIGHT_VERSION,
   IUpsertChatFeedback,
   hourOf,
 } from '../domain';
@@ -288,18 +290,44 @@ export class ChatGateway extends IChatGateway {
   async findEligibleForInsight(
     gate: IChatInsightGate,
   ): Promise<IChatSessionData[]> {
-    const settledBefore = new Date(Date.now() - gate.cooldownMs);
+    const now = Date.now();
+    const settledBefore = new Date(now - gate.cooldownMs);
+    const resummarizeSince = new Date(now - gate.resummarizeWindowMs);
     const records = await this.prisma.chatSession.findMany({
       where: {
         channel: { not: 'internal' },
-        archived: false,
+        // No condition on `archived` (CLEAN-270): a conversation closed
+        // with New chat before its hour of quiet had passed was archived
+        // unsummarised, and `archived: false` here kept it so for good.
         userMessageCount: { gte: gate.minUserMessages },
         lastMessageAt: { lt: settledBefore },
-        // New activity since the last summary (null = never summarized).
         OR: [
+          // New activity since the last summary (null = never summarized).
           { summaryAt: null },
           { lastMessageAt: { gt: this.prisma.chatSession.fields.summaryAt } },
+          // A summary by an older prompt, for a conversation recent enough
+          // to be on a page that reads what the current prompt adds. Below
+          // the version, not "equal to 1": a summary the previous release
+          // wrote between the migration and its own replacement has a time
+          // and version 0.
+          {
+            insightVersion: { lt: INSIGHT_VERSION },
+            lastMessageAt: { gte: resummarizeSince },
+          },
         ],
+        // The ones the batch set aside and no longer reads in order to skip
+        // (CLEAN-270, review). By id and last message together: with the id
+        // alone a conversation would stay left out after the person wrote
+        // in it again, which is when it is to be tried again. The caller
+        // bounds the list; each entry is two values of the statement.
+        ...(gate.exclude?.length
+          ? {
+              NOT: gate.exclude.map(({ id, lastMessageAt }) => ({
+                id,
+                lastMessageAt,
+              })),
+            }
+          : {}),
       },
       orderBy: { lastMessageAt: 'desc' },
       take: gate.limit,
@@ -307,16 +335,16 @@ export class ChatGateway extends IChatGateway {
     return records.map((r) => this.mapper.toEntity(r));
   }
 
-  async saveInsights(
-    id: string,
-    summary: string,
-    insights: IChatInsights,
-  ): Promise<void> {
+  async saveInsights(id: string, data: IChatSummaryData): Promise<void> {
     await this.prisma.chatSession.update({
       where: { id },
       data: {
-        summary,
-        insights: insights as unknown as Prisma.InputJsonValue,
+        summary: data.summary,
+        question: data.question,
+        outcome: data.outcome,
+        topicIds: data.topicIds,
+        insightVersion: INSIGHT_VERSION,
+        insights: data.insights as unknown as Prisma.InputJsonValue,
         summaryAt: new Date(),
       },
     });
@@ -370,14 +398,10 @@ export class ChatGateway extends IChatGateway {
     ids: readonly string[],
     agentScope?: IChatAgentScope,
   ): Promise<IChatSessionRef[]> {
-    const wanted = [...new Set(ids)];
     const found: IChatSessionRef[] = [];
-    for (let start = 0; start < wanted.length; start += SESSION_ID_CHUNK) {
+    for (const where of this.byIdInParts(ids, agentScope)) {
       const records = await this.prisma.chatSession.findMany({
-        where: {
-          id: { in: wanted.slice(start, start + SESSION_ID_CHUNK) },
-          ...(agentScope ? { agentId: agentScope } : {}),
-        },
+        where,
         // Not the preview, the summary or the insights: a statistics view
         // shows nothing of what was said.
         select: { id: true, agentId: true, lastMessageAt: true },
@@ -385,6 +409,55 @@ export class ChatGateway extends IChatGateway {
       found.push(...records);
     }
     return found;
+  }
+
+  async findOutcomesForSessions(
+    ids: readonly string[],
+    agentScope?: IChatAgentScope,
+  ): Promise<IChatSessionOutcome[]> {
+    const found: IChatSessionOutcome[] = [];
+    for (const where of this.byIdInParts(ids, agentScope)) {
+      const records = await this.prisma.chatSession.findMany({
+        where,
+        // What the summary judged, and what says whether one is to come.
+        // Not `summary`, the preview or the title. `insights` is read for
+        // the tone and the language, which have no column, and the mapper
+        // passes on those two and nothing else of it.
+        select: {
+          id: true,
+          agentId: true,
+          lastMessageAt: true,
+          userMessageCount: true,
+          summaryAt: true,
+          outcome: true,
+          question: true,
+          topicIds: true,
+          insights: true,
+        },
+      });
+      found.push(...records.map((r) => this.mapper.toOutcome(r)));
+    }
+    return found;
+  }
+
+  /**
+   * "These conversations, of these agents" as one condition per
+   * `SESSION_ID_CHUNK` ids, each id once: a lookup by primary key, as large
+   * as the list it is given and no larger.
+   */
+  private byIdInParts(
+    ids: readonly string[],
+    agentScope?: IChatAgentScope,
+  ): Prisma.ChatSessionWhereInput[] {
+    const wanted = [...new Set(ids)];
+    const parts: Prisma.ChatSessionWhereInput[] = [];
+    for (let start = 0; start < wanted.length; start += SESSION_ID_CHUNK) {
+      parts.push({
+        id: { in: wanted.slice(start, start + SESSION_ID_CHUNK) },
+        ...(agentScope ? { agentId: agentScope } : {}),
+      });
+    }
+    return parts;
   }
 
   async countFeedbackByAuthor(

@@ -4003,6 +4003,31 @@ export const ChatSessionDtoSchema = {
       nullable: true,
       description: "topics/sentiment/resolved/language",
     },
+    outcome: {
+      type: "string",
+      enum: ["resolved", "open", "unknown"],
+      nullable: true,
+      description:
+        "How the conversation ended, by its latest summary. `unknown`: the summary could not tell. Null while there is no summary.",
+      example: "resolved",
+    },
+    question: {
+      type: "string",
+      nullable: true,
+      maxLength: 120,
+      description:
+        "The person’s main question, one line, in their language. Null while there is no summary, or when they asked for nothing.",
+      example: "How do I change my plan?",
+    },
+    topics: {
+      description:
+        "Labels of the topics the summary assigned, at most two. On `/me/chats` in the language of `Accept-Language` when the console has it, English otherwise; on `/chats` always English.",
+      example: ["Billing"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
     archived: {
       type: "boolean",
     },
@@ -6676,7 +6701,14 @@ export const StatsNoteDtoSchema = {
       type: "string",
       description:
         "Which figure is not complete over the whole of the requested and the previous period.",
-      enum: ["activity", "ratings", "citations", "handovers"],
+      enum: [
+        "activity",
+        "ratings",
+        "citations",
+        "handovers",
+        "outcomes",
+        "topics",
+      ],
       example: "activity",
     },
     completeSince: {
@@ -6688,6 +6720,43 @@ export const StatsNoteDtoSchema = {
     },
   },
   required: ["figure", "completeSince"],
+} as const;
+
+export const MyStatsSummariesDtoSchema = {
+  type: "object",
+  properties: {
+    enabled: {
+      type: "boolean",
+      description:
+        "Whether this installation produces conversation summaries. False: the three counts here, `board.resolved`, `resolved` and `summarised` of every agent and all of `outcome` are 0, and `topics` and `openQuestions.items` are empty, because nothing about summaries is counted. Show one card in their place, not zeros.",
+      example: true,
+    },
+    topicsReady: {
+      type: "boolean",
+      description:
+        "Whether topics are there to show: summaries are produced and the installation has a vocabulary, at least one topic that stands. False: no conversation is asked about topics yet, so `topics` is empty and `topic` of every open question is null. Leave the topics block out then, and do not say that the conversations were about nothing. Everything else read from summaries is counted either way. Always false when `enabled` is false.",
+      example: true,
+    },
+    summarised: {
+      type: "number",
+      description:
+        "How many of the period's conversations have a summary. With `waiting` and `tooShort` it adds up to `board.conversations.value`.",
+      example: 9,
+    },
+    waiting: {
+      type: "number",
+      description:
+        "Conversations without a summary yet that will get one: long enough, and the batch has not reached them. Not counted in topics or outcomes yet.",
+      example: 2,
+    },
+    tooShort: {
+      type: "number",
+      description:
+        "Conversations without a summary that will not get one as they stand: under three messages from the person. Not a backlog.",
+      example: 1,
+    },
+  },
+  required: ["enabled", "topicsReady", "summarised", "waiting", "tooShort"],
 } as const;
 
 export const StatsComparedCountDtoSchema = {
@@ -6725,6 +6794,25 @@ export const MyStatsBoardAgentsDtoSchema = {
   required: ["value", "reachable"],
 } as const;
 
+export const MyStatsResolvedDtoSchema = {
+  type: "object",
+  properties: {
+    resolved: {
+      type: "number",
+      description:
+        "Conversations of the period whose summary says the person got what they asked for.",
+      example: 6,
+    },
+    summarised: {
+      type: "number",
+      description:
+        "Conversations of the period that have a summary: what the share is a share of. The same number as `summaries.summarised`.",
+      example: 9,
+    },
+  },
+  required: ["resolved", "summarised"],
+} as const;
+
 export const MyStatsBoardDtoSchema = {
   type: "object",
   properties: {
@@ -6748,8 +6836,17 @@ export const MyStatsBoardDtoSchema = {
     agents: {
       $ref: "#/components/schemas/MyStatsBoardAgentsDto",
     },
+    resolved: {
+      description:
+        "The resolved share: `resolved` out of `summarised`. Both 0 when `summaries.enabled` is false, and `summarised` 0 while no conversation of the period has a summary: no share to show either way.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/MyStatsResolvedDto",
+        },
+      ],
+    },
   },
-  required: ["conversations", "messages", "agents"],
+  required: ["conversations", "messages", "agents", "resolved"],
 } as const;
 
 export const MyStatsDayDtoSchema = {
@@ -6821,6 +6918,18 @@ export const MyStatsAgentDtoSchema = {
         "Conversations with this agent the person wrote in during the period.",
       example: 6,
     },
+    resolved: {
+      type: "number",
+      description:
+        "The ones among those conversations whose summary says resolved. 0 when `summaries.enabled` is false.",
+      example: 4,
+    },
+    summarised: {
+      type: "number",
+      description:
+        "The ones among those conversations that have a summary: what `resolved` is a share of. 0 when `summaries.enabled` is false.",
+      example: 5,
+    },
     model: {
       type: "string",
       nullable: true,
@@ -6842,9 +6951,252 @@ export const MyStatsAgentDtoSchema = {
     "name",
     "messages",
     "conversations",
+    "resolved",
+    "summarised",
     "model",
     "lastMessageAt",
   ],
+} as const;
+
+export const MyStatsTopicQuestionDtoSchema = {
+  type: "object",
+  properties: {
+    chatId: {
+      type: "string",
+      description: "The conversation the question was asked in.",
+      example: "chat-7c1f",
+    },
+    agentId: {
+      type: "string",
+    },
+    agentName: {
+      type: "string",
+      example: "Support Bot",
+    },
+    question: {
+      type: "string",
+      maxLength: 120,
+      description:
+        "The person's main question in that conversation: one line, in their language, as its summary worded it. Shown as received. It is in this answer because the answer is its owner’s; no other route or tool of the statistics carries it.",
+      example: "How do I change my plan?",
+    },
+    at: {
+      type: "string",
+      format: "date-time",
+      description: "The conversation's last message.",
+      example: "2026-11-26T09:12:30.000Z",
+    },
+    outcome: {
+      type: "string",
+      enum: ["resolved", "open", "unknown"],
+      description:
+        "How that conversation ended. `unknown`: its summary could not tell; neither a resolved nor an open mark.",
+      example: "resolved",
+    },
+  },
+  required: ["chatId", "agentId", "agentName", "question", "at", "outcome"],
+} as const;
+
+export const MyStatsTopicDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      description:
+        "The topic. One that was merged into another is counted under that other, and only that one is listed.",
+      example: "topic-3f2a",
+    },
+    label: {
+      type: "string",
+      description:
+        "The topic's name in the request's language (`Accept-Language`, among the languages of the console), in English when it has none in that language.",
+      example: "Billing",
+    },
+    conversations: {
+      type: "number",
+      description:
+        "Summarised conversations of the period that carry the topic. A conversation can carry two, so the topics can add up to more than `summaries.summarised`, and one with no topic is in none.",
+      example: 5,
+    },
+    resolved: {
+      type: "number",
+      description: "Of them, the ones resolved.",
+      example: 3,
+    },
+    open: {
+      type: "number",
+      description:
+        "Of them, the ones left open. With `resolved` it can be less than `conversations`: the rest ended `unknown`.",
+      example: 1,
+    },
+    questions: {
+      maxItems: 4,
+      description:
+        "Up to four main questions of those conversations, newest first, each wording once. Empty when no summary quoted a question.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/MyStatsTopicQuestionDto",
+      },
+    },
+  },
+  required: ["id", "label", "conversations", "resolved", "open", "questions"],
+} as const;
+
+export const MyStatsSentimentDtoSchema = {
+  type: "object",
+  properties: {
+    positive: {
+      type: "number",
+      example: 4,
+    },
+    neutral: {
+      type: "number",
+      example: 3,
+    },
+    mixed: {
+      type: "number",
+      example: 1,
+    },
+    negative: {
+      type: "number",
+      example: 1,
+    },
+  },
+  required: ["positive", "neutral", "mixed", "negative"],
+} as const;
+
+export const MyStatsLanguageDtoSchema = {
+  type: "object",
+  properties: {
+    code: {
+      type: "string",
+      description: "ISO 639-1 code, lower case, as the summary judged it.",
+      example: "en",
+    },
+    conversations: {
+      type: "number",
+      description: "Summarised conversations in that language.",
+      example: 7,
+    },
+  },
+  required: ["code", "conversations"],
+} as const;
+
+export const MyStatsOutcomeDtoSchema = {
+  type: "object",
+  properties: {
+    resolved: {
+      type: "number",
+      description:
+        "Conversations whose summary says the person got what they asked for.",
+      example: 6,
+    },
+    open: {
+      type: "number",
+      description: "Conversations whose summary says they did not.",
+      example: 2,
+    },
+    unknown: {
+      type: "number",
+      description:
+        "Summarised, and the summary could not tell. In neither of the two above, and never under open questions.",
+      example: 1,
+    },
+    notSummarised: {
+      type: "number",
+      description:
+        "Conversations of the period with no summary: `summaries.waiting` and `summaries.tooShort` together. With the three above it adds up to `board.conversations.value`, except when `summaries.enabled` is false: all four are then 0 and stand for nothing.",
+      example: 3,
+    },
+    sentiment: {
+      description:
+        "The tone of the summarised conversations, each in one of the four. A summary that stored no tone is in none, so they can add up to less than the summarised.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/MyStatsSentimentDto",
+        },
+      ],
+    },
+    languages: {
+      description:
+        "The languages of the summarised conversations, most first. Empty when none has a summary.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/MyStatsLanguageDto",
+      },
+    },
+  },
+  required: [
+    "resolved",
+    "open",
+    "unknown",
+    "notSummarised",
+    "sentiment",
+    "languages",
+  ],
+} as const;
+
+export const MyStatsOpenQuestionDtoSchema = {
+  type: "object",
+  properties: {
+    chatId: {
+      type: "string",
+      description:
+        'The conversation left open: what "Continue" opens, with `agentId`.',
+      example: "chat-7c1f",
+    },
+    agentId: {
+      type: "string",
+    },
+    agentName: {
+      type: "string",
+      example: "Support Bot",
+    },
+    question: {
+      type: "string",
+      nullable: true,
+      maxLength: 120,
+      description:
+        "The person's main question in it, shown as received. Null when the summary found the conversation open and quoted no question.",
+      example: "Why was I charged twice?",
+    },
+    topic: {
+      type: "string",
+      nullable: true,
+      description:
+        "The name of the conversation's first topic, as `topics[].label` names it. Null when its summary assigned none, and for every question while `summaries.topicsReady` is false.",
+      example: "Billing",
+    },
+    at: {
+      type: "string",
+      format: "date-time",
+      description: "The conversation's last message.",
+      example: "2026-11-26T09:12:30.000Z",
+    },
+  },
+  required: ["chatId", "agentId", "agentName", "question", "topic", "at"],
+} as const;
+
+export const MyStatsOpenQuestionsDtoSchema = {
+  type: "object",
+  properties: {
+    items: {
+      maxItems: 4,
+      description:
+        "The newest four conversations of the period left open, newest first. Empty when none was, and when `summaries.enabled` is false: tell the two apart by that field.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/MyStatsOpenQuestionDto",
+      },
+    },
+    more: {
+      type: "number",
+      description:
+        "How many more there are. `items` and `more` together are `outcome.open`.",
+      example: 0,
+    },
+  },
+  required: ["items", "more"],
 } as const;
 
 export const MyStatsSourceDtoSchema = {
@@ -7032,6 +7384,15 @@ export const MyStatsDtoSchema = {
         $ref: "#/components/schemas/StatsNoteDto",
       },
     },
+    summaries: {
+      description:
+        "Whether conversation summaries are produced here, whether their topics are there to show, and how many of the period's conversations have a summary, wait for one, or are too short for one.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/MyStatsSummariesDto",
+        },
+      ],
+    },
     board: {
       $ref: "#/components/schemas/MyStatsBoardDto",
     },
@@ -7046,6 +7407,27 @@ export const MyStatsDtoSchema = {
         $ref: "#/components/schemas/MyStatsAgentDto",
       },
     },
+    topics: {
+      maxItems: 8,
+      description:
+        "What the period's summarised conversations were about: up to eight topics, most conversations first. Empty when no summarised conversation has a topic, when `summaries.enabled` is false, and while `summaries.topicsReady` is false: the installation has no vocabulary yet, and no conversation is asked about topics.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/MyStatsTopicDto",
+      },
+    },
+    outcome: {
+      description:
+        "How the period's conversations ended. All zeros and no language when `summaries.enabled` is false.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/MyStatsOutcomeDto",
+        },
+      ],
+    },
+    openQuestions: {
+      $ref: "#/components/schemas/MyStatsOpenQuestionsDto",
+    },
     help: {
       $ref: "#/components/schemas/MyStatsHelpDto",
     },
@@ -7058,9 +7440,13 @@ export const MyStatsDtoSchema = {
     "timeZone",
     "range",
     "notes",
+    "summaries",
     "board",
     "activity",
     "agents",
+    "topics",
+    "outcome",
+    "openQuestions",
     "help",
     "models",
   ],
@@ -7138,6 +7524,19 @@ export const InstallationStatsNoteDtoSchema = {
     },
   },
   required: ["figure", "completeSince"],
+} as const;
+
+export const InstallationStatsSummariesDtoSchema = {
+  type: "object",
+  properties: {
+    enabled: {
+      type: "boolean",
+      description:
+        'Whether this installation produces conversation summaries: the batch is scheduled and has a credential it can use. False: `open` and `summarised` of every `quality` row are 0 because nothing was counted. Say "summaries are not produced" there, never "no conversation was left open".',
+      example: true,
+    },
+  },
+  required: ["enabled"],
 } as const;
 
 export const InstallationStatsTokensDtoSchema = {
@@ -7446,8 +7845,28 @@ export const InstallationStatsQualityDtoSchema = {
         "Every rating its answers got in the period, up or down. Ratings are read as they stand now: one withdrawn since is not counted.",
       example: 31,
     },
+    open: {
+      type: "number",
+      description:
+        'Of `summarised`, the conversations whose summary says the person was left without what they asked for. A summary that could not tell is not among them. 0 when `summaries.enabled` is false: not counted, which is not "none".',
+      example: 21,
+    },
+    summarised: {
+      type: "number",
+      description:
+        "Of `conversations`, the ones that have a summary: what the open share is a share of. Show it with the share: 1 open of 3 summarised and 100 of 300 are the same share and not the same news. 0 when `summaries.enabled` is false, and while no conversation of the agent has a summary: no share to show either way.",
+      example: 300,
+    },
   },
-  required: ["agentId", "name", "conversations", "down", "rated"],
+  required: [
+    "agentId",
+    "name",
+    "conversations",
+    "down",
+    "rated",
+    "open",
+    "summarised",
+  ],
 } as const;
 
 export const InstallationStatsChannelDtoSchema = {
@@ -7497,6 +7916,15 @@ export const InstallationStatsDtoSchema = {
         $ref: "#/components/schemas/InstallationStatsNoteDto",
       },
     },
+    summaries: {
+      description:
+        "Whether conversation summaries are produced here: what the open share of `quality` is read from.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/InstallationStatsSummariesDto",
+        },
+      ],
+    },
     board: {
       $ref: "#/components/schemas/InstallationStatsBoardDto",
     },
@@ -7535,7 +7963,7 @@ export const InstallationStatsDtoSchema = {
     },
     quality: {
       description:
-        "Per agent with a conversation or a rating in the period: how many conversations, and how its answers were rated. Most conversations first.",
+        "Per agent with a conversation or a rating in the period: how many conversations, how its answers were rated, and how many of the conversations that have a summary were left open. Most conversations first.",
       type: "array",
       items: {
         $ref: "#/components/schemas/InstallationStatsQualityDto",
@@ -7555,6 +7983,7 @@ export const InstallationStatsDtoSchema = {
     "range",
     "reach",
     "notes",
+    "summaries",
     "board",
     "daily",
     "models",

@@ -2,6 +2,7 @@
 import { agentInitials } from '#agent/utils/agentStatus';
 import { relativeTime } from '#agent/utils/relativeTime';
 import type { IStatsAgent } from '#profile/domain';
+import { wholeShare } from '#profile/utils/share';
 import type { StatsPeriod } from '#profile/utils/statsView';
 
 /**
@@ -14,10 +15,23 @@ import type { StatsPeriod } from '#profile/utils/statsView';
  *
  * A name or a model too long for its row is cut with an ellipsis; the row's
  * detail, on hover and on focus, has both in full.
+ *
+ * Where the agent's conversations have summaries (CLEAN-270), the row ends
+ * with the share of them a summary calls resolved, on a line of its own:
+ * the percent, its word, and of how many, "67% resolved of 3". The
+ * prototype printed the bare percent after the conversations, and 1 of 1
+ * and 40 of 40 both read 100% there; what the percent is a share of stood
+ * only in the row's detail, which a touch never opens. The detail still has
+ * it in full ("Resolved: 2 of 3 with a summary"); the line in the row is the
+ * shortest that says it, because the row's name gets what the line leaves.
+ * An agent with no summarised conversation, and every agent while summaries
+ * are off, has none: no share, which is not 0%.
  */
 const props = defineProps<{
   /** By the person's messages, most first. */
   agents: IStatsAgent[];
+  /** Whether the installation produces summaries: never read off a zero. */
+  summariesEnabled: boolean;
   /** The period of the view on screen: a new one resets the selection. */
   period: StatsPeriod;
   /** The signed-in person's initials, for the middle of the orbit. */
@@ -59,6 +73,9 @@ const rows = computed(() => {
     initials: agentInitials(agent.name, '?'),
     messages: agent.messages,
     conversations: agent.conversations,
+    resolved: agent.resolved,
+    summarised: agent.summarised,
+    resolvedShare: props.summariesEnabled ? wholeShare(agent.resolved, agent.summarised) : null,
     model: agent.model,
     last: relativeTime(agent.lastMessageAt?.toISOString()),
     // A whole percent, as the prototype prints it.
@@ -120,6 +137,21 @@ const rows = computed(() => {
                     row.conversations,
                   )
                 }}
+                <template v-if="row.resolvedShare !== null">
+                  <br />
+                  <span
+                    data-stats-resolved-share
+                    :data-stats-value="Math.round(row.resolvedShare * 100)"
+                    :data-stats-of="row.summarised"
+                  >
+                    {{
+                      $t('stats.agents.resolved_share', {
+                        percent: format.percent(row.resolvedShare),
+                        count: format.number(row.summarised),
+                      })
+                    }}
+                  </span>
+                </template>
               </span>
             </button>
             <template #tip>
@@ -137,6 +169,15 @@ const rows = computed(() => {
                 )
               }}
               · {{ format.percent(row.share) }}
+              <template v-if="row.resolvedShare !== null">
+                <br />
+                {{
+                  $t('stats.agents.resolved_of', {
+                    resolved: format.number(row.resolved),
+                    count: format.number(row.summarised),
+                  })
+                }}
+              </template>
             </template>
           </ProfileStatsTip>
         </li>

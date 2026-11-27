@@ -7,9 +7,11 @@ import {
   citationsFigure,
   handoversFigure,
   incidentsFigure,
+  outcomesFigure,
   ratingsFigure,
   refusalsFigure,
   spendFigure,
+  topicsFigure,
 } from '.';
 
 const only = <T>(members: Record<string, unknown>): T =>
@@ -39,7 +41,9 @@ describe('figure definitions', () => {
 
   // The figures read in place (CLEAN-262): spend and incidents, and the
   // three of "How agents helped" (CLEAN-258), of which the ratings are also
-  // what the installation's quality block reads (CLEAN-265). Their rows are
+  // what the installation's quality block reads (CLEAN-265), and the two the
+  // conversation summaries are read for (CLEAN-270): how conversations
+  // ended, a person's and per agent, and a person's topics. Their rows are
   // the record, so there is no rebuild to name, which is what tells the
   // registry to keep no row for them, and no first record to ask for:
   // nothing came before the first row.
@@ -49,6 +53,9 @@ describe('figure definitions', () => {
     ['ratings', ratingsFigure, ['personal', 'installation']],
     ['citations', citationsFigure, ['personal']],
     ['handovers', handoversFigure, ['personal']],
+    ['outcomes', outcomesFigure, ['personal', 'installation']],
+    // Personal only: a topic lists the person's own questions (FR-033).
+    ['topics', topicsFigure, ['personal']],
   ] as const)(
     '%s is read in place: no rebuild and no first record',
     (key, figure, scopes) => {
@@ -79,6 +86,8 @@ describe('figure definitions', () => {
       'ratings',
       'citations',
       'handovers',
+      'outcomes',
+      'topics',
     ]);
     expect(new Set(keys).size).toBe(keys.length);
   });

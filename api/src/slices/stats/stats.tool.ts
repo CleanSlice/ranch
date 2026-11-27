@@ -44,6 +44,20 @@ import {
  * anything, so a User is never shown the admin tool; a class-wide check for
  * an operator would take `get_my_stats` away from every User with it.
  *
+ * What the conversation summaries add (CLEAN-270) follows the same line.
+ * `get_my_stats` carries the main questions of the person asking, as their
+ * own page does: a question is its person's words and is shown to its owner
+ * alone (spec 038, FR-033). `get_installation_stats` carries counts of how
+ * conversations ended and no question, topic or name, for the Owner as for
+ * anybody. Topics are named in English here: a tool call has no
+ * `Accept-Language`, and the agent words its answer in the person's
+ * language itself. Both descriptions say what an installation without
+ * summaries looks like (`summaries.enabled` false), the ordinary case: the
+ * model can only say "not produced" instead of "none" if it was told. For
+ * the same reason `get_my_stats` says what an empty `topics` means while
+ * the installation has no vocabulary (`summaries.topicsReady` false, the
+ * owner's decision of 2026-11-28; CLEAN-278 is where one comes to exist).
+ *
  * Which agents are counted is asked of the access lists for the party the
  * call is made for (`callerParty`), inside each service, so an agent that
  * party does not reach is absent from every number and every list, as in
@@ -80,8 +94,27 @@ export class StatsTool {
       'cited sources and the most cited sources, hand-overs to other ' +
       'agents, the ratings they gave) and `models` (which models answered; ' +
       '`fallback` true means some days had no usage record and went to the ' +
-      "agent's current model). Counts, names and times only: nothing that " +
-      'was written. Agents the person cannot use are left out everywhere. ' +
+      "agent's current model). From the summaries of their conversations: " +
+      '`summaries` (how many of the period’s conversations have a summary, ' +
+      'are `waiting` for one, or are `tooShort` to get one), ' +
+      '`board.resolved` (`resolved` out of `summarised`; each agent in ' +
+      '`agents` has the same two), `topics` (up to eight, with ' +
+      '`conversations`, `resolved`, `open` and their own main questions ' +
+      'under each; labels are in English), `outcome` (resolved, open, ' +
+      'unknown and notSummarised add up to the conversations; unknown ' +
+      'means the summary could not tell and is neither resolved nor open; ' +
+      'tone and languages beside them) and `openQuestions` (the newest ' +
+      'four left open, each with its `chatId` and agent, and `more` for ' +
+      'the rest). When `summaries.enabled` is false this Ranch produces no ' +
+      'summaries: those parts are all zero or empty and say nothing. Tell ' +
+      'the person that summaries are not produced here, never that ' +
+      'nothing was left open or that they talked about nothing. When ' +
+      '`summaries.topicsReady` is false, `topics` is empty and no open ' +
+      'question has a `topic` because topics are not set up on this Ranch ' +
+      'yet: say that, and answer from the rest. Counts, ' +
+      'names and times, and of what was written only their own main ' +
+      'questions, as the summaries worded them. Agents the person cannot ' +
+      'use are left out everywhere. ' +
       'Days are cut in `timeZone`, an IANA name such as Europe/Kyiv; pass ' +
       "the person's zone when you know it, otherwise days are UTC days, " +
       'and `timeZone` in the result says which was used. A `notes` entry ' +
@@ -168,9 +201,16 @@ export class StatsTool {
       'with a price ran in them), `health` (incidents opened in the period or still ' +
       'open, newest first, with `incidentsTotal` when the list was cut; ' +
       'requests refused by limits per agent), `quality` (conversations and ' +
-      'ratings per agent, `down` out of `rated`) and `channels` ' +
+      'ratings per agent, `down` out of `rated`; and `open` out of ' +
+      '`summarised`: of the conversations that have a summary, the ones ' +
+      'left without an answer; give the share together with `summarised`, ' +
+      'a share of 3 conversations is not one of 300) and `channels` ' +
       '(conversations from the console, Telegram, Slack, share links and ' +
-      "anything else). Cost is an estimate from the product's price list, " +
+      'anything else). When `summaries.enabled` is false this Ranch ' +
+      'produces no summaries: `open` and `summarised` are 0 because they ' +
+      'are not counted. Say that summaries are not produced, never that ' +
+      'no conversation was left open. ' +
+      "Cost is an estimate from the product's price list, " +
       "not a provider's invoice: a model in `board.cost.unpriced`, or an " +
       'agent whose `cost` is null, has no price. Say "no price", never ' +
       'zero. Days are UTC days, the same for everybody. Counts, names of ' +

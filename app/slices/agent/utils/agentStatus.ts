@@ -37,14 +37,18 @@ export function agentStatusMeta(status: string | undefined): AgentStatusMeta {
 /** The statuses the legend counts, in the order it lists them. */
 export const LEGEND_STATUSES = ['running', 'deploying', 'pending', 'failed', 'stopped'];
 
-/** Initials for the avatar — up to two words, the id when the name is blank. */
+/**
+ * Initials for the avatar — up to two words, the id when the name is blank.
+ * An initial is the word's first code point, not its first UTF-16 unit: a
+ * name that starts with an emoji would otherwise give half a character.
+ */
 export function agentInitials(name: string | undefined, fallback: string): string {
   const source = name?.trim() || fallback;
   return (
     source
       .split(/\s+/)
       .filter(Boolean)
-      .map((p) => p[0]?.toUpperCase() ?? '')
+      .map((p) => Array.from(p)[0]?.toUpperCase() ?? '')
       .slice(0, 2)
       .join('') || '?'
   );

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { IStatsBoard } from '#profile/domain';
 import { compare } from '#profile/utils/delta';
+import { wholeShare } from '#profile/utils/share';
 import type { StatsPeriod } from '#profile/utils/statsView';
 
 /**
@@ -11,13 +12,20 @@ import type { StatsPeriod } from '#profile/utils/statsView';
  * and this only words it. A rise and a fall differ by the arrow and by a word
  * for a screen reader, not by colour alone.
  *
- * The fourth figure comes from conversation summaries, which this view does
- * not carry yet: the tile holds its place with a dash and says "not counted
- * yet" rather than a number nobody counted. It is marked
- * `data-stats-tile="resolved"`; the summaries view replaces its content.
+ * The fourth figure is read from conversation summaries (CLEAN-270): the
+ * share of the summarised conversations that a summary calls resolved, with
+ * its coverage under it, "summary for 8 of 12", because 1 of 1 and 40 of 40
+ * are the same percent and not the same news. Without a share the tile
+ * holds its place with a dash and says why, and the two reasons are
+ * different sentences: the installation produces no summaries
+ * (`summariesEnabled` false), or it does and none of the period's
+ * conversations has one yet. Which of the three it is stands in
+ * `data-stats-summaries` on the tile: `off`, `none` or `share`.
  */
 const props = defineProps<{
   board: IStatsBoard;
+  /** Whether the installation produces summaries: never read off a zero. */
+  summariesEnabled: boolean;
   period: StatsPeriod;
   /** Set when activity is counted from a day inside the period. */
   since: Date | null;
@@ -28,6 +36,20 @@ const format = useFormat();
 const conversationsShown = useCountUp(() => props.board.conversations.value);
 const messagesShown = useCountUp(() => props.board.messages.value);
 const agentsShown = useCountUp(() => props.board.agents.value);
+
+// Null while there is nothing to take a share of, and always with summaries
+// off: whatever a count says then, nothing was counted.
+const resolvedShare = computed(() =>
+  props.summariesEnabled
+    ? wholeShare(props.board.resolved.resolved, props.board.resolved.summarised)
+    : null,
+);
+const resolvedPercent = computed(() => Math.round((resolvedShare.value ?? 0) * 100));
+const resolvedShown = useCountUp(() => resolvedPercent.value);
+const resolvedState = computed(() => {
+  if (!props.summariesEnabled) return 'off';
+  return resolvedShare.value === null ? 'none' : 'share';
+});
 
 // The two figures that have a previous period. The label is a plural without
 // its number (the number is the big figure above it), so it is chosen by the
@@ -104,10 +126,37 @@ const compared = computed(() => [
         </div>
       </div>
 
-      <div class="stats-board__tile" data-stats-tile="resolved">
-        <div class="stats-board__value stats-board__value--none" aria-hidden="true">—</div>
-        <div class="stats-board__label">{{ $t('stats.board.resolved') }}</div>
-        <div class="stats-board__delta">{{ $t('stats.board.not_counted') }}</div>
+      <div
+        class="stats-board__tile"
+        data-stats-tile="resolved"
+        :data-stats-summaries="resolvedState"
+        :data-stats-value="resolvedState === 'share' ? resolvedPercent : undefined"
+      >
+        <!-- Literal keys in every branch: `i18n:check` reads a key only
+             where it is written out. -->
+        <template v-if="resolvedState === 'share'">
+          <div class="stats-board__value">{{ format.percent(resolvedShown / 100) }}</div>
+          <div class="stats-board__label">{{ $t('stats.board.resolved') }}</div>
+          <div class="stats-board__delta" data-stats-coverage>
+            {{
+              $t('stats.summaries.coverage', {
+                summarised: format.number(board.resolved.summarised),
+                count: format.number(board.conversations.value),
+              })
+            }}
+          </div>
+        </template>
+        <template v-else>
+          <div class="stats-board__value stats-board__value--none" aria-hidden="true">—</div>
+          <div class="stats-board__label">{{ $t('stats.board.resolved') }}</div>
+          <div class="stats-board__delta">
+            {{
+              resolvedState === 'off'
+                ? $t('stats.summaries.not_produced')
+                : $t('stats.summaries.none_yet')
+            }}
+          </div>
+        </template>
       </div>
     </section>
 

@@ -185,6 +185,7 @@ describe('InstallationStatsService: what was computed', () => {
     expect(stats.quality).toEqual([]);
     expect(stats.channels).toEqual([]);
     expect(stats.notes).toEqual([]);
+    expect(stats.summaries).toEqual({ enabled: false });
   });
 });
 
@@ -268,9 +269,33 @@ describe('InstallationStatsService: who sees what', () => {
       { agentId: 'a2', name: 'Beacon', refused: 3 },
     ]);
     expect(stats.quality).toEqual([
-      { agentId: 'a3', name: 'Cipher', conversations: 2, down: 2, rated: 2 },
-      { agentId: 'a1', name: 'Atlas', conversations: 1, down: 0, rated: 1 },
-      { agentId: 'a2', name: 'Beacon', conversations: 1, down: 0, rated: 0 },
+      {
+        agentId: 'a3',
+        name: 'Cipher',
+        conversations: 2,
+        down: 2,
+        rated: 2,
+        open: 0,
+        summarised: 0,
+      },
+      {
+        agentId: 'a1',
+        name: 'Atlas',
+        conversations: 1,
+        down: 0,
+        rated: 1,
+        open: 0,
+        summarised: 0,
+      },
+      {
+        agentId: 'a2',
+        name: 'Beacon',
+        conversations: 1,
+        down: 0,
+        rated: 0,
+        open: 0,
+        summarised: 0,
+      },
     ]);
     expect(stats.channels).toEqual([
       { channel: 'console', conversations: 2 },
@@ -437,7 +462,15 @@ describe('InstallationStatsService: the assistant’s conversations are the Owne
     const stats = await view(WORLD, 7, admin, access);
 
     expect(stats.quality).toEqual([
-      { agentId: 'a1', name: 'Atlas', conversations: 1, down: 0, rated: 1 },
+      {
+        agentId: 'a1',
+        name: 'Atlas',
+        conversations: 1,
+        down: 0,
+        rated: 1,
+        open: 0,
+        summarised: 0,
+      },
     ]);
     expect(stats.channels).toEqual([{ channel: 'console', conversations: 1 }]);
     expect(stats.board.people).toEqual({ value: 1, previous: 1 });
@@ -508,6 +541,54 @@ describe('InstallationStatsService: the assistant’s conversations are the Owne
     expect(reads.limits.loadDays.calls[0][0].sort()).toEqual(['a1', 'a2']);
   });
 
+  // How its conversations ended is read from what people said to it, like
+  // the count of them (CLEAN-270): the same scope, and the same second lock.
+  it('counts no summary of the assistant’s conversations for an Admin, and asks for none', async () => {
+    const { access, admin, owner } = fleetCallers();
+    const summed: Partial<IFleetWorld> = {
+      ...WORLD,
+      summaries: true,
+      summarised: {
+        c1: { outcome: 'resolved' },
+        c2: { outcome: 'open', question: 'What the Owner asked the assistant' },
+        c3: { outcome: 'open' },
+      },
+    };
+    const { service, reads } = installationHarness(summed, access);
+
+    const forAdmin = await service.forCaller(admin, { period: 7 }, NOW);
+
+    expect(
+      forAdmin.quality.map((q) => [q.agentId, q.summarised, q.open]),
+    ).toEqual([['a1', 1, 0]]);
+    expect(reads.activity.summaryForAgents.calls[0].slice(1)).toEqual([
+      { notIn: ['ranch'] },
+      { outcomes: true },
+    ]);
+
+    // A read that lost its scope: the assistant's row is dropped here.
+    const scoped = reads.activity.summaryForAgents;
+    reads.activity.summaryForAgents = Object.assign(
+      (
+        periods: Parameters<typeof scoped>[0],
+        _scope: Parameters<typeof scoped>[1],
+        options: Parameters<typeof scoped>[2],
+      ) => scoped(periods, undefined, options),
+      { calls: [] },
+    );
+    const unlocked = await service.forCaller(admin, { period: 7 }, NOW);
+    expect(unlocked.quality.map((q) => q.agentId)).toEqual(['a1']);
+
+    // The Owner is shown them.
+    const forOwner = await service.forCaller(owner, { period: 7 }, NOW);
+    expect(
+      forOwner.quality.map((q) => [q.agentId, q.summarised, q.open]),
+    ).toEqual([
+      ['ranch', 2, 2],
+      ['a1', 1, 0],
+    ]);
+  });
+
   // The second lock: whatever a read answers, a row of the assistant is in
   // no conversation figure of an Admin.
   it('drops a conversation or a rating of the assistant that a read returned anyway', async () => {
@@ -536,8 +617,24 @@ describe('InstallationStatsService: the assistant’s conversations are the Owne
 
     expect(stats.reach).toEqual({ limited: false, agents: 3, ownerOnly: [] });
     expect(stats.quality).toEqual([
-      { agentId: 'ranch', name: 'Ranch', conversations: 2, down: 2, rated: 2 },
-      { agentId: 'a1', name: 'Atlas', conversations: 1, down: 0, rated: 1 },
+      {
+        agentId: 'ranch',
+        name: 'Ranch',
+        conversations: 2,
+        down: 2,
+        rated: 2,
+        open: 0,
+        summarised: 0,
+      },
+      {
+        agentId: 'a1',
+        name: 'Atlas',
+        conversations: 1,
+        down: 0,
+        rated: 1,
+        open: 0,
+        summarised: 0,
+      },
     ]);
     expect(stats.channels).toEqual([
       { channel: 'console', conversations: 2 },
@@ -1230,7 +1327,15 @@ describe('InstallationStatsService: people in conversations', () => {
 
     expect(stats.board.people.value).toBe(1);
     expect(stats.quality).toEqual([
-      { agentId: 'a1', name: 'Atlas', conversations: 1, down: 0, rated: 0 },
+      {
+        agentId: 'a1',
+        name: 'Atlas',
+        conversations: 1,
+        down: 0,
+        rated: 0,
+        open: 0,
+        summarised: 0,
+      },
     ]);
     expect(stats.channels).toEqual([{ channel: 'console', conversations: 1 }]);
   });
@@ -1355,8 +1460,24 @@ describe('InstallationStatsService: quality', () => {
     );
 
     expect(stats.quality).toEqual([
-      { agentId: 'a1', name: 'Atlas', conversations: 3, down: 2, rated: 3 },
-      { agentId: 'a2', name: 'Beacon', conversations: 1, down: 0, rated: 1 },
+      {
+        agentId: 'a1',
+        name: 'Atlas',
+        conversations: 3,
+        down: 2,
+        rated: 3,
+        open: 0,
+        summarised: 0,
+      },
+      {
+        agentId: 'a2',
+        name: 'Beacon',
+        conversations: 1,
+        down: 0,
+        rated: 1,
+        open: 0,
+        summarised: 0,
+      },
     ]);
   });
 
@@ -1375,15 +1496,37 @@ describe('InstallationStatsService: quality', () => {
     );
 
     expect(stats.quality).toEqual([
-      { agentId: 'a2', name: 'Beacon', conversations: 2, down: 0, rated: 0 },
-      { agentId: 'a3', name: 'Cipher', conversations: 1, down: 0, rated: 0 },
-      { agentId: 'a1', name: 'Atlas', conversations: 0, down: 1, rated: 1 },
+      {
+        agentId: 'a2',
+        name: 'Beacon',
+        conversations: 2,
+        down: 0,
+        rated: 0,
+        open: 0,
+        summarised: 0,
+      },
+      {
+        agentId: 'a3',
+        name: 'Cipher',
+        conversations: 1,
+        down: 0,
+        rated: 0,
+        open: 0,
+        summarised: 0,
+      },
+      {
+        agentId: 'a1',
+        name: 'Atlas',
+        conversations: 0,
+        down: 1,
+        rated: 1,
+        open: 0,
+        summarised: 0,
+      },
     ]);
   });
 
-  // Summaries of version 2 are not shipped: the share left open has nothing
-  // to be read from yet, and the page says "not counted yet" for it.
-  it('does not say how many conversations were left open, or summarised', async () => {
+  it('gives a row these fields and no other', async () => {
     const stats = await view(
       { hours: [hour('c1', 'a1', 'u1', '2026-11-25T09:00:00Z')] },
       7,
@@ -1394,9 +1537,160 @@ describe('InstallationStatsService: quality', () => {
       'conversations',
       'down',
       'name',
+      'open',
       'rated',
+      'summarised',
     ]);
   });
+});
+
+/**
+ * The share of conversations left open (CLEAN-270; deferred by CLEAN-265
+ * until summaries carried an outcome). Per agent: how many of the period's
+ * conversations have a summary, and how many of those it left open. The
+ * first is what the share is a share of, and the page has to show it: an
+ * open share over 3 summarised conversations is not the news it is over 300.
+ */
+describe('InstallationStatsService: the share left open', () => {
+  const WORLD: Partial<IFleetWorld> = {
+    summaries: true,
+    hours: [
+      hour('c1', 'a1', 'u1', '2026-11-25T09:00:00Z'),
+      hour('c2', 'a1', 'u2', '2026-11-25T10:00:00Z'),
+      hour('c3', 'a1', 'u3', '2026-11-26T10:00:00Z'),
+      hour('c4', 'a1', 'u4', '2026-11-26T11:00:00Z'),
+      // Not summarised yet.
+      hour('c5', 'a1', 'u5', '2026-11-27T08:00:00Z'),
+      hour('c6', 'a2', 'u1', '2026-11-25T09:00:00Z'),
+      // Summarised and open, but written in before the period only.
+      hour('c7', 'a2', 'u2', '2026-11-18T09:00:00Z'),
+      // No person wrote in it this week: a scheduled message.
+      hour('c8', 'a2', 'u3', '2026-11-25T09:00:00Z', { userMessages: 0 }),
+    ],
+    summarised: {
+      c1: { outcome: 'open' },
+      c2: { outcome: 'resolved' },
+      // Could not tell, and a summary with no outcome stored: neither is
+      // an open conversation.
+      c3: { outcome: 'unknown' },
+      c4: { outcome: null },
+      c6: { outcome: 'resolved' },
+      c7: { outcome: 'open' },
+      c8: { outcome: 'open' },
+    },
+  };
+
+  it('says per agent how many of the period’s conversations have a summary, and how many of those were left open', async () => {
+    const stats = await view(WORLD, 7);
+
+    expect(stats.summaries).toEqual({ enabled: true });
+    expect(
+      stats.quality.map((q) => [
+        q.agentId,
+        q.conversations,
+        q.summarised,
+        q.open,
+      ]),
+    ).toEqual([
+      ['a1', 5, 4, 1],
+      ['a2', 1, 1, 0],
+    ]);
+  });
+
+  it('gives an agent whose conversations have no summary yet zeros, with summaries produced', async () => {
+    const stats = await view(
+      {
+        summaries: true,
+        hours: [hour('c1', 'a3', 'u1', '2026-11-25T09:00:00Z')],
+      },
+      7,
+    );
+
+    expect(stats.summaries).toEqual({ enabled: true });
+    expect(stats.quality).toEqual([
+      {
+        agentId: 'a3',
+        name: 'Cipher',
+        conversations: 1,
+        down: 0,
+        rated: 0,
+        open: 0,
+        summarised: 0,
+      },
+    ]);
+  });
+
+  // The ordinary installation: no interval or no credential. A zero then
+  // means "not counted", and only `summaries.enabled` can say so.
+  it('says when the installation produces no summaries, answers zeros and reads nothing of them', async () => {
+    const { service, reads } = installationHarness(
+      { agents: AGENTS, ...WORLD, summaries: false },
+      callers().access,
+    );
+
+    const stats = await service.forCaller(person(OWNER), { period: 7 }, NOW);
+
+    expect(stats.summaries).toEqual({ enabled: false });
+    expect(stats.quality.map((q) => [q.agentId, q.summarised, q.open])).toEqual(
+      [
+        ['a1', 0, 0],
+        ['a2', 0, 0],
+      ],
+    );
+    expect(reads.insight.isEnabled.calls).toHaveLength(1);
+    // The conversations are counted as they always were, by the statement
+    // that reads no summary.
+    expect(reads.activity.summaryForAgents.calls).toHaveLength(1);
+    expect(reads.activity.summaryForAgents.calls[0][2]).toEqual({
+      outcomes: false,
+    });
+  });
+
+  // One read: how the conversations ended comes with the count of them,
+  // from the same statement over the same hour rows.
+  it('asks once, for the conversations and how they ended together, with the agents whose conversations the caller may count', async () => {
+    const { access, limited } = callers();
+    const { service, reads } = installationHarness(
+      { agents: AGENTS, ...WORLD },
+      access,
+    );
+
+    await service.forCaller(limited, { period: 7 }, NOW);
+
+    expect(reads.activity.summaryForAgents.calls).toHaveLength(1);
+    const [periods, scope, options] = reads.activity.summaryForAgents.calls[0];
+    expect(periods.from).toEqual(new Date('2026-11-21T00:00:00.000Z'));
+    expect(periods.to).toEqual(NOW);
+    expect(scope).toEqual({ in: ['a1', 'a2'] });
+    expect(options).toEqual({ outcomes: true });
+  });
+
+  it('leaves an agent the caller does not reach out of it', async () => {
+    const { access, excluding } = callers();
+    const stats = await view(
+      {
+        ...WORLD,
+        hours: [
+          ...(WORLD.hours ?? []),
+          hour('c9', 'a3', 'u9', '2026-11-25T09:00:00Z'),
+        ],
+        summarised: { ...WORLD.summarised, c9: { outcome: 'open' } },
+      },
+      7,
+      excluding,
+      access,
+    );
+
+    expect(stats.quality.map((q) => q.agentId)).toEqual(['a1', 'a2']);
+    expect(stats.quality.reduce((sum, q) => sum + q.open, 0)).toBe(1);
+  });
+
+  // No spec here caps one count by another. While the outcomes were read by
+  // a statement of their own, a moment after the conversations, a
+  // conversation that moved in between could be in one and not the other,
+  // and the row was capped to stay "open, of summarised, of conversations".
+  // They are columns of the same rows now (`agentConversationsQuery`), so
+  // the order holds by construction and the capping is gone with its cause.
 });
 
 describe('InstallationStatsService: health', () => {
@@ -1589,6 +1883,11 @@ describe('InstallationStatsService: nobody is named', () => {
   // stores behind the view hold more: a credential on the agent, the
   // witnesses and the Slack channel of an incident.
   it('holds no identity, no name of a person and nothing that was written', async () => {
+    const QUESTIONS = [
+      'Why was I charged twice in March?',
+      'Когда придёт возврат?',
+      'Can my manager see my vacation balance?',
+    ];
     const identities = [
       'user-7f3a',
       'admin',
@@ -1611,6 +1910,14 @@ describe('InstallationStatsService: nobody is named', () => {
           }),
           hour('chat-6', 'a3', identities[5], '2026-11-25T09:00:00Z'),
         ],
+        // Summaries are produced, and each quotes what its person asked
+        // (CLEAN-270). FR-033: a question is shown to its owner alone.
+        summaries: true,
+        summarised: {
+          'chat-1': { outcome: 'open', question: QUESTIONS[0] },
+          'chat-2': { outcome: 'resolved', question: QUESTIONS[1] },
+          'chat-4': { outcome: 'unknown', question: QUESTIONS[2] },
+        },
         ratings: [{ agentId: 'a1', rating: -1, at: '2026-11-25T09:05:00Z' }],
         usage: [spent('a1', '2026-11-25', SONNET, 1_000, 100, 1)],
         loadDays: [{ agentId: 'a1', day: '2026-11-25', refused: 2 }],
@@ -1621,6 +1928,13 @@ describe('InstallationStatsService: nobody is named', () => {
 
     const text = JSON.stringify(stats);
     for (const identity of identities) expect(text).not.toContain(identity);
+    // The summaries were read: their counts are there, their words are not.
+    expect(stats.quality.find((q) => q.agentId === 'a1')).toMatchObject({
+      summarised: 2,
+      open: 1,
+    });
+    for (const question of QUESTIONS) expect(text).not.toContain(question);
+    expect(text).not.toContain('question');
     // No conversation is named either: a figure is a count.
     expect(text).not.toContain('chat-');
     // And nothing of what the stores hold beside the figures.
@@ -1647,7 +1961,11 @@ describe('InstallationStatsService: nobody is named', () => {
       'quality',
       'range',
       'reach',
+      'summaries',
     ]);
+    // Whether summaries are produced, and nothing else about them: no
+    // topic, no question and no count that is not an agent's.
+    expect(Object.keys(stats.summaries)).toEqual(['enabled']);
     expect(Object.keys(stats.health).sort()).toEqual([
       'incidents',
       'incidentsTotal',

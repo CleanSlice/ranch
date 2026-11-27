@@ -25,12 +25,32 @@ import { statsLocation, type StatsPeriod, type StatsScope } from '#profile/utils
  * period and keeps no copy. What it does keep is which period of each scope
  * was last on screen: while another one is on its way, that view stays,
  * dimmed, so the page does not jump to placeholders and back at every switch.
+ *
+ * Topics, outcomes and open questions are read from conversation summaries
+ * (CLEAN-270), which an installation may not produce. The answer says so in
+ * `summaries.enabled`, and that field alone decides between the blocks and
+ * the one card that stands in for them. A zero decides nothing: with
+ * summaries off every count is zero, and with them on a new account's are
+ * zero too, and the two are different pages.
+ *
+ * Of those blocks, Topics stands only where the installation has a
+ * vocabulary to choose topics from: `summaries.topicsReady` (the owner's
+ * decision of 2026-11-28; how a vocabulary comes to exist is CLEAN-278).
+ * Where it has none the block is not there, with nothing in its place: no
+ * placeholder and no promise. The outcomes, the models and the open
+ * questions move up by one, and how far the summaries reach is said by "How
+ * conversations end", which is there either way.
  */
 const props = defineProps<{
   scope: StatsScope;
   period: StatsPeriod;
   /** The signed-in person's initials, as the pass shows them. */
   initials: string;
+  /**
+   * The owner or an administrator, by the rule that offers the scope switch:
+   * the "summaries off" card tells them what switches summaries on.
+   */
+  operator: boolean;
 }>();
 
 const store = useProfileStatsStore();
@@ -155,6 +175,16 @@ const mineLocation = computed(() =>
 );
 
 /**
+ * The place of each block after "Who you talk to" in the order the blocks
+ * rise in (`--i` in `stats.css`): one earlier for all of them where the
+ * Topics block is not drawn, so that no beat of the entrance is left empty.
+ */
+function riseOrder(stats: IPersonalStats) {
+  const from = stats.summaries.topicsReady ? 4 : 3;
+  return { outcome: from, models: from + 1, openQuestions: from + 2, help: from + 3 };
+}
+
+/**
  * The cards that stand in while the first answer is on its way, at about the
  * height each block has on a wide screen, so that the page does not jump
  * when the blocks arrive. Added up from the blocks' rules in `stats.css`;
@@ -232,6 +262,7 @@ const PLACEHOLDERS: Record<StatsScope, readonly { block: string; height: number 
         >
           <ProfileStatsBoard
             :board="heldMine.board"
+            :summaries-enabled="heldMine.summaries.enabled"
             :period="heldMine.period"
             :since="since(heldMine.notes, ACTIVITY)"
             data-stats-block="board"
@@ -246,21 +277,69 @@ const PLACEHOLDERS: Record<StatsScope, readonly { block: string; height: number 
           <ProfileStatsAgents
             v-if="heldMine.agents.length"
             :agents="heldMine.agents"
+            :summaries-enabled="heldMine.summaries.enabled"
             :period="heldMine.period"
             :initials="initials"
             data-stats-block="agents"
             style="--i: 2"
           />
-          <!-- Beside "How conversations end" once summaries are shown; until
-               then it has the row to itself. -->
-          <ProfileStatsModels :models="heldMine.models" data-stats-block="models" style="--i: 3" />
+          <!-- By `summaries.enabled`, never by a zero: the blocks where
+               summaries are produced, one card where they are not. -->
+          <template v-if="heldMine.summaries.enabled">
+            <!-- By `summaries.topicsReady`, never by an empty list: without
+                 a vocabulary the block is not there at all. -->
+            <ProfileStatsTopics
+              v-if="heldMine.summaries.topicsReady"
+              :topics="heldMine.topics"
+              :period="heldMine.period"
+              data-stats-block="topics"
+              style="--i: 3"
+            />
+            <!-- Side by side; one under the other under 640 px. "Who answers
+                 you" draws nothing when no message has a model, and
+                 `.stats-two` then gives the whole row to the card left. -->
+            <div class="stats-two">
+              <ProfileStatsOutcome
+                :outcome="heldMine.outcome"
+                :summaries="heldMine.summaries"
+                :conversations="heldMine.board.conversations.value"
+                data-stats-block="outcome"
+                :style="{ '--i': riseOrder(heldMine).outcome }"
+              />
+              <ProfileStatsModels
+                :models="heldMine.models"
+                data-stats-block="models"
+                :style="{ '--i': riseOrder(heldMine).models }"
+              />
+            </div>
+            <ProfileStatsOpenQuestions
+              :questions="heldMine.openQuestions"
+              :summarised="heldMine.summaries.summarised"
+              :period="heldMine.period"
+              data-stats-block="open-questions"
+              :style="{ '--i': riseOrder(heldMine).openQuestions }"
+            />
+          </template>
+          <template v-else>
+            <ProfileStatsSummariesOff
+              :operator="operator"
+              data-stats-block="summaries-off"
+              style="--i: 3"
+            />
+            <!-- With no "How conversations end" beside it, it has the row. -->
+            <ProfileStatsModels
+              :models="heldMine.models"
+              data-stats-block="models"
+              style="--i: 4"
+            />
+          </template>
           <ProfileStatsHelp
             :help="heldMine.help"
             :conversations="heldMine.board.conversations.value"
             :period="heldMine.period"
             :since="since(heldMine.notes, HELP)"
             data-stats-block="help"
-            style="--i: 4"
+            :style="{ '--i': heldMine.summaries.enabled ? riseOrder(heldMine).help : 5 }"
           />
         </div>
       </template>
@@ -350,6 +429,7 @@ const PLACEHOLDERS: Record<StatsScope, readonly { block: string; height: number 
             />
             <ProfileStatsQuality
               :quality="heldInstallation.quality"
+              :summaries-enabled="heldInstallation.summaries.enabled"
               :period="heldInstallation.period"
               data-stats-block="quality"
               style="--i: 4"

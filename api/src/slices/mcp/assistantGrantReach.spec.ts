@@ -16,8 +16,9 @@
  *    reaches, and never on the Ranch admin agent.
  *  - It exists through the assistant only: not through another agent, not
  *    with the person's own console token, not on a console route.
- *  - An agent out of reach, an id that names nothing and the Ranch admin
- *    agent get one and the same answer.
+ *  - An agent out of reach and an id that names nothing get one and the same
+ *    answer. The Ranch admin agent gets another (CLEAN-263): the person is
+ *    talking to it, so they are told that only the Owner manages it.
  */
 import 'reflect-metadata';
 import { NotFoundException, type ExecutionContext } from '@nestjs/common';
@@ -414,6 +415,17 @@ const manageOnly = (names: string[]) =>
 const notAvailable = (name: string) =>
   `Tool "${name}" is not available to this caller.`;
 
+/**
+ * What a `manage-agent` tool answers for the Ranch admin agent, to a person
+ * who has the assistant and is not the Owner (CLEAN-263). The whole result:
+ * one sentence, a reason for the model, and nothing to try next.
+ */
+const OWNER_ONLY = {
+  error:
+    'rancher is the Ranch assistant. Only the Owner can restart, stop or change it.',
+  reason: 'owner_only',
+};
+
 /** The setting of one account: a custom pick of exactly these abilities. */
 const pick = (userId: string, on: string[], enabled = true) =>
   assistantSettings.set(userId, {
@@ -456,40 +468,36 @@ describe('a User given "Restart an agent", who created nothing (CLEAN-254)', () 
     expect(agentDeploy.restartAgent).toHaveBeenCalledWith(A);
   });
 
-  it('gets one answer for an agent out of reach, an id that names nothing and the Ranch admin agent', async () => {
+  it('gets one answer for an agent out of reach and an id that names nothing', async () => {
     const { call } = session();
     const hidden = await call('restart_agent', { id: B }, as('user'));
     const unknown = await call('restart_agent', { id: GHOST }, as('user'));
-    const ranch = await call('restart_agent', { id: RANCH }, as('user'));
 
     expect(unknown).toMatch(/not found/i);
     expect(hidden.split(B).join('<id>')).toBe(
       unknown.split(GHOST).join('<id>'),
     );
-    expect(ranch.split(RANCH).join('<id>')).toBe(
-      unknown.split(GHOST).join('<id>'),
-    );
     expect(hidden).not.toContain('bravo');
-    expect(ranch).not.toContain('rancher');
     // Plain not-found: nothing that says the agent exists, or that the
     // ability is missing, withheld or needs another conversation.
-    for (const said of [hidden, unknown, ranch]) {
+    for (const said of [hidden, unknown]) {
       expect(said).not.toMatch(
         /not included|Owner|created|not available|new chat|new session/i,
       );
+      expect(said).not.toContain('reason');
     }
     expect(agentDeploy.restartAgent).not.toHaveBeenCalled();
   });
 
-  it('the Ranch admin agent stays out even for a User who reaches every agent', async () => {
+  it('the Ranch admin agent stays out even for a User who reaches every agent, and they are told whose it is', async () => {
     pick(USER2.id, ['restart_agent']);
     const { call } = session();
     expect(await call('restart_agent', { id: B }, as('user2'))).toContain(
       'Restart started',
     );
-    expect(await call('restart_agent', { id: RANCH }, as('user2'))).toMatch(
-      /not found/i,
-    );
+    expect(
+      JSON.parse(await call('restart_agent', { id: RANCH }, as('user2'))),
+    ).toEqual(OWNER_ONLY);
     expect(agentDeploy.restartAgent.mock.calls).toEqual([[B]]);
   });
 
@@ -827,9 +835,10 @@ describe('everybody else, as before', () => {
     expect(await call('restart_agent', { id: A }, as('admin'))).toContain(
       'Restart started',
     );
-    expect(await call('restart_agent', { id: RANCH }, as('admin'))).toMatch(
-      /not found/i,
-    );
+    expect(
+      JSON.parse(await call('restart_agent', { id: RANCH }, as('admin'))),
+    ).toEqual(OWNER_ONLY);
+    expect(agentDeploy.restartAgent.mock.calls).toEqual([[A]]);
     expect(await call('restart_agent', { id: RANCH }, as('owner'))).toContain(
       'Restart started',
     );
@@ -1043,4 +1052,226 @@ describe('a tool the setting gave is not an operator’s power', () => {
       expect(said).toContain('was reached');
     },
   );
+});
+
+/**
+ * The Ranch admin agent is the assistant itself, and only the Owner manages
+ * it (CLEAN-263). A person who has the assistant is talking to it and is
+ * shown it by `list_agents`, so "not found, call list_agents" hid nothing
+ * and read as a fault: on 2026-11-27 the assistant told a User that its own
+ * restart had failed for an unknown cause and was "not an access limit".
+ *
+ * So for that one agent, and a person who reaches it, a `manage-agent` tool
+ * says who manages it. Nothing else moves: what is allowed is what it was,
+ * and every other agent, an unknown id and a person without the assistant
+ * get the not-found they got.
+ */
+describe('the Ranch admin agent is the Owner’s, and a person who has it is told so (CLEAN-263)', () => {
+  /** Whatever a tool calls the agent it names, and a yes where it asks. */
+  const naming = (id: string, tool = '') => ({
+    id,
+    agentId: id,
+    agent: id,
+    confirm: true,
+    peerId: 'peer-1',
+    peerAgentId: A,
+    path: 'SOUL.md',
+    content: 'text',
+    key: 'KEY',
+    value: 'value',
+    secrets: {},
+    channels: [],
+    // preview_agent_card takes a colleague of this Ranch or an address, not
+    // both, and says so before it looks at the agent.
+    ...(tool === 'preview_agent_card' ? {} : { url: 'https://other.example' }),
+    card: '{}',
+    open: true,
+    isPublic: true,
+  });
+  const NOT_FOUND = (id: string) =>
+    JSON.stringify(
+      { error: `Agent ${id} not found — call list_agents to find the id` },
+      null,
+      2,
+    );
+
+  describe('a User given "Restart an agent" asks the assistant to restart itself', () => {
+    beforeEach(() => pick(USER.id, ['restart_agent']));
+
+    it('is told that only the Owner can, with the reason beside it, and nothing is restarted', async () => {
+      const said = await session().call(
+        'restart_agent',
+        { id: RANCH },
+        as('user'),
+      );
+
+      expect(JSON.parse(said)).toEqual(OWNER_ONLY);
+      // Nothing that makes a fault of it, or a thing to try.
+      expect(said).not.toMatch(
+        /not found|list_agents|again|later|retry|another|unknown/i,
+      );
+      expect(agentDeploy.restartAgent).not.toHaveBeenCalled();
+    });
+
+    it('still restarts an agent they reach', async () => {
+      const said = await session().call('restart_agent', { id: A }, as('user'));
+      expect(said).toContain('Restart started');
+      expect(agentDeploy.restartAgent.mock.calls).toEqual([[A]]);
+    });
+
+    it('an agent out of reach and an unknown id are not found, in the words they had', async () => {
+      const { call } = session();
+      const hidden = await call('restart_agent', { id: B }, as('user'));
+      const unknown = await call('restart_agent', { id: GHOST }, as('user'));
+      const ranch = await call('restart_agent', { id: RANCH }, as('user'));
+
+      expect(hidden).toBe(NOT_FOUND(B));
+      expect(unknown).toBe(NOT_FOUND(GHOST));
+      // Two answers, and only one of them names the Owner.
+      expect(ranch).not.toBe(NOT_FOUND(RANCH));
+      for (const said of [hidden, unknown]) {
+        expect(said).not.toMatch(/Owner|assistant|owner_only/);
+        expect(said).not.toContain('bravo');
+      }
+      expect(agentDeploy.restartAgent).not.toHaveBeenCalled();
+    });
+  });
+
+  it('an Admin gets the same sentence, through the assistant and with their own console token', async () => {
+    const own = session({
+      user: { sub: ADMIN.id, email: '', roles: [UserRoleTypes.Admin] },
+    });
+    for (const said of [
+      await session().call('restart_agent', { id: RANCH }, as('admin')),
+      await own.call('restart_agent', { id: RANCH }),
+    ]) {
+      expect(JSON.parse(said)).toEqual(OWNER_ONLY);
+    }
+    expect(agentDeploy.restartAgent).not.toHaveBeenCalled();
+  });
+
+  it('a person the assistant is switched off for is told nothing about it: not found', async () => {
+    // Through the assistant such a person has no tool at all, so this is
+    // the one way the call can be made: an Admin's own console token.
+    assistantSettings.set(ADMIN.id, {
+      enabled: false,
+      level: 'full',
+      custom: null,
+      updatedById: OWNER.id,
+      updatedAt: new Date('2026-11-27T10:00:00.000Z'),
+    });
+    const own = session({
+      user: { sub: ADMIN.id, email: '', roles: [UserRoleTypes.Admin] },
+    });
+
+    expect(await own.call('restart_agent', { id: RANCH })).toBe(
+      NOT_FOUND(RANCH),
+    );
+    // The agents they do reach are theirs to manage as before.
+    expect(await own.call('restart_agent', { id: A })).toContain(
+      'Restart started',
+    );
+    expect(agentDeploy.restartAgent.mock.calls).toEqual([[A]]);
+  });
+
+  it('the Owner restarts it, and so does the assistant for itself', async () => {
+    const { call } = session();
+    expect(await call('restart_agent', { id: RANCH }, as('owner'))).toContain(
+      'Restart started',
+    );
+    expect(await call('restart_agent', { id: RANCH }, TRUSTED)).toContain(
+      'Restart started',
+    );
+    expect(agentDeploy.restartAgent.mock.calls).toEqual([[RANCH], [RANCH]]);
+  });
+
+  // The seam is one place (`agentNotFound`, and the connection tools' own
+  // refusal), so every tool of the audience has to come out of it the same.
+  // `never(...)` stands behind most of them: a tool that got past the
+  // refusal would say what it reached.
+  describe.each(MANAGE_AGENT)('%s', (name) => {
+    it('answers a User it was ticked for with the owner-only sentence, for the assistant', async () => {
+      pick(USER.id, [name]);
+      const said = await session().call(name, naming(RANCH, name), as('user'));
+      expect(JSON.parse(said)).toEqual(OWNER_ONLY);
+    });
+
+    it('answers an Admin the same', async () => {
+      const said = await session().call(name, naming(RANCH, name), as('admin'));
+      expect(JSON.parse(said)).toEqual(OWNER_ONLY);
+    });
+
+    it('and an id that names nothing is not found, without a word about the Owner', async () => {
+      pick(USER.id, [name]);
+      const said = await session().call(name, naming(GHOST, name), as('user'));
+      expect(said).toMatch(/not found/i);
+      expect(said).not.toMatch(/Owner|assistant|owner_only/);
+    });
+
+    afterEach(() => {
+      expect(agentDeploy.restartAgent).not.toHaveBeenCalled();
+      expect(agentDeploy.stopAgent).not.toHaveBeenCalled();
+      expect(agentDeploy.deploy).not.toHaveBeenCalled();
+      expect(agents.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('list_agents and get_agent say it before anybody tries', () => {
+    type Row = { id: string; isAdmin: boolean; managedBy?: string };
+    const listed = async (actor: Actor) =>
+      JSON.parse(await session().call('list_agents', {}, actor)) as Row[];
+    const shown = async (id: string, actor: Actor) =>
+      JSON.parse(await session().call('get_agent', { id }, actor)) as Row;
+
+    it.each(['user2', 'admin'] as const)(
+      'for %s the assistant’s row is marked as the Owner’s, and no other row is',
+      async (who) => {
+        const rows = await listed(as(who));
+        expect(rows.map((r) => r.id).sort()).toEqual([A, B, RANCH].sort());
+        expect(rows.find((r) => r.id === RANCH)).toMatchObject({
+          isAdmin: true,
+          managedBy: 'owner',
+        });
+        for (const row of rows.filter((r) => r.id !== RANCH)) {
+          expect(row).not.toHaveProperty('managedBy');
+        }
+        expect(await shown(RANCH, as(who))).toMatchObject({
+          managedBy: 'owner',
+        });
+        expect(await shown(A, as(who))).not.toHaveProperty('managedBy');
+      },
+    );
+
+    it('a User limited to one agent still has the assistant, marked', async () => {
+      const rows = await listed(as('user'));
+      expect(rows.map((r) => r.id).sort()).toEqual([A, RANCH].sort());
+      expect(rows.find((r) => r.id === RANCH)?.managedBy).toBe('owner');
+    });
+
+    it('for the Owner, and the assistant for itself, no row is marked', async () => {
+      for (const actor of [as('owner'), TRUSTED]) {
+        for (const row of await listed(actor)) {
+          expect(row).not.toHaveProperty('managedBy');
+        }
+        expect(await shown(RANCH, actor)).not.toHaveProperty('managedBy');
+      }
+    });
+
+    it('the tools that would be tried say what the mark means', () => {
+      const describing = (name: string) =>
+        registered.find((t) => t.metadata.name === name)!.metadata.description;
+      for (const name of [
+        'list_agents',
+        'get_agent',
+        'restart_agent',
+        'stop_agent',
+        'start_agent',
+        'delete_agent',
+        'update_agent',
+      ]) {
+        expect(describing(name)).toContain('managedBy: "owner"');
+        expect(describing(name)).toMatch(/only the Owner can restart/i);
+      }
+    });
+  });
 });

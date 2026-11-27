@@ -41,9 +41,11 @@ import {
   callerIsOperator,
   callerParty,
   callerPerson,
+  manageCaller,
   setCalledTool,
   setCallerAssistantGrant,
   setCallerManagesAgents,
+  setCallerOwnerOnlyAgent,
   setCallerTurnClient,
   withCallerParty,
 } from '../../tooling';
@@ -272,6 +274,44 @@ export class McpToolsHandler extends McpHandlerBase {
   }
 
   /**
+   * A `manage-agent` tool answers "not found" for an agent the caller may
+   * not manage, and for one agent that is a lie the person can see through:
+   * the Ranch assistant, which they are talking to and which only the Owner
+   * manages (CLEAN-263). Whether this caller is such a person is a fact
+   * about roles and reach, so the agent slice is asked, once per call of
+   * such a tool, and the answer noted on the call's view, where
+   * `agentNotFound` reads it.
+   *
+   * Asked as `manageCaller` sees the caller, the same party the tool will
+   * ask `manageable` about. Nothing is noted for anybody but a person; no
+   * resolver, or one that throws, leaves nothing noted and the refusal at
+   * not-found.
+   */
+  private async noteOwnerOnlyAgent(callRequest: Request): Promise<void> {
+    const caller = manageCaller(callRequest);
+    if (caller.kind !== 'person') return;
+    let agent: { id: string; name: string } | null = null;
+    try {
+      const resolver = this.moduleRef.get<IAgentManagerResolver>(
+        AGENT_MANAGER_RESOLVER,
+        { strict: false },
+      );
+      agent =
+        typeof resolver?.ownerOnlyAgentFor === 'function'
+          ? await resolver.ownerOnlyAgentFor(caller)
+          : null;
+    } catch (e) {
+      agent = null;
+      this.logger.warn(
+        `could not tell whether user ${caller.userId} reaches the Ranch assistant: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+    setCallerOwnerOnlyAgent(callRequest, agent);
+  }
+
+  /**
    * Fire-and-forget. Only agent runtimes are recorded (a person listing
    * through the console has no pod), and neither a missing recorder nor a
    * failed write may touch the listing itself.
@@ -378,6 +418,9 @@ export class McpToolsHandler extends McpHandlerBase {
             )
           ) {
             return notAvailable();
+          }
+          if (toolInfo.audience === 'manage-agent') {
+            await this.noteOwnerOnlyAgent(callRequest);
           }
 
           const contextId = ContextIdFactory.getByRequest(callRequest);

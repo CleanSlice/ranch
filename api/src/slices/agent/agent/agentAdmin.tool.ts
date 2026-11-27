@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   agentNotFound,
+  OWNER_MANAGED_NOTE,
   callerManagesAgents,
   callerParty,
   callerPerson,
@@ -131,6 +132,8 @@ export class AgentAdminTool implements IConditionallyListedTool {
       'Its files and settings stay. Use it to free a slot for another agent; ' +
       'bring it back with start_agent. Takes the agent id — resolve a name ' +
       'with list_agents first. ' +
+      OWNER_MANAGED_NOTE +
+      ' ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       id: z.string().describe('Agent id — pick from list_agents'),
@@ -171,7 +174,8 @@ export class AgentAdminTool implements IConditionallyListedTool {
       'Start a stopped agent: deploys a fresh pod and reattaches the ' +
       'runtime. The inverse of stop_agent. The agent shows as "deploying" ' +
       'until its readiness probe passes — check with get_agent_status. ' +
-      'Takes the agent id — resolve a name with list_agents first.',
+      'Takes the agent id — resolve a name with list_agents first. ' +
+      OWNER_MANAGED_NOTE,
     parameters: z.object({
       id: z.string().describe('Agent id — pick from list_agents'),
     }),
@@ -254,6 +258,8 @@ export class AgentAdminTool implements IConditionallyListedTool {
       'workflow and deletes its pod. Its workspace files in S3 are kept ' +
       'unless wipeS3 is true — say so to the person, since a wipe cannot be ' +
       'undone. Takes the agent id — resolve a name with list_agents first. ' +
+      OWNER_MANAGED_NOTE +
+      ' ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       id: z.string().describe('Agent id — pick from list_agents'),

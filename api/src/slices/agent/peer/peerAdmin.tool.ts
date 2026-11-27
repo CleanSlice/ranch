@@ -15,6 +15,7 @@ import {
   confirmed,
   manageCaller,
   operatorOnly,
+  ownerOnlyRefusal,
   PERSON_REFUSAL,
 } from '#/mcp/tooling';
 import type { IAgentData } from '#/agent/agent/domain/agent.types';
@@ -609,6 +610,10 @@ export class PeerAdminTool implements IConditionallyListedTool {
         agentId,
       );
       if (!agent) {
+        // The Ranch assistant, for a person who is talking to it: the one
+        // refusal that says who manages the agent (CLEAN-263).
+        const ownerOnly = ownerOnlyRefusal(httpRequest, agentId);
+        if (ownerOnly) return ownerOnly;
         throw new NotFoundException({
           code: PeerErrorCodes.NotFound,
           message: 'Agent not found',

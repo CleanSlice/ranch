@@ -57,7 +57,8 @@ self-service, `askAgent.tool.ts` for a tool that describes itself per caller).
 Shared helpers: `api/src/slices/mcp/tooling.ts` — `ok`, `err`,
 `requireOperator`, `requireOwner`, `requirePerson`, `requireAgent`,
 `callerIsOperator`, `callerIsOwner`, `callerPerson`, `callerAgentId`,
-`audienceAllows`, `confirmed`, `stripSecrets`, `CONFIRM_SENTENCE`. For
+`audienceAllows`, `confirmed`, `stripSecrets`, `CONFIRM_SENTENCE`,
+`agentNotFound`, `ownerOnlyRefusal`, `OWNER_MANAGED_NOTE`. For
 specs, `api/src/slices/mcp/testing.ts` has `asTrustedAgent`, `asPerson`,
 `asGuest`.
 
@@ -100,7 +101,11 @@ specs, `api/src/slices/mcp/testing.ts` has `asTrustedAgent`, `asPerson`,
   sentence of the tool's own: it names `list_agents` for an operator and for
   any signed-in person (a `reader` tool since CLEAN-231, so every person has
   it), and for a caller that is nobody says only that there is no such agent
-  for this caller.
+  for this caller. The same helper holds the one refusal that is not "not
+  found": the Ranch assistant, for a person who has it and is not the Owner
+  (CLEAN-263, see "Managing one agent"). A tool that answers with
+  `agentNotFound` has it without doing anything; a tool with a "not found"
+  of its own asks `ownerOnlyRefusal(httpRequest, id)` first.
 
 ## Audiences
 
@@ -172,7 +177,7 @@ One per tool, declared with `@ToolAudience`:
 | `agent` | an agent runtime, for itself (the token names the agent, whoever it is answering) | `requireAgent(httpRequest)` |
 | `person` | a signed-in person of any role | `const { userId } = requirePerson(httpRequest)` |
 | `reader` | a signed-in person of any role, or whoever `admin` admits (so the Ranch admin agent on its own schedule keeps the tool) | `requirePersonOrOperator(httpRequest)`, then only what `AgentAccessService` says the caller reaches |
-| `manage-agent` | whoever may manage at least one agent: an Owner or Admin, an agent with an Owner token acting for itself, a person who created an agent. And, tool by tool, a person for whom that tool was ticked in a custom pick of the assistant setting, when they talk through the assistant (CLEAN-254) | `const agent = await this.permission.manageable(manageCaller(httpRequest), id)` and the tool's own "not found" when it is null |
+| `manage-agent` | whoever may manage at least one agent: an Owner or Admin, an agent with an Owner token acting for itself, a person who created an agent. And, tool by tool, a person for whom that tool was ticked in a custom pick of the assistant setting, when they talk through the assistant (CLEAN-254) | `const agent = await this.permission.manageable(manageCaller(httpRequest), id)` and `return agentNotFound(httpRequest, id)` when it is null |
 | `admin` | an Owner or Admin; an agent with an Owner token acting for itself | `requireOperator(httpRequest)` |
 | `owner` | the Owner; an agent with an Owner token acting for itself | `requireOwner(httpRequest)` |
 
@@ -368,7 +373,7 @@ admin agent is an `owner` tool for the same reason (`set_agent_admin`, and
 @Tool({ name: 'stop_agent', … }) // on the method when the class also has fleet tools
 async stopAgent(args, _context, httpRequest) {
   const agent = await this.permission.manageable(manageCaller(httpRequest), args.id);
-  if (!agent) return notFound(args.id);   // unknown, or not this caller's: one answer
+  if (!agent) return agentNotFound(httpRequest, args.id); // unknown, or not this caller's
   …
 }
 ```
@@ -378,6 +383,58 @@ the caller may not manage, and the tool gives its ordinary "not found" for
 both, so a refusal never confirms that an agent exists. The routes do the
 same with a 404. Resolve by name only among the agents the caller may manage
 (`AgentLimitTool.resolveAgent`).
+
+**One refusal says why: the assistant, to a person who has it (CLEAN-263).**
+The Ranch admin agent is the assistant every person talks to. A person who
+reaches it is shown it by `list_agents`, so "not found, call list_agents"
+for its id hid nothing and read as a fault: a User asked the assistant to
+restart itself, the tool said the agent it had just listed was not found,
+and the assistant reported a discrepancy of unknown cause that was "not an
+access limit". For that one agent and that one caller the answer is:
+
+```json
+{
+  "error": "Rancher is the Ranch assistant. Only the Owner can restart, stop or change it.",
+  "reason": "owner_only"
+}
+```
+
+- Who gets it: a person who is not the Owner (an Admin as much as a User),
+  who reaches the assistant: the assistant's own switch says so, through
+  the access lists (`AgentPermissionService.ownerOnlyAgentFor`). The Owner
+  and the agent acting for itself manage it and are never refused.
+- Who does not: a person the assistant is switched off for, a guest, a
+  colleague's question. For them it is an agent that does not exist, in the
+  usual words. So is every other agent, whoever asks: an agent out of reach
+  is still not found, and never named.
+- Nothing follows the sentence. No next move, no other id, no "later":
+  there is none for this person, and `reason` is there so the model does
+  not guess one.
+- It changes what a tool says, never what it allows. `canManage` and
+  `manageable` are as they were, and the routes keep their 404: the
+  consoles do not offer the action there, and say "This agent is managed
+  by the Owner."
+
+The seam is one place. The MCP handler asks the agent slice once per
+`tools/call` of a `manage-agent` tool (`AGENT_MANAGER_RESOLVER`, the way it
+asks who manages any agent) and notes the answer on the call's request;
+`agentNotFound(httpRequest, ref)` reads the note and answers the sentence
+when `ref` is that agent's id or its name. So a `manage-agent` tool written
+as above needs nothing more, and a new one has it from its first line. The
+connection tools refuse with a sentence of their own and call
+`ownerOnlyRefusal` before it (`PeerAdminTool.guard`). No note, no resolver
+or a resolver that throws all leave the answer at not-found: it fails
+towards saying less. `assistantGrantReach.spec.ts` calls every
+`manage-agent` tool through the real handler, as a User it was ticked for
+and as an Admin, and holds each to the sentence for the assistant's id and
+to not-found for an id that names nothing.
+
+The other half is not inviting the attempt. `list_agents` and `get_agent`
+mark the assistant's row `managedBy: "owner"` for everybody who may not
+manage it, and the descriptions of those two and of `restart_agent`,
+`stop_agent`, `start_agent`, `delete_agent` and `update_agent` say what the
+mark means (`OWNER_MANAGED_NOTE`). It is a field of the tools: the routes'
+`AgentDto` does not carry it.
 
 The `manage-agent` tools:
 
@@ -504,18 +561,23 @@ already asks the lists (they are its `IAgentReach`).
 
 An agent the caller does not reach is an agent that does not exist: the same
 words as for an id that names nothing, never the agent's name, and nothing
-read or changed before the answer. `api/src/slices/mcp/toolReach.spec.ts`
+read or changed before the answer. The one agent a refusal names is one the
+caller does reach: the Ranch assistant, which a `manage-agent` tool refuses
+anybody but the Owner with "only the Owner can restart, stop or change it"
+and `reason: "owner_only"` (CLEAN-263, "Managing one agent"). With the
+assistant switched off for a person it is out of their reach, and not found
+like any other. `api/src/slices/mcp/toolReach.spec.ts`
 runs every tool that lists agents or takes an agent id as an Admin limited
 to two agents of three and holds each of them to that; a new such tool joins
 its tables.
 
 | Tools | How reach is applied |
 |---|---|
-| `list_agents`, `get_agent` (`reader`) | only reached agents; an agent the caller may not manage comes as its reader view (no `config`, credential, knowledge binding or deploy history); `pinned` is the person's own |
+| `list_agents`, `get_agent` (`reader`) | only reached agents; an agent the caller may not manage comes as its reader view (no `config`, credential, knowledge binding or deploy history); `pinned` is the person's own; the Ranch assistant carries `managedBy: "owner"` for anybody but the Owner (CLEAN-263) |
 | `pin_agent` (`person`) | pins for the person the call is made for; an unreached agent is not found; an agent acting for itself is refused |
 | `get_assistant_access`, `set_assistant_role_access` (`owner`); `get_user_assistant_access`, `set_user_assistant_access`, `reset_user_assistant_access` (`admin`); `get_my_assistant_access` (`person`) | no agent id: they are about the one assistant. `AssistantAccessService` asks who may edit whom (an Admin: Users only, and never above the Admin's own grant); a change that takes abilities away answers "who loses what" until `confirm: true` |
 | `get_user_agent_access`, `set_user_agent_access` (`admin`) | `AgentAccessService.view` / `adjust` as the party: an Admin sees and may name only agents they reach, and meets the ceiling |
-| the 35 `manage-agent` tools | through `manageable` |
+| the 35 `manage-agent` tools | through `manageable`; the Ranch assistant, for a person who reaches it, is refused as the Owner's and not as not found |
 | `list_agent_limits`, `list_skill_agents`, `get_usage_overview`, `llm_usage`, `list_paddock_evaluations`, `list_paddock_scenarios` | filtered; usage totals are of the reached agents |
 | `list_chats`, `list_agent_events`, `list_agent_incidents` | `agentScope` in the query; an `agentId` argument is checked |
 | `get_my_stats` (`person`) | the statistics of the person the call is made for, over the agents that person reaches now: a conversation with an agent taken away is in no figure, and a colleague the person does not reach is counted but not named |
@@ -701,9 +763,12 @@ puts the block back (it is idempotent and `make init` runs it).
   the call is made for (see "Which agents: reach"), answers an unreached
   agent as one that does not exist, and is in `toolReach.spec.ts`.
 - Does the tool name one agent? Then it is `manage-agent`, it resolves the
-  agent with `AgentPermissionService.manageable`, and the spec shows an Admin
-  getting "not found" for the Ranch admin agent in the same words as for an
-  id that does not exist.
+  agent with `AgentPermissionService.manageable`, answers a null with
+  `agentNotFound` (or asks `ownerOnlyRefusal` before a "not found" of its
+  own), and is in the walk of `assistantGrantReach.spec.ts`: an Admin and a
+  ticked User get the owner-only sentence for the Ranch assistant, and "not
+  found" for an agent out of reach in the same words as for an id that does
+  not exist.
 - Does the tool list, name or use an agent's colleagues? Then it takes the
   caller's view from `PeerAccessService` (see "Whose colleague"), answers a
   hidden connection as one that does not exist, and a masked one without its

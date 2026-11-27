@@ -4,13 +4,19 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import { clientIdOfAccount } from '#/bridle/domain/chatIdentity';
 import {
+  ACCESS_SCOPE_NOTE,
+  accessScope,
   callerParty,
   err,
   ok,
+  ownerOnlyLeftOutField,
   requireOperator,
   requirePerson,
   type ToolResult,
 } from '#/mcp/tooling';
+
+/** What the installation's figures leave out of the assistant, as a person reads it. */
+const STATS_LEFT_OUT = 'conversations, usage figures and limit refusals';
 import {
   DEFAULT_PERIOD,
   InstallationStatsService,
@@ -143,10 +149,14 @@ export class StatsTool {
       'shows them, for the agents the person asking can use: every figure, ' +
       'totals included, leaves out an agent they cannot, and `reach.limited` ' +
       'true means the answer is a part of the installation. ' +
-      '`reach.ownerOnly` names agents whose conversations only the Owner ' +
-      'may read: they are in no `people`, `quality` or `channels` figure ' +
-      'of this answer, their cost, incidents and refusals are; tell the ' +
-      'person so when it is not empty. Returns `board` ' +
+      '`reach.ownerOnly` names agents whose conversations and records ' +
+      'only the Owner may read (the Ranch assistant): they are in no ' +
+      '`people`, `quality` or `channels` figure of this answer, and in ' +
+      'no token, call, cost, projection or refusal figure either; their ' +
+      'incidents are listed. `notIncluded` says the same in a sentence: ' +
+      'tell the person so, never that the assistant cost nothing. ' +
+      ACCESS_SCOPE_NOTE +
+      ' Returns `board` ' +
       '(tokens in and out; model calls, estimated cost and distinct people ' +
       'in conversations, each with `previous` for the period before), ' +
       '`daily` (tokens by model and estimated cost for each day), `models` ' +
@@ -195,8 +205,19 @@ export class StatsTool {
     // The party the call is made for, so an Admin asking through the
     // assistant is limited to their agents exactly as in the console. Not
     // the agent's token: that carries Owner whoever is asking.
-    return ok(
-      await this.installation.forCaller(callerParty(httpRequest), { period }),
-    );
+    const stats = await this.installation.forCaller(callerParty(httpRequest), {
+      period,
+    });
+    // The two sentences every list over the agents carries (CLEAN-268),
+    // beside the structured `reach` the page reads: what was left out
+    // because it is the Owner's, and that the caller's lists narrowed the
+    // rest. Both are decided by the service; nothing is asked again.
+    return ok({
+      ...stats,
+      ...(stats.reach.ownerOnly.length > 0
+        ? ownerOnlyLeftOutField(httpRequest, STATS_LEFT_OUT)
+        : {}),
+      ...accessScope({ unrestricted: !stats.reach.limited }),
+    });
   }
 }

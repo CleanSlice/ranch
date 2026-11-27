@@ -207,5 +207,14 @@ person reaches.
   either end. The tools: the four share-link tools and `start_mcp_oauth`
   for the agent-wide connection answer `reason: "owner_only"`.
 
+- **The installation's statistics (CLEAN-265, merged under this change)
+  follow the same two rules.** `GET /stats/installation` and
+  `get_installation_stats` already left the assistant's conversations out
+  for anybody but the Owner and named it in `reach.ownerOnly`; its tokens,
+  calls, cost, days, row among the agents, projection and limit refusals
+  are left out now too, so the view and the usage overview still agree.
+  Its incidents stay. `reach.limited` is the route's "narrowed"; the tool
+  adds `scope` and `notIncluded` beside it.
+
 Pinned by `api/src/slices/mcp/narrowedLists.spec.ts` and
 `api/src/slices/user/agentAccess/guards/agentRecordsRoutes.spec.ts`.

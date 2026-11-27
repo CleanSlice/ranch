@@ -59,6 +59,8 @@ import { LlmTool } from '#/llm/llm.tool';
 import { PaddockEvaluationTool } from '#/paddock/evaluation/evaluation.tool';
 import { PaddockScenarioTool } from '#/paddock/scenario/scenario.tool';
 import { RancherTool } from '#/rancher/rancher.tool';
+import { installationHarness } from '#/stats/domain/__fixtures__/installationStats';
+import { StatsTool } from '#/stats/stats.tool';
 import { IUsageGateway } from '#/usage/domain';
 import { UsageTool } from '#/usage/usage.tool';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
@@ -439,6 +441,29 @@ const oauth = {
   ),
 };
 
+// The installation's statistics (CLEAN-265): the real service over a fleet
+// held in memory, every agent with usage and a refusal today.
+const TODAY = new Date().toISOString().slice(0, 10);
+const { service: installation } = installationHarness(
+  {
+    agents: IDS.map((id) => ({
+      id,
+      name: NAMES[id],
+      ...(id === RANCH ? { admin: true } : {}),
+    })),
+    usage: IDS.map((agentId) => ({
+      agentId,
+      day: TODAY,
+      model: 'claude-sonnet-4-6',
+      input: 1000,
+      output: 100,
+      calls: 5,
+    })),
+    loadDays: IDS.map((agentId) => ({ agentId, day: TODAY, refused: 2 })),
+  },
+  access,
+);
+
 // ── The tools: the real classes, read the way the registry reads them ──
 
 const unused = <T>(name: string): T =>
@@ -545,6 +570,7 @@ const instances = new Map<unknown, unknown>([
   ],
   [UsageTool, new UsageTool(usage as never, agents, access)],
   [ShareLinkTool, new ShareLinkTool(shareLinks, agents, access)],
+  [StatsTool, new StatsTool(unused('personal'), installation)],
   [McpOauthTool, new McpOauthTool(oauth as never, access)],
 ]);
 
@@ -807,7 +833,7 @@ const REACH_TOOLS = toolFiles(SLICES)
  */
 const ACROSS: Record<
   string,
-  { args?: object; byAgent?: boolean; counts?: boolean }
+  { args?: object; byAgent?: boolean; counts?: boolean; viaService?: boolean }
 > = {
   get_usage_overview: {},
   list_agent_events: { byAgent: true },
@@ -820,6 +846,9 @@ const ACROSS: Record<
   llm_usage: { args: { id: 'llm-1' } },
   // Counts only: how many agents were walked, never which.
   sync_chats: { byAgent: true, counts: true },
+  // Asks the reach inside `InstallationStatsService` (see the census of
+  // services below), so the reading of the tool files does not find it.
+  get_installation_stats: { viaService: true },
 };
 
 /**
@@ -862,7 +891,10 @@ const NOT_A_LIST: Record<string, string> = {
 describe('which tools narrow by the caller’s access lists', () => {
   it('every tool that asks the reach is filed: as a list that says when it was narrowed, or with the reason it needs not', () => {
     expect(REACH_TOOLS).toEqual(
-      [...Object.keys(ACROSS), ...Object.keys(NOT_A_LIST)].sort(),
+      [
+        ...Object.keys(ACROSS).filter((name) => !ACROSS[name].viaService),
+        ...Object.keys(NOT_A_LIST),
+      ].sort(),
     );
   });
 
@@ -1825,5 +1857,111 @@ describe('writing tools that name an agent and stand outside the manage rule', (
     for (const managed of ['restart_agent', 'set_agent_secret']) {
       expect(found).not.toContain(managed);
     }
+  });
+});
+
+// ── The reach asked inside a service ─────────────────────────
+//
+// A tool that hands the party to a service of its slice does not show in
+// the reading of the tool files. So the services that ask the reach are
+// counted too, each with the tools it stands behind and what they do about
+// a narrowed answer.
+
+/** Every file under `slices/` that asks the reach and is neither a tool, a route nor a spec. */
+function reachServices(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return entry.name === '__fixtures__' ? [] : reachServices(path);
+    }
+    if (!entry.name.endsWith('.ts')) return [];
+    if (/\.(spec|tool|controller)\.ts$/.test(entry.name)) return [];
+    return readFileSync(path, 'utf8').includes('reachableIds(')
+      ? [entry.name]
+      : [];
+  });
+}
+
+const REACH_SERVICES: Record<string, string> = {
+  'agentAccess.service.ts': 'the rule itself',
+  'consoleReach.service.ts':
+    'the chat hub: which agents a console session may talk to; no tool',
+  'peerAccess.ts':
+    'the colleague tools: a connection out of reach is hidden or masked per connection, never a shortened list of records',
+  'personalStats.service.ts':
+    'get_my_stats: the person’s own conversations, and `board.agents.reachable` says over how many agents',
+  'installationStats.service.ts':
+    'get_installation_stats: filed among the lists above; it carries `scope` and `notIncluded`',
+};
+
+describe('services that ask the reach for a tool', () => {
+  it('each is filed with the tools it stands behind', () => {
+    expect(reachServices(SLICES).sort()).toEqual(
+      Object.keys(REACH_SERVICES).sort(),
+    );
+  });
+});
+
+describe('get_installation_stats: the assistant’s records are in no figure of an Admin', () => {
+  interface IStats {
+    reach: { limited: boolean; ownerOnly: string[] };
+    board: { calls: { value: number } };
+    agents: { agentId: string }[];
+    health: { refusals: { agentId: string }[] };
+    notIncluded?: string;
+    scope?: string;
+  }
+  const statsOf = async (said: Promise<string>) =>
+    JSON.parse(await said) as IStats;
+  const NOT_INCLUDED = LEFT_OUT(
+    'conversations, usage figures and limit refusals',
+  );
+
+  it('an Admin whose lists narrow nothing: no spend and no refusal of the assistant, and the answer says so', async () => {
+    const mine = await statsOf(asOpen('get_installation_stats'));
+
+    expect(mine.agents.map((a) => a.agentId).sort()).toEqual([A, B]);
+    expect(mine.board.calls.value).toBe(10);
+    expect(mine.health.refusals.map((r) => r.agentId).sort()).toEqual([A, B]);
+    expect(mine.reach.ownerOnly).toEqual(['Rancher']);
+    expect(mine.notIncluded).toBe(NOT_INCLUDED);
+    expect(mine).not.toHaveProperty('scope');
+  });
+
+  it('a limited Admin: their agent only, and both sentences', async () => {
+    const mine = await statsOf(asLimited('get_installation_stats'));
+
+    expect(mine.agents.map((a) => a.agentId)).toEqual([A]);
+    expect(mine.board.calls.value).toBe(5);
+    expect(mine.notIncluded).toBe(NOT_INCLUDED);
+    expect(mine.scope).toBe(ACCESS_SCOPE_TEXT);
+  });
+
+  it('the Owner, and the assistant for itself: every agent, the assistant in the totals, and neither sentence', async () => {
+    for (const ask of [asOwner, forItself]) {
+      const whole = await statsOf(ask('get_installation_stats'));
+
+      expect(whole.agents.map((a) => a.agentId).sort()).toEqual(
+        [...IDS].sort(),
+      );
+      expect(whole.board.calls.value).toBe(15);
+      expect(whole.health.refusals).toHaveLength(3);
+      expect(whole).not.toHaveProperty('notIncluded');
+      expect(whole).not.toHaveProperty('scope');
+    }
+  });
+
+  it('an Admin the assistant is switched off for: not there, and not mentioned', async () => {
+    switchAssistantOff(ADMIN2);
+    const said = await call(
+      'get_installation_stats',
+      {},
+      undefined,
+      consoleOf(ADMIN2),
+    );
+
+    expect(JSON.parse(said)).not.toHaveProperty('notIncluded');
+    expect(said).not.toContain(RANCH);
+    expect(said).not.toMatch(/assistant|Rancher/);
   });
 });

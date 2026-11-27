@@ -1,4 +1,7 @@
 import {
+  ICitationGroup,
+  ICitationRange,
+  ICitedAnswer,
   ICreateChatMessageSource,
   IChatMessageSourceData,
 } from './chatSource.types';
@@ -14,6 +17,22 @@ export abstract class IChatSourceGateway {
     messageId: string,
     n: number,
   ): Promise<IChatMessageSourceData | null>;
+
+  // The three reads of a statistics view (CLEAN-258). The first two are one
+  // range of the index on `[clientId, createdAt]` each, grouped by the
+  // database: what comes back is as large as the answers and the sources of
+  // that person's period, never as the table.
+
+  /** The answers that cited something in the range, oldest first. */
+  abstract findCitedAnswers(range: ICitationRange): Promise<ICitedAnswer[]>;
+
+  /** The range's citations counted per knowledge base, and for the web. */
+  abstract countCitationsBySource(
+    range: ICitationRange,
+  ): Promise<ICitationGroup[]>;
+
+  /** When the earliest citation there is was recorded; null when none was. */
+  abstract firstCreatedAt(): Promise<Date | null>;
 }
 
 /**

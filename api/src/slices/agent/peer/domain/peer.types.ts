@@ -334,6 +334,39 @@ export interface IFinishDelegationData {
   durationMs: number;
 }
 
+/**
+ * The agents a read may count hand-overs of: what `AgentReach.where()`
+ * hands back for a caller whose access lists hide some (CLEAN-231). It is
+ * about the agent that asked, the one the person was talking to.
+ */
+export interface IDelegationAgentScope {
+  in?: string[];
+  notIn?: string[];
+}
+
+/** How often one peer was asked in a period (CLEAN-258). */
+export interface IDelegationPeerCount {
+  /**
+   * The agent of this Ranch that was asked, or null for an agent outside
+   * it. Handed back so the reader can ask whether the person may be told
+   * its name: a peer they do not reach served them as "a colleague".
+   */
+  peerAgentId: string | null;
+  /** The peer's name as the latest of these hand-overs recorded it. */
+  name: string;
+  count: number;
+}
+
+/** The hand-overs made while answering one person in a period (CLEAN-258). */
+export interface IDelegationCounts {
+  /** Every hand-over started in the period, whatever came of it. */
+  total: number;
+  /** The ones the peer answered. */
+  answered: number;
+  /** Per peer, most asked first; equally asked ones by name. */
+  peers: IDelegationPeerCount[];
+}
+
 // ── Errors raised by the outbound client ────────────────────────
 
 /** The peer's card could not be read at connect or refresh time.

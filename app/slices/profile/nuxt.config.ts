@@ -12,6 +12,14 @@ export default defineNuxtConfig({
   alias: {
     '#profile': currentDir,
   },
+  imports: {
+    dirs: [`${currentDir}/stores`],
+  },
+  // The Statistics tab's colours and block rules (CLEAN-258). One global
+  // sheet scoped to `[data-profile-stats]` rather than a `<style>` per
+  // component: a dozen blocks share the same tokens, and the detail pop-up is
+  // drawn outside the page's own tree, where a scoped style would not reach.
+  css: [`${currentDir}/assets/stats.css`],
   modules: ['@nuxtjs/i18n'],
   i18n: {
     langDir: 'locales',

@@ -2,6 +2,9 @@ import { ChatSourceService } from './chatSource.service';
 import { IChatSourceGateway, ISourceRatingReader } from './chatSource.gateway';
 import {
   IChatMessageSourceData,
+  ICitationGroup,
+  ICitationRange,
+  ICitedAnswer,
   ICreateChatMessageSource,
   IChatSourceInput,
 } from './chatSource.types';
@@ -32,8 +35,64 @@ function makeGateway(seed: IChatMessageSourceData[] = []) {
       const r = rows.get(`${messageId}:${n}`);
       return r && r.agentId === agentId ? r : null;
     }),
+    // The three period reads (CLEAN-258), over the same rows and with the
+    // conditions the real queries carry: the client, the range with both
+    // ends, and the agents of the scope.
+    findCitedAnswers: jest.fn(async (range: ICitationRange) => {
+      const first = new Map<string, ICitedAnswer>();
+      for (const r of inRange(rows.values(), range)) {
+        const key = `${r.agentId}|${r.messageId}`;
+        const seen = first.get(key);
+        if (!seen || r.createdAt < seen.at) {
+          first.set(key, {
+            agentId: r.agentId,
+            messageId: r.messageId,
+            at: r.createdAt,
+          });
+        }
+      }
+      return [...first.values()].sort(
+        (a, b) => a.at.getTime() - b.at.getTime(),
+      );
+    }),
+    countCitationsBySource: jest.fn(async (range: ICitationRange) => {
+      const groups = new Map<string, ICitationGroup>();
+      for (const r of inRange(rows.values(), range)) {
+        const key = JSON.stringify([r.kind, r.knowledgeId, r.knowledgeName]);
+        const group = groups.get(key) ?? {
+          kind: r.kind,
+          knowledgeId: r.knowledgeId,
+          knowledgeName: r.knowledgeName,
+          citations: 0,
+          lastCitedAt: r.createdAt,
+        };
+        group.citations += 1;
+        if (r.createdAt > group.lastCitedAt) group.lastCitedAt = r.createdAt;
+        groups.set(key, group);
+      }
+      return [...groups.values()];
+    }),
+    firstCreatedAt: jest.fn(async () => {
+      const times = [...rows.values()].map((r) => r.createdAt.getTime());
+      return times.length ? new Date(Math.min(...times)) : null;
+    }),
   };
   return { gateway, rows };
+}
+
+function inRange(
+  rows: Iterable<IChatMessageSourceData>,
+  range: ICitationRange,
+): IChatMessageSourceData[] {
+  const scope = range.agentScope;
+  return [...rows].filter(
+    (r) =>
+      r.clientId === range.clientId &&
+      r.createdAt >= range.from &&
+      r.createdAt <= range.to &&
+      (scope?.in === undefined || scope.in.includes(r.agentId)) &&
+      (scope?.notIn === undefined || !scope.notIn.includes(r.agentId)),
+  );
 }
 
 // Every existing source belongs to base k1 unless the test says otherwise.
@@ -448,5 +507,206 @@ describe('ChatSourceService.record — an agent may only link what it may read',
       await service.forMessages(['m1'], { clientId: 'user-1', isAdmin: false })
     ).get('m1')!;
     expect(entries[0].canOpen).toBe(false);
+  });
+});
+
+describe('ChatSourceService.citedForClient — what a period of statistics reads', () => {
+  const FROM = new Date('2026-11-20T22:00:00Z');
+  const TO = new Date('2026-11-27T10:30:00Z');
+
+  let n = 0;
+  const cited = (
+    iso: string,
+    over: Partial<IChatMessageSourceData> = {},
+  ): IChatMessageSourceData => ({
+    id: `row-${(n += 1)}`,
+    agentId: 'agent-1',
+    clientId: 'user-1',
+    sessionKey: 'bridle:user-1',
+    messageId: `m${n}`,
+    n: 1,
+    kind: 'knowledge',
+    sourceId: 's1',
+    knowledgeId: 'k1',
+    knowledgeName: 'Legal',
+    name: 'Contract 2025.pdf',
+    url: null,
+    createdAt: new Date(iso),
+    ...over,
+  });
+  const web = (iso: string, over: Partial<IChatMessageSourceData> = {}) =>
+    cited(iso, {
+      kind: 'web',
+      sourceId: null,
+      knowledgeId: null,
+      knowledgeName: null,
+      name: 'Example',
+      url: 'https://example.com/page',
+      ...over,
+    });
+
+  const serviceOver = (seed: IChatMessageSourceData[]) => {
+    const { gateway } = makeGateway(seed);
+    const service = makeService(gateway, makeSources([]), makeKnowledge({}));
+    return { service, gateway };
+  };
+
+  it('says which agent answered with sources and when, once per answer, and nothing of the answer', async () => {
+    const { service } = serviceOver([
+      cited('2026-11-25T09:00:00Z', { messageId: 'a', n: 1 }),
+      cited('2026-11-25T09:00:00Z', { messageId: 'a', n: 2 }),
+      cited('2026-11-21T08:00:00Z', { messageId: 'b', agentId: 'agent-2' }),
+    ]);
+
+    const { answers } = await service.citedForClient('user-1', FROM, TO);
+
+    expect(answers).toEqual([
+      { agentId: 'agent-2', at: new Date('2026-11-21T08:00:00Z') },
+      { agentId: 'agent-1', at: new Date('2026-11-25T09:00:00Z') },
+    ]);
+  });
+
+  it('names a knowledge base by its name and the web as `web`, most cited first', async () => {
+    const { service } = serviceOver([
+      cited('2026-11-21T08:00:00Z'),
+      cited('2026-11-22T08:00:00Z'),
+      cited('2026-11-23T08:00:00Z'),
+      cited('2026-11-23T09:00:00Z', {
+        knowledgeId: 'k2',
+        knowledgeName: 'Handbook',
+      }),
+      // Two pages of two sites: the web is one source.
+      web('2026-11-24T08:00:00Z'),
+      web('2026-11-24T09:00:00Z', { url: 'https://other.example/x' }),
+    ]);
+
+    const { sources } = await service.citedForClient('user-1', FROM, TO);
+
+    expect(sources).toEqual([
+      { name: 'Legal', citations: 3 },
+      { name: 'web', citations: 2 },
+      { name: 'Handbook', citations: 1 },
+    ]);
+  });
+
+  it('orders equally cited sources by name, so the answer does not change between two calls', async () => {
+    const { service } = serviceOver([
+      cited('2026-11-21T08:00:00Z', { knowledgeId: 'k2', knowledgeName: 'B' }),
+      cited('2026-11-22T08:00:00Z', { knowledgeId: 'k1', knowledgeName: 'A' }),
+    ]);
+
+    const { sources } = await service.citedForClient('user-1', FROM, TO);
+
+    expect(sources.map((s) => s.name)).toEqual(['A', 'B']);
+  });
+
+  it('counts a base that was renamed in the period once, under the name it was last cited with', async () => {
+    const { service } = serviceOver([
+      cited('2026-11-21T08:00:00Z', { knowledgeName: 'Legal (old)' }),
+      cited('2026-11-22T08:00:00Z', { knowledgeName: 'Legal (old)' }),
+      cited('2026-11-25T08:00:00Z', { knowledgeName: 'Legal' }),
+    ]);
+
+    const { sources } = await service.citedForClient('user-1', FROM, TO);
+
+    expect(sources).toEqual([{ name: 'Legal', citations: 3 }]);
+  });
+
+  it('keeps two bases apart that happen to share a name', async () => {
+    const { service } = serviceOver([
+      cited('2026-11-21T08:00:00Z', {
+        knowledgeId: 'k1',
+        knowledgeName: 'FAQ',
+      }),
+      cited('2026-11-22T08:00:00Z', {
+        knowledgeId: 'k2',
+        knowledgeName: 'FAQ',
+      }),
+      cited('2026-11-23T08:00:00Z', {
+        knowledgeId: 'k2',
+        knowledgeName: 'FAQ',
+      }),
+    ]);
+
+    const { sources } = await service.citedForClient('user-1', FROM, TO);
+
+    expect(sources).toEqual([
+      { name: 'FAQ', citations: 2 },
+      { name: 'FAQ', citations: 1 },
+    ]);
+  });
+
+  it('cannot name a base whose name was never recorded: the answer counts, the source is not listed', async () => {
+    const { service } = serviceOver([
+      cited('2026-11-21T08:00:00Z', { knowledgeId: 'k9', knowledgeName: null }),
+    ]);
+
+    const result = await service.citedForClient('user-1', FROM, TO);
+
+    expect(result.answers).toHaveLength(1);
+    expect(result.sources).toEqual([]);
+  });
+
+  it('reads that client, that range and those agents only', async () => {
+    const { service, gateway } = serviceOver([
+      cited('2026-11-21T08:00:00Z'),
+      cited('2026-11-19T08:00:00Z'),
+      cited('2026-11-22T08:00:00Z', { clientId: 'user-2' }),
+      cited('2026-11-23T08:00:00Z', { agentId: 'agent-2' }),
+    ]);
+    const scope = { in: ['agent-1'] };
+
+    const result = await service.citedForClient('user-1', FROM, TO, scope);
+
+    expect(result.answers).toEqual([
+      { agentId: 'agent-1', at: new Date('2026-11-21T08:00:00Z') },
+    ]);
+    expect(result.sources).toEqual([{ name: 'Legal', citations: 1 }]);
+    const range = { clientId: 'user-1', from: FROM, to: TO, agentScope: scope };
+    const reads = gateway as unknown as Record<string, jest.Mock>;
+    expect(reads.findCitedAnswers).toHaveBeenCalledWith(range);
+    expect(reads.countCitationsBySource).toHaveBeenCalledWith(range);
+  });
+
+  it('answers empty lists when nothing was cited', async () => {
+    const { service } = serviceOver([]);
+
+    expect(await service.citedForClient('user-1', FROM, TO)).toEqual({
+      answers: [],
+      sources: [],
+    });
+  });
+});
+
+describe('ChatSourceService.firstRecordAt', () => {
+  const at = (iso: string): IChatMessageSourceData => ({
+    id: iso,
+    agentId: 'agent-1',
+    clientId: 'user-1',
+    sessionKey: 'bridle:user-1',
+    messageId: iso,
+    n: 1,
+    kind: 'web',
+    sourceId: null,
+    knowledgeId: null,
+    knowledgeName: null,
+    name: 'Example',
+    url: 'https://example.com/page',
+    createdAt: new Date(iso),
+  });
+
+  it('is when the first source was cited, and null before any was', async () => {
+    const filled = makeGateway([
+      at('2026-06-02T10:00:00Z'),
+      at('2026-03-14T08:30:00Z'),
+    ]);
+    const empty = makeGateway();
+    const serviceOf = (gateway: IChatSourceGateway) =>
+      makeService(gateway, makeSources([]), makeKnowledge({}));
+
+    expect(await serviceOf(filled.gateway).firstRecordAt()).toEqual(
+      new Date('2026-03-14T08:30:00Z'),
+    );
+    expect(await serviceOf(empty.gateway).firstRecordAt()).toBeNull();
   });
 });

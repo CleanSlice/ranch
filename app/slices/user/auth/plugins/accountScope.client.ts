@@ -50,6 +50,7 @@ export default defineNuxtPlugin({
         useChatStore().resetForAccount();
         useShareStore().resetForAccount();
         useAssistantAccessStore().resetForAccount();
+        useProfileStatsStore().resetForAccount();
         clearNuxtData();
       });
     }

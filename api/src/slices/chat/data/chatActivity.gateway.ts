@@ -4,7 +4,9 @@ import {
   IActivityBucket,
   IActivityOwner,
   IChatActivityGateway,
+  IChatAgentScope,
   IChatSettleGate,
+  IPersonActivityHour,
   IUnsettledChat,
 } from '../domain';
 
@@ -154,5 +156,37 @@ export class ChatActivityGateway extends IChatActivityGateway {
       where: { hour: { lt: date } },
     });
     return res.count;
+  }
+
+  findHoursForPerson(
+    externalUserId: string,
+    channel: string,
+    from: Date,
+    to: Date,
+    agentScope?: IChatAgentScope,
+  ): Promise<IPersonActivityHour[]> {
+    return this.prisma.chatActivityHour.findMany({
+      where: {
+        // Two equalities and a range: exactly the index on
+        // [externalUserId, channel, hour], so the read costs what this
+        // person did in the range and nothing of anybody else's.
+        externalUserId,
+        channel,
+        hour: { gte: from, lte: to },
+        // The agents the person reaches, as `buildWhere` of the chat list
+        // applies them. No key at all without a list: `agentId: undefined`
+        // would mean the same to Prisma, and reads as a filter that is not
+        // there.
+        ...(agentScope ? { agentId: agentScope } : {}),
+      },
+      select: {
+        sessionId: true,
+        agentId: true,
+        hour: true,
+        userMessages: true,
+        agentMessages: true,
+      },
+      orderBy: { hour: 'asc' },
+    });
   }
 }

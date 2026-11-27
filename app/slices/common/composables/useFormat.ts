@@ -1,14 +1,20 @@
 import {
+  browserTimeZone,
   formatClock,
+  formatCompact,
   formatDate,
   formatDateTime,
+  formatDayMonth,
   formatFullDate,
   formatLongDate,
+  formatMoney,
+  formatMonthShort,
   formatNumber,
   formatPercent,
   formatSize,
   formatStamp,
   formatStampTitle,
+  formatWeekdayShort,
   languageName,
   type Instant,
 } from '../utils/format';
@@ -23,6 +29,7 @@ import {
  *   const format = useFormat();
  *   format.clock(message.ts)      // 12:46 AM · 00:46
  *   format.size(file.size)        // 5.9 MB · 5,9 МБ
+ *   format.compact(tokens)        // 1.2M · 1,2 млн
  */
 export function useFormat() {
   const { locale, t } = useI18n();
@@ -35,8 +42,19 @@ export function useFormat() {
     stampTitle: (value: Instant) => formatStampTitle(locale.value, value),
     longDate: (value: Instant) => formatLongDate(locale.value, value),
     fullDate: (value: Instant) => formatFullDate(locale.value, value),
+    /** A `YYYY-MM-DD` string is that calendar day in any zone; the rest are instants. */
+    dayMonth: (value: Instant) => formatDayMonth(locale.value, value),
+    /** 0 = Monday … 6 = Sunday. */
+    weekdayShort: (weekday: number) => formatWeekdayShort(locale.value, weekday),
+    /** 0 = January … 11 = December. */
+    monthShort: (month: number) => formatMonthShort(locale.value, month),
+    /** The browser's IANA zone, read when called; it has no language. */
+    timeZone: () => browserTimeZone(),
     number: (value: number | null | undefined) => formatNumber(locale.value, value),
     percent: (ratio: number | null | undefined) => formatPercent(locale.value, ratio),
+    compact: (value: number | null | undefined) => formatCompact(locale.value, value),
+    money: (value: number | null | undefined, currency?: string) =>
+      formatMoney(locale.value, value, currency),
     /** The number in the language's notation, the unit from `unit.*`. */
     size: (bytes: number | null | undefined, precise = false) => {
       const { value, unit } = formatSize(locale.value, bytes, precise);

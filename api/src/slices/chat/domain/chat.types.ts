@@ -32,6 +32,16 @@ export interface IChatSessionData {
   updatedAt: Date;
 }
 
+/**
+ * The agents a read may show, for a caller whose access lists hide some
+ * (CLEAN-231): what `AgentReach.where()` hands back. Absent means every
+ * agent; `{ in: [] }` means none.
+ */
+export interface IChatAgentScope {
+  in?: string[];
+  notIn?: string[];
+}
+
 export interface IChatFilter {
   agentId?: string;
   /**
@@ -39,7 +49,7 @@ export interface IChatFilter {
    * (CLEAN-231): what `AgentReach.where()` hands back. Used when no single
    * `agentId` is asked for.
    */
-  agentScope?: { in?: string[]; notIn?: string[] };
+  agentScope?: IChatAgentScope;
   channel?: string;
   externalUserId?: string; // scope to one end user (App "my history")
   search?: string; // matches title / preview / externalUserId
@@ -52,6 +62,35 @@ export interface IChatFilter {
 export interface IChatListResult {
   items: IChatSessionData[];
   total: number;
+}
+
+/**
+ * What a statistics view reads of a conversation (CLEAN-258): which agent it
+ * is with and when it last moved. Nothing of what was said.
+ */
+export interface IChatSessionRef {
+  id: string;
+  agentId: string;
+  lastMessageAt: Date;
+}
+
+/** One author's ratings over a period: how many up, how many down. */
+export interface IChatFeedbackCounts {
+  up: number;
+  down: number;
+}
+
+/**
+ * One conversation's messages in one UTC hour, as a statistics view reads
+ * them (CLEAN-258). Counts only: the table holds no text.
+ */
+export interface IPersonActivityHour {
+  sessionId: string;
+  agentId: string;
+  /** Start of the hour, UTC. */
+  hour: Date;
+  userMessages: number;
+  agentMessages: number;
 }
 
 /**

@@ -10,6 +10,7 @@ import { IKnowledgeGateway } from '#/reins/knowledge/domain/knowledge.gateway';
 import { boundKnowledgeIds } from '#/reins/knowledge/domain/boundKnowledge';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import { ITemplateGateway } from '#/agent/template/domain';
+import { IChatAgentScope } from './chat.types';
 import { IChatSourceGateway, ISourceRatingReader } from './chatSource.gateway';
 import {
   CHAT_SOURCES_MAX,
@@ -17,8 +18,13 @@ import {
   IChatSourceEntry,
   IChatSourceInput,
   IChatSourceViewer,
+  ICitationGroup,
+  ICitationRange,
+  ICitedForClient,
+  ICitedSource,
   ICreateChatMessageSource,
   IRecordSourcesInput,
+  WEB_SOURCE_NAME,
   isWebUrl,
 } from './chatSource.types';
 
@@ -179,6 +185,43 @@ export class ChatSourceService {
     return row;
   }
 
+  /**
+   * What the answers to one chat identity cited in `[from, to]`, for a
+   * statistics view (CLEAN-258, docs/statistics.md): the answers that came
+   * with sources, and how often each knowledge base and the web were cited.
+   * Read where the citations are, by time; nothing is counted ahead.
+   *
+   * `agentScope` is the agents the person reaches (`AgentReach.where()`).
+   * It is applied in the query, so an answer of an agent taken away from
+   * them is neither counted nor does its base appear among the sources.
+   */
+  async citedForClient(
+    clientId: string,
+    from: Date,
+    to: Date,
+    agentScope?: IChatAgentScope,
+  ): Promise<ICitedForClient> {
+    const range: ICitationRange = { clientId, from, to, agentScope };
+    const [answers, groups] = await Promise.all([
+      this.gateway.findCitedAnswers(range),
+      this.gateway.countCitationsBySource(range),
+    ]);
+    return {
+      // Without the message ids: whoever reads this counts, and has no use
+      // for a key into what was said.
+      answers: answers.map(({ agentId, at }) => ({ agentId, at })),
+      sources: tallySources(groups),
+    };
+  }
+
+  /**
+   * When the first source was cited, or null when none ever was: since when
+   * the citations figure is complete (`StatFigure`, asked once at boot).
+   */
+  firstRecordAt(): Promise<Date | null> {
+    return this.gateway.firstCreatedAt();
+  }
+
   private async toRow(
     input: IRecordSourcesInput,
     source: IChatSourceInput,
@@ -260,6 +303,56 @@ export class ChatSourceService {
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
+}
+
+/**
+ * Citation groups as sources a person would recognise: each knowledge base
+ * once, the web once, most cited first.
+ *
+ * A base is told apart by its id, not its name: two bases may share a name,
+ * and one base renamed inside the period would otherwise be listed twice. It
+ * is shown under the name it was last cited with. Every web page counts
+ * towards the one source `web` (spec 038, contracts/api.md: "the web as
+ * `web`"). A base whose name no row recorded cannot be listed,
+ * and is left out here; the answers that cited it are still answers with
+ * sources.
+ */
+function tallySources(groups: ICitationGroup[]): ICitedSource[] {
+  let web = 0;
+  const bases = new Map<
+    string,
+    { name: string | null; namedAt: number; citations: number }
+  >();
+  for (const group of groups) {
+    if (group.kind === 'web') {
+      web += group.citations;
+      continue;
+    }
+    // The column is nullable: with no id on the rows, the name is all that
+    // tells one base from another.
+    const key =
+      group.knowledgeId !== null
+        ? `id:${group.knowledgeId}`
+        : `name:${group.knowledgeName ?? ''}`;
+    const base = bases.get(key) ?? { name: null, namedAt: -1, citations: 0 };
+    base.citations += group.citations;
+    const at = group.lastCitedAt.getTime();
+    if (group.knowledgeName && at > base.namedAt) {
+      base.name = group.knowledgeName;
+      base.namedAt = at;
+    }
+    bases.set(key, base);
+  }
+
+  const sources: ICitedSource[] = [];
+  if (web > 0) sources.push({ name: WEB_SOURCE_NAME, citations: web });
+  for (const base of bases.values()) {
+    if (base.name) sources.push({ name: base.name, citations: base.citations });
+  }
+  // By name among equals, so two calls give one order.
+  return sources.sort(
+    (a, b) => b.citations - a.citations || a.name.localeCompare(b.name),
+  );
 }
 
 /** `https://docs.example.com/a/b?x=1` → `docs.example.com/a/b` — a title for

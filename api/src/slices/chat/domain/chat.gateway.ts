@@ -1,5 +1,7 @@
 import {
   IChatActivity,
+  IChatAgentScope,
+  IChatFeedbackCounts,
   IChatFeedbackData,
   IChatFilter,
   IChatInsightGate,
@@ -7,6 +9,7 @@ import {
   IChatListResult,
   IChatReconcileInput,
   IChatSessionData,
+  IChatSessionRef,
   IUpsertChatFeedback,
 } from './chat.types';
 
@@ -86,4 +89,37 @@ export abstract class IChatGateway {
     sessionId: string,
     authorId: string,
   ): Promise<IChatFeedbackData[]>;
+
+  // ── What a statistics view reads (CLEAN-258, docs/statistics.md) ──
+
+  /**
+   * The conversations named, each with its agent and the time of its last
+   * message; an id that names nothing is absent from the answer. With
+   * `agentScope`, a conversation with an agent outside it is absent too.
+   * The ids come from the hours a period view has already read, so the read
+   * is as large as that person's period.
+   */
+  abstract findSessionsByIds(
+    ids: readonly string[],
+    agentScope?: IChatAgentScope,
+  ): Promise<IChatSessionRef[]>;
+
+  /**
+   * How many answers one author rated up and down with `createdAt` in
+   * `[from, to]`, both ends included. The ratings are read where they are:
+   * one changed or withdrawn since is counted as it stands now. With
+   * `agentScope`, only ratings in conversations with those agents.
+   */
+  abstract countFeedbackByAuthor(
+    authorId: string,
+    from: Date,
+    to: Date,
+    agentScope?: IChatAgentScope,
+  ): Promise<IChatFeedbackCounts>;
+
+  /**
+   * When the earliest rating there is was given, or null when there is none:
+   * how far back a period can reach and still count ratings whole.
+   */
+  abstract firstFeedbackAt(): Promise<Date | null>;
 }

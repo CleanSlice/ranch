@@ -2,3 +2,10 @@ export * from './figure.types';
 export * from './period';
 export { IStatFigureGateway } from './statFigure.gateway';
 export { FigureRegistry } from './figureRegistry';
+export * from './modelAttribution';
+export * from './personalStats.types';
+export {
+  CALENDAR_DAYS,
+  PersonalStatsService,
+  TOP_SOURCES,
+} from './personalStats.service';

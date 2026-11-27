@@ -79,6 +79,8 @@ const CLASS_AUDIENCE: Record<string, ToolAudienceTypes> = {
   'reins/source/source.tool.ts': 'admin',
   'setting/setting.tool.ts': 'admin',
   'skill/skill.tool.ts': 'admin',
+  // `GET me/stats` is `@Roles(User)`: a person's own statistics (CLEAN-258).
+  'stats/stats.tool.ts': 'person',
   'upgrade/upgrade.tool.ts': 'admin',
   'usage/usage.tool.ts': 'admin',
   'user/agentAccess/agentAccess.tool.ts': 'admin',

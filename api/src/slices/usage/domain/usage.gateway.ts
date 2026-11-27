@@ -32,8 +32,17 @@ export abstract class IUsageGateway {
   /**
    * Every agent's usage rows with `from <= date < to`, in the order
    * `findRecentAll` gives them. For a period that does not end today.
+   *
+   * With `agentIds`, the rows of those agents only (CLEAN-258): a person's
+   * statistics need the days of the few agents they wrote to, and must not
+   * read the installation's spend to find them. An empty list is no agent,
+   * and answers nothing.
    */
-  abstract findRange(from: Date, to: Date): Promise<IUsageData[]>;
+  abstract findRange(
+    from: Date,
+    to: Date,
+    agentIds?: readonly string[],
+  ): Promise<IUsageData[]>;
   /**
    * The earliest day any usage was reported for, or null when there is none:
    * how far back a period can reach and still have something to show.

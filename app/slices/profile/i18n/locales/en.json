@@ -48,5 +48,109 @@
       "elsewhere": "Available in the admin console",
       "locked": "Not available"
     }
+  },
+  "stats": {
+    "tabs": {
+      "label": "Profile section",
+      "stats": "Statistics"
+    },
+    "period": {
+      "label": "Period",
+      "days": "{count} days"
+    },
+    "audience": {
+      "only_you": "Only you see these figures.",
+      "owner": "Your conversations from both consoles: the owner's channel is shared between them."
+    },
+    "state": {
+      "loading": "Loading statistics",
+      "failed_title": "The statistics could not be loaded",
+      "failed_text": "The figures did not arrive. The rest of the page works as before.",
+      "retry": "Retry",
+      "empty_title": "Your statistics will appear here",
+      "empty_text": "The figures are counted from your conversations with agents. Start your first conversation, and they will be here within a few minutes.",
+      "counted_since": "Counted since {date}",
+      "activity_since": "Earlier days are restored from the saved conversations, where those still exist. Exact since {date}",
+      "table": "Table"
+    },
+    "board": {
+      "label": "Your figures for the period",
+      "conversations": "conversations | conversation | conversations",
+      "messages": "your messages | your message | your messages",
+      "agents": "agents answered you | agent answered you | agents answered you",
+      "of_available": "of {count} available | of {count} available | of {count} available",
+      "resolved": "questions resolved",
+      "not_counted": "not counted yet",
+      "rise": "increase",
+      "fall": "decrease",
+      "versus": "{percent} vs the previous {count} days",
+      "same": "same as the previous period",
+      "no_previous": "no data for the previous period"
+    },
+    "activity": {
+      "title": "Activity",
+      "caption": "conversations you wrote in, last 13 weeks",
+      "calendar_label": "Calendar of the conversations you wrote in, day by day, for the last 13 weeks. The numbers for each day are in the table view.",
+      "day_conversations": "no conversations | {count} conversation | {count} conversations",
+      "outside": "outside the selected period",
+      "weekdays_label": "Conversations by day of the week",
+      "in_days": "{conversations} in {count} days",
+      "busiest": "Most often: {day}",
+      "active_days": "Days with conversations: {active} of {count}",
+      "less": "less",
+      "more": "more",
+      "table_label": "Conversations by day, as a table",
+      "table_day": "Day",
+      "table_conversations": "Conversations"
+    },
+    "weekday": {
+      "mon": "Monday",
+      "tue": "Tuesday",
+      "wed": "Wednesday",
+      "thu": "Thursday",
+      "fri": "Friday",
+      "sat": "Saturday",
+      "sun": "Sunday"
+    },
+    "agents": {
+      "title": "Who you talk to",
+      "caption": "by your messages",
+      "orbit_label": "Agents around you: the closer an agent is to the centre, the more you write to it",
+      "node_label": "{name}: {count} messages | {name}: {count} message | {name}: {count} messages",
+      "list_label": "Agents by your messages",
+      "messages": "messages | message | messages",
+      "messages_count": "{count} messages | {count} message | {count} messages",
+      "conversations": "{count} conversations | {count} conversation | {count} conversations"
+    },
+    "models": {
+      "title": "Who answers you",
+      "caption": "agents' models",
+      "top": "Most often you are answered by",
+      "bar_label": "Your messages by model: {values}",
+      "your_messages": "{count} of your messages | {count} of your messages | {count} of your messages",
+      "fallback": "Some days have no record of the model in use: their messages are counted by the model the agent has now.",
+      "unknown": "unknown model"
+    },
+    "help": {
+      "title": "How agents helped you",
+      "caption": "in {count} days",
+      "cited": "Answers with sources",
+      "cited_of": "of {count}",
+      "cited_label": "{cited} of {count} conversations got an answer with sources",
+      "cited_top_one": "Most often: {first}",
+      "cited_top_two": "Most often: {first}, then {second}",
+      "cited_none": "Agents have not cited sources yet",
+      "web": "the web",
+      "handovers": "Asked a colleague",
+      "times": "times | time | times",
+      "handovers_done": "Succeeded: {answered} of {count}.",
+      "handovers_top": "Most often: {name}",
+      "handovers_none": "Agents managed on their own",
+      "ratings": "Your ratings",
+      "rated_up": "marked useful",
+      "rated_down": "marked not useful",
+      "ratings_share": "You marked {percent} of the answers you rated as useful",
+      "ratings_none": "You have not rated answers yet"
+    }
   }
 }

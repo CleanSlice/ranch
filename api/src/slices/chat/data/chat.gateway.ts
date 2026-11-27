@@ -4,6 +4,8 @@ import { PrismaService } from '#/setup/prisma/prisma.service';
 import {
   IChatGateway,
   IChatActivity,
+  IChatAgentScope,
+  IChatFeedbackCounts,
   IChatFeedbackData,
   IChatFilter,
   IChatInsightGate,
@@ -11,12 +13,23 @@ import {
   IChatListResult,
   IChatReconcileInput,
   IChatSessionData,
+  IChatSessionRef,
   IUpsertChatFeedback,
   hourOf,
 } from '../domain';
 import { ChatMapper } from './chat.mapper';
 
 const DEFAULT_PER_PAGE = 50;
+
+/**
+ * How many conversation ids one statement names (CLEAN-258). A statement
+ * carries a limited number of bound values (Prisma stops at 32 767 on
+ * Postgres), and a person who talks a lot can have several thousand
+ * conversations in 90 days. A thousand keeps each statement far below that
+ * and small enough to plan as a lookup by primary key; nearly every view
+ * fits in the first.
+ */
+const SESSION_ID_CHUNK = 1000;
 
 /**
  * How long the live write may wait for a connection, and how long it may then
@@ -333,6 +346,64 @@ export class ChatGateway extends IChatGateway {
       orderBy: { createdAt: 'desc' },
     });
     return records.map((r) => this.toFeedback(r));
+  }
+
+  async findSessionsByIds(
+    ids: readonly string[],
+    agentScope?: IChatAgentScope,
+  ): Promise<IChatSessionRef[]> {
+    const wanted = [...new Set(ids)];
+    const found: IChatSessionRef[] = [];
+    for (let start = 0; start < wanted.length; start += SESSION_ID_CHUNK) {
+      const records = await this.prisma.chatSession.findMany({
+        where: {
+          id: { in: wanted.slice(start, start + SESSION_ID_CHUNK) },
+          ...(agentScope ? { agentId: agentScope } : {}),
+        },
+        // Not the preview, the summary or the insights: a statistics view
+        // shows nothing of what was said.
+        select: { id: true, agentId: true, lastMessageAt: true },
+      });
+      found.push(...records);
+    }
+    return found;
+  }
+
+  async countFeedbackByAuthor(
+    authorId: string,
+    from: Date,
+    to: Date,
+    agentScope?: IChatAgentScope,
+  ): Promise<IChatFeedbackCounts> {
+    const groups = await this.prisma.chatFeedback.groupBy({
+      by: ['rating'],
+      where: {
+        // An equality and a range: the index on [authorId, createdAt].
+        authorId,
+        createdAt: { gte: from, lte: to },
+        // A rating has no agent of its own; its conversation has. Joined
+        // only for a caller whose lists hide some agent.
+        ...(agentScope ? { session: { agentId: agentScope } } : {}),
+      },
+      _count: { _all: true },
+    });
+    const counts: IChatFeedbackCounts = { up: 0, down: 0 };
+    for (const group of groups) {
+      // 1 and -1 are what is written; the sign is read so that a weight
+      // added one day is still a vote in its direction.
+      if (group.rating > 0) counts.up += group._count._all;
+      else if (group.rating < 0) counts.down += group._count._all;
+    }
+    return counts;
+  }
+
+  async firstFeedbackAt(): Promise<Date | null> {
+    // The first entry of the index on [createdAt].
+    const first = await this.prisma.chatFeedback.findFirst({
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
+    });
+    return first?.createdAt ?? null;
   }
 
   private toFeedback(r: ChatFeedback): IChatFeedbackData {

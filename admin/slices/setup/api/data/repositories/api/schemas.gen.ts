@@ -5086,6 +5086,116 @@ export const UpdatePaddockScenarioDtoSchema = {
   },
 } as const;
 
+export const AssistantSettingDriftDtoSchema = {
+  type: "object",
+  properties: {
+    group: {
+      type: "string",
+      example: "integrations",
+    },
+    name: {
+      type: "string",
+      example: "s3_bucket",
+    },
+    change: {
+      type: "string",
+      enum: ["changed", "added", "removed"],
+      description:
+        "What happened to the live setting since the Owner approved it. Never the values.",
+    },
+    changedById: {
+      type: "string",
+      nullable: true,
+    },
+    changedByName: {
+      type: "string",
+      nullable: true,
+      description: "The account that made the change, when it still exists.",
+    },
+    changedAt: {
+      format: "date-time",
+      type: "string",
+    },
+    version: {
+      type: "string",
+      description:
+        "Names this exact state of the setting. Opaque; holds no value. Sent back with the apply.",
+    },
+  },
+  required: [
+    "group",
+    "name",
+    "change",
+    "changedById",
+    "changedByName",
+    "changedAt",
+    "version",
+  ],
+} as const;
+
+export const AssistantSettingsDtoSchema = {
+  type: "object",
+  properties: {
+    drift: {
+      description:
+        "Settings whose live value differs from the one the Ranch assistant is served. Empty when the assistant runs on the live settings.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AssistantSettingDriftDto",
+      },
+    },
+  },
+  required: ["drift"],
+} as const;
+
+export const AssistantSettingShownDtoSchema = {
+  type: "object",
+  properties: {
+    group: {
+      type: "string",
+      example: "integrations",
+    },
+    name: {
+      type: "string",
+      example: "s3_bucket",
+    },
+    version: {
+      type: "string",
+      description: "The `version` the list carried for this setting.",
+    },
+  },
+  required: ["group", "name", "version"],
+} as const;
+
+export const ApplyAssistantSettingsDtoSchema = {
+  type: "object",
+  properties: {
+    shown: {
+      description:
+        "The settings to apply, exactly as `GET /rancher/settings` listed them. The apply is refused with 409 SETTINGS_CHANGED when the list is no longer this one.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/AssistantSettingShownDto",
+      },
+    },
+  },
+  required: ["shown"],
+} as const;
+
+export const AssistantSettingsAppliedDtoSchema = {
+  type: "object",
+  properties: {
+    applied: {
+      description: "The settings that moved, as `group.name`.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["applied"],
+} as const;
+
 export const AgentAccessOutcomeDtoSchema = {
   type: "object",
   properties: {

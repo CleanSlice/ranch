@@ -2288,6 +2288,55 @@ export type UpdatePaddockScenarioDto = {
   setup?: CreatePaddockScenarioSetupDto | null;
 };
 
+export type AssistantSettingDriftDto = {
+  group: string;
+  name: string;
+  /**
+   * What happened to the live setting since the Owner approved it. Never the values.
+   */
+  change: "changed" | "added" | "removed";
+  changedById: string | null;
+  /**
+   * The account that made the change, when it still exists.
+   */
+  changedByName: string | null;
+  changedAt: string;
+  /**
+   * Names this exact state of the setting. Opaque; holds no value. Sent back with the apply.
+   */
+  version: string;
+};
+
+export type AssistantSettingsDto = {
+  /**
+   * Settings whose live value differs from the one the Ranch assistant is served. Empty when the assistant runs on the live settings.
+   */
+  drift: Array<AssistantSettingDriftDto>;
+};
+
+export type AssistantSettingShownDto = {
+  group: string;
+  name: string;
+  /**
+   * The `version` the list carried for this setting.
+   */
+  version: string;
+};
+
+export type ApplyAssistantSettingsDto = {
+  /**
+   * The settings to apply, exactly as `GET /rancher/settings` listed them. The apply is refused with 409 SETTINGS_CHANGED when the list is no longer this one.
+   */
+  shown: Array<AssistantSettingShownDto>;
+};
+
+export type AssistantSettingsAppliedDto = {
+  /**
+   * The settings that moved, as `group.name`.
+   */
+  applied: Array<string>;
+};
+
 export type AgentAccessOutcomeDto = {
   /**
    * `all`: reaches every agent. `all_except`: every agent except `count` denied. `only`: only the `count` allowed. `none`: limited with no allowed agent left, needs review.
@@ -7226,6 +7275,34 @@ export type PaddockScenarioControllerGenerateData = {
 export type PaddockScenarioControllerGenerateResponses = {
   201: unknown;
 };
+
+export type GetAssistantSettingsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/rancher/settings";
+};
+
+export type GetAssistantSettingsResponses = {
+  200: AssistantSettingsDto;
+};
+
+export type GetAssistantSettingsResponse =
+  GetAssistantSettingsResponses[keyof GetAssistantSettingsResponses];
+
+export type ApplySettingsToAssistantData = {
+  body: ApplyAssistantSettingsDto;
+  path?: never;
+  query?: never;
+  url: "/rancher/settings/apply";
+};
+
+export type ApplySettingsToAssistantResponses = {
+  200: AssistantSettingsAppliedDto;
+};
+
+export type ApplySettingsToAssistantResponse =
+  ApplySettingsToAssistantResponses[keyof ApplySettingsToAssistantResponses];
 
 export type GetUserAgentAccessData = {
   body?: never;

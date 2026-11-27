@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  APPROVED_SETTINGS_TEXT,
   OWNER_MANAGED_TEXT,
   builtFromText,
+  keptFromAssistant,
+  settingDriftLine,
   canManageAgent,
   canPinAgent,
   isOwnerRole,
@@ -10,6 +13,30 @@ import {
   ownerOnlyIngredient,
   ownerOnlyLeftOutText,
 } from './agentAccess';
+
+describe('the settings the assistant is deployed from (CLEAN-271)', () => {
+  test('an Admin editing a setting the assistant is served is told it keeps the approved value', () => {
+    expect(keptFromAssistant('Admin', ['integrations'])).toBe(true);
+    expect(keptFromAssistant('Admin', ['organization', 'a2a'])).toBe(true);
+    expect(APPROVED_SETTINGS_TEXT).toBe(
+      'The Ranch assistant keeps the values the Owner approved; this change applies to other agents.',
+    );
+  });
+
+  test('not on a form of other settings, and never for the Owner', () => {
+    expect(keptFromAssistant('Admin', ['organization', 'auth'])).toBe(false);
+    expect(keptFromAssistant('Owner', ['integrations'])).toBe(false);
+  });
+
+  test('the Owner’s notice names the setting, what happened and who, never a value', () => {
+    expect(
+      settingDriftLine({ group: 'integrations', name: 's3_bucket', change: 'changed', changedByName: 'Ada' }),
+    ).toBe('integrations.s3_bucket: changed by Ada');
+    expect(
+      settingDriftLine({ group: 'integrations', name: 'bridle_url', change: 'removed', changedByName: null }),
+    ).toBe('integrations.bridle_url: removed');
+  });
+});
 
 describe('what the assistant is built from (CLEAN-271)', () => {
   const ingredient = { assistantDependency: true };

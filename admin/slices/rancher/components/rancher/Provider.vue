@@ -18,7 +18,11 @@ import {
   IconExternalLink,
   IconCloud,
 } from '@tabler/icons-vue';
-import { isOwnerRole, ownerOnlyLeftOutText } from '#agent/utils/agentAccess';
+import {
+  isOwnerRole,
+  ownerOnlyLeftOutText,
+  settingDriftLine,
+} from '#agent/utils/agentAccess';
 
 const rancherStore = useRancherStore();
 const agentStore = useAgentStore();
@@ -99,6 +103,47 @@ const usageLeftOut = computed(() =>
     ? ownerOnlyLeftOutText('usage figures', admin.value.name)
     : '',
 );
+
+// The assistant is deployed from the settings the Owner approved
+// (CLEAN-271). A setting somebody else changed reaches every other agent and
+// is kept back from the assistant; the Owner is shown which, here, and
+// applies them when they are right. Keys and names only, never a value. An
+// Admin is told on the Settings page instead and sees nothing of this.
+const confirmStore = useConfirmStore();
+const { settingsDrift } = storeToRefs(rancherStore);
+const applyingSettings = ref(false);
+const applyError = ref<string | null>(null);
+if (import.meta.client) {
+  watch(
+    isOwner,
+    (owner) => {
+      if (owner) void rancherStore.fetchSettingsDrift().catch(() => undefined);
+    },
+    { immediate: true },
+  );
+}
+async function onApplySettings() {
+  const who = admin.value?.name ?? 'the Ranch assistant';
+  const ok = await confirmStore.ask({
+    title: `Apply current settings to ${who}`,
+    description:
+      `${settingsDrift.value.length} setting${settingsDrift.value.length === 1 ? ' was' : 's were'} changed by somebody else. ` +
+      `They decide where ${who} loads its files from and where its token is sent. ` +
+      'Apply them only if you have checked the new values. They take effect at its next restart.',
+    confirmLabel: 'Apply settings',
+    variant: 'destructive',
+  });
+  if (!ok) return;
+  applyingSettings.value = true;
+  applyError.value = null;
+  try {
+    await rancherStore.applySettings();
+  } catch (err) {
+    applyError.value = (err as Error).message ?? 'Could not apply the settings';
+  } finally {
+    applyingSettings.value = false;
+  }
+}
 
 // The hub refused this page's chat as "not found" (CLEAN-231): access to the
 // Ranch admin agent was taken away while the page was open, or after the
@@ -247,6 +292,35 @@ async function onDeploy() {
         <IconRefresh v-else class="size-4" />
       </Button>
     </div>
+
+    <section
+      v-if="isOwner && settingsDrift.length"
+      class="mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-sm"
+      data-settings-drift
+    >
+      <div>
+        <h2 class="font-medium">
+          {{ admin?.name ?? 'The Ranch assistant' }} is not running on the current settings
+        </h2>
+        <p class="mt-1 text-muted-foreground">
+          {{ settingsDrift.length === 1 ? 'A setting was' : 'Settings were' }} changed by somebody else.
+          Other agents use the new {{ settingsDrift.length === 1 ? 'value' : 'values' }};
+          the assistant keeps the {{ settingsDrift.length === 1 ? 'one' : 'ones' }} you approved until you apply {{ settingsDrift.length === 1 ? 'it' : 'them' }}.
+        </p>
+      </div>
+      <ul class="flex flex-col gap-1 font-mono text-xs">
+        <li v-for="row in settingsDrift" :key="`${row.group}.${row.name}`" class="[overflow-wrap:anywhere]">
+          {{ settingDriftLine(row) }}
+        </li>
+      </ul>
+      <div class="flex flex-wrap items-center gap-3">
+        <Button size="sm" :disabled="applyingSettings" data-action="apply-settings" @click="onApplySettings">
+          {{ applyingSettings ? 'Applying…' : 'Apply current settings' }}
+        </Button>
+        <NuxtLink to="/settings" class="text-xs underline underline-offset-2">Review in Settings</NuxtLink>
+        <span v-if="applyError" class="text-xs text-destructive">{{ applyError }}</span>
+      </div>
+    </section>
 
     <div v-if="pending && !status" class="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <Skeleton class="h-32 w-full rounded-lg" />

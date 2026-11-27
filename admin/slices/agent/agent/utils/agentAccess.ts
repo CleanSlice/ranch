@@ -105,6 +105,63 @@ export function builtFromText(name: string): string {
   return `Part of what ${whose} is built from: only the Owner can change it.`;
 }
 
+// ── The settings the assistant is deployed from (CLEAN-271) ─────
+//
+// The assistant runs on the settings the Owner approved. A setting somebody
+// else changes takes effect for every other agent and is kept back from the
+// assistant until the Owner applies it. The API decides; the console says
+// so where the change is made, and shows the Owner what is kept back.
+
+/**
+ * The setting groups the assistant is served the approved values of: the
+ * same list as `APPROVED_SETTING_GROUPS` in the API
+ * (`api/src/slices/agent/assistantBuild/domain/assistantSetting.service.ts`).
+ */
+export const APPROVED_SETTING_GROUPS: readonly string[] = [
+  'integrations',
+  'infrastructure',
+  'knowledge',
+  'agent_defaults',
+  'a2a',
+];
+
+/** What an Admin reads under a form that edits one of those settings. */
+export const APPROVED_SETTINGS_TEXT =
+  'The Ranch assistant keeps the values the Owner approved; this change applies to other agents.';
+
+/**
+ * Whether that line belongs under a form: it edits a setting of one of
+ * those groups, and the viewer is not the Owner (whose change is the
+ * approval).
+ */
+export function keptFromAssistant(
+  viewerRole: string | null | undefined,
+  groups: readonly string[],
+): boolean {
+  return (
+    !isOwnerRole(viewerRole) &&
+    groups.some((group) => APPROVED_SETTING_GROUPS.includes(group))
+  );
+}
+
+/** "integrations.s3_bucket — changed by Ada Admin" for the Owner's notice. */
+export function settingDriftLine(drift: {
+  group: string;
+  name: string;
+  change: string;
+  changedByName: string | null;
+}): string {
+  const what =
+    drift.change === 'added'
+      ? 'added'
+      : drift.change === 'removed'
+        ? 'removed'
+        : 'changed';
+  return `${drift.group}.${drift.name}: ${what}${
+    drift.changedByName ? ` by ${drift.changedByName}` : ''
+  }`;
+}
+
 /**
  * Whether a pin is offered on an agent (CLEAN-269). A pin keeps an agent at
  * the top of the viewer's own lists; the Ranch assistant is the first row of

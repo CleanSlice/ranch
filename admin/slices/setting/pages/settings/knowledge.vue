@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import type { ILlmCredentialData } from '#llm/stores/llm';
+import {
+  APPROVED_SETTINGS_TEXT,
+  keptFromAssistant,
+} from '#agent/utils/agentAccess';
 import { Button } from '#theme/components/ui/button';
 import { Input } from '#theme/components/ui/input';
 import { Label } from '#theme/components/ui/label';
@@ -381,6 +385,13 @@ async function onSave(): Promise<void> {
         </div>
       </CardContent>
     </Card>
+
+    <AccessNote
+      v-if="keptFromAssistant(useAuthStore().user?.role, ['knowledge'])"
+      data-settings-kept-back
+    >
+      {{ APPROVED_SETTINGS_TEXT }}
+    </AccessNote>
 
     <div class="flex items-center gap-3">
       <Button :disabled="saving" @click="onSave">

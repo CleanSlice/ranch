@@ -1,6 +1,9 @@
 import type { IAgentData } from '#agent/domain';
 import type { ITemplateData } from '#template/domain';
-import type { IRancherStatus } from '../domain/rancher.types';
+import type {
+  IAssistantSettingDrift,
+  IRancherStatus,
+} from '../domain/rancher.types';
 
 /**
  * Maps the Rancher status API onto the domain shape. The nested `template` /
@@ -18,6 +21,36 @@ export class RancherMapper {
       admin:
         o.admin && typeof o.admin === 'object' ? (o.admin as IAgentData) : null,
     };
+  }
+
+  /** `GET /rancher/settings`: keys, what happened, who and when. */
+  toDrift(raw: unknown): IAssistantSettingDrift[] {
+    const rows = (raw as { drift?: unknown } | null)?.drift;
+    if (!Array.isArray(rows)) return [];
+    return rows.flatMap((row) => {
+      const o = row as Record<string, unknown> | null;
+      if (!o || typeof o.group !== 'string' || typeof o.name !== 'string') {
+        return [];
+      }
+      return [
+        {
+          group: o.group,
+          name: o.name,
+          change: typeof o.change === 'string' ? o.change : 'changed',
+          changedByName:
+            typeof o.changedByName === 'string' ? o.changedByName : null,
+          changedAt: typeof o.changedAt === 'string' ? o.changedAt : '',
+          version: typeof o.version === 'string' ? o.version : '',
+        },
+      ];
+    });
+  }
+
+  toApplied(raw: unknown): string[] {
+    const keys = (raw as { applied?: unknown } | null)?.applied;
+    return Array.isArray(keys)
+      ? keys.filter((key): key is string => typeof key === 'string')
+      : [];
   }
 
   toTemplate(raw: unknown): ITemplateData | null {

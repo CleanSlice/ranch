@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { formatClockSeconds } from '#common/utils/format';
+import {
+  APPROVED_SETTINGS_TEXT,
+  keptFromAssistant,
+} from '#agent/utils/agentAccess';
 
 interface IFieldDef {
   group: string;
@@ -25,6 +29,15 @@ interface IProps {
 const props = defineProps<IProps>();
 
 const settingStore = useSettingStore();
+const authStore = useAuthStore();
+// An Admin's change to one of these settings reaches every agent but the
+// Ranch assistant, which keeps the value the Owner approved (CLEAN-271).
+const keptBack = computed(() =>
+  keptFromAssistant(
+    authStore.user?.role,
+    props.fields.map((field) => field.group),
+  ),
+);
 // Keyed by the fields it shows, not by a constant: a page may now carry more
 // than one of these forms, and two useAsyncData calls sharing a key with
 // different handlers is undefined behaviour. The values themselves live in the
@@ -158,6 +171,10 @@ async function onSave() {
         </div>
       </CardContent>
     </Card>
+
+    <AccessNote v-if="keptBack" data-settings-kept-back>
+      {{ APPROVED_SETTINGS_TEXT }}
+    </AccessNote>
 
     <div class="flex items-center gap-3">
       <Button :disabled="saving" @click="onSave">

@@ -284,6 +284,10 @@ import type {
   PaddockScenarioControllerFindByIdData,
   PaddockScenarioControllerUpdateData,
   PaddockScenarioControllerGenerateData,
+  GetAssistantSettingsData,
+  GetAssistantSettingsResponse,
+  ApplySettingsToAssistantData,
+  ApplySettingsToAssistantResponse,
   GetUserAgentAccessData,
   GetUserAgentAccessResponse,
   SetUserAgentAccessData,
@@ -3699,6 +3703,76 @@ export class PaddockScenariosService {
   }
 }
 
+export class RancherService {
+  /**
+   * Which settings differ, live, from the values the Ranch assistant is deployed from (the ones the Owner approved): the key, what happened (changed, added, removed), who and when. Never a value. Owner only.
+   */
+  public static getAssistantSettings<ThrowOnError extends boolean = false>(
+    options?: Options<GetAssistantSettingsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetAssistantSettingsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/rancher/settings",
+      ...options,
+    });
+  }
+
+  /**
+   * Make the live values of the settings the Owner was shown the approved ones: the Ranch assistant is served them from its next restart. The body carries the list as it was read; when it differs from the list now (a setting changed again, another was changed), nothing is applied and the answer is 409 SETTINGS_CHANGED. Answers the keys that moved. Owner only.
+   */
+  public static applySettingsToAssistant<ThrowOnError extends boolean = false>(
+    options: Options<ApplySettingsToAssistantData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      ApplySettingsToAssistantResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/rancher/settings/apply",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Stepper state for the Rancher setup wizard: do we have an LLM, storage, the special template, and an admin agent (`hasAdmin`)? `admin` is the Ranch admin agent as the caller may read it: null for a caller whose access lists do not reach it, without configuration for a caller who may not manage it (an Admin), whole for the Owner (CLEAN-231).
+   */
+  public static rancherControllerStatus<ThrowOnError extends boolean = false>(
+    options?: Options<RancherControllerStatusData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/rancher/status",
+      ...options,
+    });
+  }
+
+  /**
+   * Create the special Rancher template (idempotent). Returns the existing one if already created. Owner only: it is what the Ranch assistant is built from (CLEAN-271).
+   */
+  public static rancherControllerEnsureTemplate<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<RancherControllerEnsureTemplateData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/rancher/template",
+      ...options,
+    });
+  }
+}
+
 export class AssistantAccessService {
   /**
    * Who can use the assistant: what Admins and Users get, how many accounts follow each, and every account that differs from its role, with who set it. Owner only.
@@ -4344,40 +4418,6 @@ export class StatsService {
       ThrowOnError
     >({
       url: "/stats/installation",
-      ...options,
-    });
-  }
-}
-
-export class RancherService {
-  /**
-   * Stepper state for the Rancher setup wizard: do we have an LLM, storage, the special template, and an admin agent (`hasAdmin`)? `admin` is the Ranch admin agent as the caller may read it: null for a caller whose access lists do not reach it, without configuration for a caller who may not manage it (an Admin), whole for the Owner (CLEAN-231).
-   */
-  public static rancherControllerStatus<ThrowOnError extends boolean = false>(
-    options?: Options<RancherControllerStatusData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/rancher/status",
-      ...options,
-    });
-  }
-
-  /**
-   * Create the special Rancher template (idempotent). Returns the existing one if already created. Owner only: it is what the Ranch assistant is built from (CLEAN-271).
-   */
-  public static rancherControllerEnsureTemplate<
-    ThrowOnError extends boolean = false,
-  >(options?: Options<RancherControllerEnsureTemplateData, ThrowOnError>) {
-    return (options?.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/rancher/template",
       ...options,
     });
   }

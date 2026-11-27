@@ -10,6 +10,11 @@ import {
   requireOperator,
   agentNotFound,
   callerParty,
+  ACCESS_SCOPE_NOTE,
+  accessScope,
+  ownerOnlyLeftOutField,
+  ownerOnlyRefusal,
+  type ToolResult,
 } from '#/mcp/tooling';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
@@ -76,19 +81,47 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
   ) {}
 
   /**
-   * The scenario, when it exists and is not scoped to an agent the caller's
-   * access lists hide (CLEAN-231). One answer for both.
+   * The agents whose scenarios the party this call is made for may read and
+   * write: the ones they reach (CLEAN-231), less the Ranch assistant for
+   * anybody but the Owner (CLEAN-268). A scenario of the assistant is what
+   * the Owner tests it with and expects of it.
    */
-  private async reachedScenario(httpRequest: Request, id: string) {
+  private async reachOf(httpRequest: Request) {
+    const used = await this.access.reachableIds(callerParty(httpRequest));
+    return { used, records: used.forRecords() };
+  }
+
+  /**
+   * The scenario, when it exists and is not scoped to an agent the caller's
+   * access lists hide (CLEAN-231); otherwise the answer to hand back. One
+   * answer for a scenario that does not exist and one out of reach. A
+   * scenario of the Ranch assistant, asked for by a person who has the
+   * assistant and is not the Owner, is the Owner's and is said to be
+   * (CLEAN-268).
+   */
+  private async reachedScenario(
+    httpRequest: Request,
+    id: string,
+  ): Promise<
+    | {
+        scenario: NonNullable<
+          Awaited<ReturnType<IPaddockScenarioGateway['findById']>>
+        >;
+        refusal?: undefined;
+      }
+    | { scenario?: undefined; refusal: ToolResult }
+  > {
+    const notFound = ok({ error: `Scenario ${id} not found` });
     const scenario = await this.scenarios.findById(id);
-    if (!scenario) return null;
-    if (!scenario.agentId) return scenario;
-    return (await this.access.reaches(
-      callerParty(httpRequest),
-      scenario.agentId,
-    ))
-      ? scenario
-      : null;
+    if (!scenario) return { refusal: notFound };
+    if (!scenario.agentId) return { scenario };
+    const { records } = await this.reachOf(httpRequest);
+    if (records.has(scenario.agentId)) return { scenario };
+    return {
+      refusal:
+        ownerOnlyRefusal(httpRequest, scenario.agentId, 'evaluations') ??
+        notFound,
+    };
   }
 
   /**
@@ -107,7 +140,12 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
     title: 'List paddock scenarios',
     template: 'List the paddock scenarios of «template or agent»',
     description:
-      'List paddock scenarios. Filter by templateId or agentId; without filters returns all.',
+      'List paddock scenarios, under `scenarios`. Filter by templateId or ' +
+      'agentId; without filters returns all this person may read: the ' +
+      'scenarios of templates, and of the agents they can use. The ' +
+      'scenarios of the Ranch assistant are the Owner’s to read: when the ' +
+      'result carries `notIncluded`, say so, never that there are none. ' +
+      ACCESS_SCOPE_NOTE,
     parameters: z.object({
       templateId: z.string().optional(),
       agentId: z.string().optional(),
@@ -125,16 +163,18 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
-    const reach = await this.access.reachableIds(callerParty(httpRequest));
-    if (agentId && !reach.has(agentId)) {
-      return agentNotFound(httpRequest, agentId);
+    const { used, records } = await this.reachOf(httpRequest);
+    if (agentId && !records.has(agentId)) {
+      return agentNotFound(httpRequest, agentId, 'evaluations');
     }
-    return ok(
-      reach.filter(
+    return ok({
+      scenarios: records.filter(
         await this.scenarios.findAll({ templateId, agentId }),
         (scenario) => scenario.agentId,
       ),
-    );
+      ...ownerOnlyLeftOutField(httpRequest, 'scenarios', agentId),
+      ...accessScope(used, agentId),
+    });
   }
 
   @Tool({
@@ -148,8 +188,8 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
   })
   async get({ id }: { id: string }, _context: unknown, httpRequest: Request) {
     requireOperator(httpRequest);
-    const scenario = await this.reachedScenario(httpRequest, id);
-    return ok(scenario ?? { error: `Scenario ${id} not found` });
+    const found = await this.reachedScenario(httpRequest, id);
+    return found.refusal ?? ok(found.scenario);
   }
 
   @Tool({
@@ -168,8 +208,8 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
-    if (!(await this.access.reaches(callerParty(httpRequest), agentId))) {
-      return agentNotFound(httpRequest, agentId);
+    if (!(await this.reachOf(httpRequest)).records.has(agentId)) {
+      return agentNotFound(httpRequest, agentId, 'evaluations');
     }
     return ok(await this.scenarios.findForAgent(agentId));
   }
@@ -223,9 +263,9 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     if (
       input.agentId &&
-      !(await this.access.reaches(callerParty(httpRequest), input.agentId))
+      !(await this.reachOf(httpRequest)).records.has(input.agentId)
     ) {
-      return agentNotFound(httpRequest, input.agentId);
+      return agentNotFound(httpRequest, input.agentId, 'evaluations');
     }
     const hasTemplate = Boolean(input.templateId);
     const hasAgent = Boolean(input.agentId);
@@ -276,8 +316,8 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
-    const existing = await this.reachedScenario(httpRequest, id);
-    if (!existing) return ok({ error: `Scenario ${id} not found` });
+    const found = await this.reachedScenario(httpRequest, id);
+    if (found.refusal) return found.refusal;
     return ok(await this.scenarios.update(id, patch));
   }
 
@@ -303,8 +343,9 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
   ) {
     requireOperator(httpRequest);
     const { id } = args;
-    const existing = await this.reachedScenario(httpRequest, id);
-    if (!existing) return ok({ error: `Scenario ${id} not found` });
+    const found = await this.reachedScenario(httpRequest, id);
+    if (found.refusal) return found.refusal;
+    const existing = found.scenario;
     const refusal = confirmed(
       args,
       `delete the paddock scenario «${existing.name ?? id}»`,
@@ -360,9 +401,9 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     if (
       input.agentId &&
-      !(await this.access.reaches(callerParty(httpRequest), input.agentId))
+      !(await this.reachOf(httpRequest)).records.has(input.agentId)
     ) {
-      return agentNotFound(httpRequest, input.agentId);
+      return agentNotFound(httpRequest, input.agentId, 'evaluations');
     }
     // Same XOR rule the controller enforces on POST /paddock-scenarios/generate.
     const hasTemplate = Boolean(input.templateId);

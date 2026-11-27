@@ -153,3 +153,68 @@ check is `e2e/http.mjs`.
   reach it, its reader view when they may not manage it, the whole row for
   the Owner. The only other route that returns that agent without naming
   its id is `GET /agents/admin/current`, which already asked the lists.
+
+### Amended 2026-11-27 (CLEAN-268)
+
+Two things changed in what "reach" comes to. Neither changes which agents a
+person reaches.
+
+- **A result narrowed by the lists says so.** On 2026-11-27 an Admin limited
+  to one agent asked the assistant for the incidents of the month; the lists
+  came back empty, correctly, and the answer was "there are none". Every
+  tool that lists or sums across agents and filters by reach now adds
+  `scope` to its result when, and only when, the caller's lists narrowed
+  something: "Only the agents this person can use are covered. That is an
+  access limit: other agents may have records this result does not show."
+  No agent, no id, no number. Absent for the Owner, a trusted party, a
+  person whose lists limit and deny nothing, and a call that named one
+  agent. The tools: `list_agent_events`, `list_agent_incidents`,
+  `list_agent_limits`, `list_chats`, `sync_chats`, `get_usage_overview`,
+  `llm_usage`, `list_paddock_evaluations`, `list_paddock_scenarios`,
+  `list_skill_agents`. The routes are unchanged here: a console page shows
+  the rows it is given, and the consoles do not claim "none on the
+  installation". `delete_llm` now counts, instead of naming, the agents out
+  of reach in its result after the deletion as well as before it.
+- **Records about the Ranch assistant are the Owner's.** `AgentReach` has a
+  second reading, `forRecords()`: the same reach with the assistant taken
+  out, for anybody the lists apply to. It is asked where a route or a tool
+  returns what Ranch keeps about an agent rather than the agent:
+  - `@AgentScoped(source, { records: true })`, 404 as for an agent that does
+    not exist: `GET /agents/:agentId/usage`, `GET /agents/:agentId/limits`,
+    `GET /agents/:agentId/load`, `POST` and `GET /paddock-evaluations`,
+    `GET` and `POST /paddock-scenarios`, `POST /paddock-scenarios/generate`;
+  - the record's own 404: every `/paddock-evaluations/:id…` route, and
+    `GET` / `PATCH` / `DELETE /paddock-scenarios/:id`;
+  - filtered: `GET /usage/overview` and `GET /llms/:id/usage` (the
+    assistant is in no row and no total: its spend stays in the
+    installation's totals for the Owner alone), `GET /agent-limits`,
+    `GET /paddock-evaluations`, `GET /paddock-scenarios`.
+
+  The matching tools answer `reason: "owner_only"` to a person who has the
+  assistant, and their lists say what was left out (`notIncluded`); see
+  `docs/agent-tools.md`, "The assistant's records". Left as they were, for
+  whoever reaches the assistant: `GET /agents/:id` and the status routes,
+  `GET /agents/:agentId/limits/enabled`, `/agents/:id/tools`,
+  `/agent-events` and `/agent-incidents` (a row says that it was down and
+  who noticed, nothing anybody said to it).
+
+- **What is done to the Ranch assistant outside the manage rule is the
+  Owner's too.** `@AgentScoped('agentId', { ownerManaged: true })` on the
+  four `/agents/:agentId/share-link` routes: 404 for the assistant to
+  anybody but the Owner, as its management routes answer. The visitor's
+  side is untouched, so an existing link keeps working until the Owner
+  revokes it. `GET /agent-links` leaves out a pair with the assistant at
+  either end. The tools: the four share-link tools and `start_mcp_oauth`
+  for the agent-wide connection answer `reason: "owner_only"`.
+
+- **The installation's statistics (CLEAN-265, merged under this change)
+  follow the same two rules.** `GET /stats/installation` and
+  `get_installation_stats` already left the assistant's conversations out
+  for anybody but the Owner and named it in `reach.ownerOnly`; its tokens,
+  calls, cost, days, row among the agents, projection and limit refusals
+  are left out now too, so the view and the usage overview still agree.
+  Its incidents stay. `reach.limited` is the route's "narrowed"; the tool
+  adds `scope` and `notIncluded` beside it.
+
+Pinned by `api/src/slices/mcp/narrowedLists.spec.ts` and
+`api/src/slices/user/agentAccess/guards/agentRecordsRoutes.spec.ts`.

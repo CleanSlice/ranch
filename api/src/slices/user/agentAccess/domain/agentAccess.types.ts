@@ -221,6 +221,38 @@ export class AgentReach {
     );
   }
 
+  /**
+   * This reach as it applies to the records ABOUT agents: usage figures,
+   * evaluations and their scenarios, limit values and load (CLEAN-268). The
+   * assistant is taken out, whatever its switch says. Having the assistant
+   * means talking to it; what it recorded about everybody's use of it, and
+   * how the Owner set it up and tested it, is the Owner's to read, as its
+   * conversations are (CLEAN-236).
+   *
+   * Only a person the lists apply to has a switch at all: the Owner and a
+   * trusted party hold `AgentReach.ALL`, which knows no assistant and is
+   * handed back as it is. No query: the switch was read with the lists.
+   */
+  forRecords(): AgentReach {
+    return this.withoutAssistant();
+  }
+
+  /**
+   * This reach for an act that is done TO an agent and is not behind the
+   * manage rule, because for every other agent reaching it is enough:
+   * sharing it by a public link, connecting a tool server for everybody who
+   * talks to it (CLEAN-268). For the assistant such an act is managing it,
+   * and only the Owner manages it. Same cut as `forRecords`, named for what
+   * the caller is doing.
+   */
+  forChanges(): AgentReach {
+    return this.withoutAssistant();
+  }
+
+  private withoutAssistant(): AgentReach {
+    return this.assistant?.enabled ? this.without([this.assistant.id]) : this;
+  }
+
   /** True when no agent is hidden from this caller. */
   get unrestricted(): boolean {
     return (

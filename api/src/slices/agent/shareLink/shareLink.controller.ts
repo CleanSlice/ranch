@@ -71,8 +71,12 @@ function toShareLinkDto(state: IShareLinkState): ShareLinkDto {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRoleTypes.User)
 // Sharing an agent takes reaching it (CLEAN-231): a hidden agent answers
-// the service's own 404 for an agent that does not exist.
-@AgentScoped('agentId')
+// the service's own 404 for an agent that does not exist. The Ranch
+// assistant answers the same to anybody but the Owner (CLEAN-268): its link
+// decides who reaches it from outside, and reading the link is holding it.
+// The visitor side (`ShareController`, the chat's share headers) asks the
+// token and nobody's account, so a link the Owner made keeps working.
+@AgentScoped('agentId', { ownerManaged: true })
 export class ShareLinkController {
   constructor(private readonly shareLinks: ShareLinkService) {}
 

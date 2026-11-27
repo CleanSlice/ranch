@@ -10,6 +10,11 @@ import {
   requireOperator,
   agentNotFound,
   callerParty,
+  ACCESS_SCOPE_NOTE,
+  accessScope,
+  ownerOnlyLeftOutField,
+  ownerOnlyRefusal,
+  type ToolResult,
 } from '#/mcp/tooling';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
@@ -35,22 +40,45 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   ) {}
 
   /**
+   * The agents whose evaluations the party this call is made for may run
+   * and read: the ones they reach (CLEAN-231), less the Ranch assistant for
+   * anybody but the Owner (CLEAN-268). An evaluation holds what was said to
+   * the agent in a test, what it answered, the tools it called, and what
+   * the Owner expects of it: for the assistant that is the Owner's, like
+   * its conversations.
+   */
+  private async reachOf(httpRequest: Request) {
+    const used = await this.access.reachableIds(callerParty(httpRequest));
+    return { used, records: used.forRecords() };
+  }
+
+  /**
    * An evaluation belongs to one agent. For a caller whose access lists
    * hide that agent it does not exist (CLEAN-231): the same NotFound the
    * service throws for an unknown id. An id that really is unknown is left
    * to the service.
+   *
+   * One evaluation is not passed off as absent (CLEAN-268): the Ranch
+   * assistant's, asked for by a person who has the assistant and is not the
+   * Owner. That answer comes back as the result to hand over, with
+   * `reason: "owner_only"`; null means the call may go on.
    */
   private async reached(
     httpRequest: Request,
     id: string,
     notFound = 'Evaluation not found',
-  ): Promise<void> {
-    const reach = await this.access.reachableIds(callerParty(httpRequest));
-    if (reach.unrestricted) return;
+  ): Promise<ToolResult | null> {
+    const { records } = await this.reachOf(httpRequest);
+    if (records.unrestricted) return null;
     const evaluation = await this.service.getById(id).catch(() => null);
-    if (evaluation && !reach.has(evaluation.agentId)) {
-      throw new NotFoundException(notFound);
-    }
+    if (!evaluation || records.has(evaluation.agentId)) return null;
+    const refusal = ownerOnlyRefusal(
+      httpRequest,
+      evaluation.agentId,
+      'evaluations',
+    );
+    if (refusal) return refusal;
+    throw new NotFoundException(notFound);
   }
 
   /**
@@ -98,8 +126,9 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
-    if (!(await this.access.reaches(callerParty(httpRequest), input.agentId))) {
-      return agentNotFound(httpRequest, input.agentId);
+    const { records } = await this.reachOf(httpRequest);
+    if (!records.has(input.agentId)) {
+      return agentNotFound(httpRequest, input.agentId, 'evaluations');
     }
     return ok(await this.service.start(input));
   }
@@ -111,7 +140,11 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     title: 'List evaluations',
     template: 'List the paddock evaluations of «agent»',
     description:
-      'List paddock evaluations. Filter by agentId / templateId. Most recent first.',
+      'List paddock evaluations, under `evaluations`. Filter by agentId / ' +
+      'templateId. Most recent first. The evaluations of the Ranch ' +
+      'assistant are the Owner’s to read: when the result carries ' +
+      '`notIncluded`, say so, never that there are none. ' +
+      ACCESS_SCOPE_NOTE,
     parameters: z.object({
       agentId: z.string().optional(),
       templateId: z.string().optional(),
@@ -124,11 +157,18 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
-    const reach = await this.access.reachableIds(callerParty(httpRequest));
-    if (input.agentId && !reach.has(input.agentId)) {
-      return agentNotFound(httpRequest, input.agentId);
+    const { used, records } = await this.reachOf(httpRequest);
+    if (input.agentId && !records.has(input.agentId)) {
+      return agentNotFound(httpRequest, input.agentId, 'evaluations');
     }
-    return ok(reach.filter(await this.service.list(input), (ev) => ev.agentId));
+    return ok({
+      evaluations: records.filter(
+        await this.service.list(input),
+        (ev) => ev.agentId,
+      ),
+      ...ownerOnlyLeftOutField(httpRequest, 'evaluations', input.agentId),
+      ...accessScope(used, input.agentId),
+    });
   }
 
   @Tool({
@@ -143,7 +183,8 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   })
   async get({ id }: { id: string }, _context: unknown, httpRequest: Request) {
     requireOperator(httpRequest);
-    await this.reached(httpRequest, id);
+    const refusal = await this.reached(httpRequest, id);
+    if (refusal) return refusal;
     return ok(await this.service.getById(id));
   }
 
@@ -163,7 +204,8 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
-    await this.reached(httpRequest, id);
+    const refusal = await this.reached(httpRequest, id);
+    if (refusal) return refusal;
     return ok(await this.service.getReport(id));
   }
 
@@ -193,7 +235,8 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     const { id } = args;
     const refusal = confirmed(args, `abort the paddock evaluation ${id}`);
     if (refusal) return refusal;
-    await this.reached(httpRequest, id);
+    const ownerOnly = await this.reached(httpRequest, id);
+    if (ownerOnly) return ownerOnly;
     return ok(await this.service.abort(id));
   }
 
@@ -209,7 +252,12 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   })
   async rerun({ id }: { id: string }, _context: unknown, httpRequest: Request) {
     requireOperator(httpRequest);
-    await this.reached(httpRequest, id, 'Source evaluation not found');
+    const refusal = await this.reached(
+      httpRequest,
+      id,
+      'Source evaluation not found',
+    );
+    if (refusal) return refusal;
     return ok(await this.service.rerun(id));
   }
 
@@ -238,10 +286,11 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   ) {
     requireOperator(httpRequest);
     const found = await this.lookup(async () => {
-      await this.reached(httpRequest, id);
-      return this.service.getLogs(id);
+      const refusal = await this.reached(httpRequest, id);
+      return refusal ?? this.service.getLogs(id);
     });
     if ('error' in found) return ok(found);
+    if ('content' in found.value) return found.value;
     const lines = tail ? found.value.lines.slice(-tail) : found.value.lines;
     return ok({ id, total: found.value.lines.length, lines });
   }
@@ -263,12 +312,14 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
   ) {
     requireOperator(httpRequest);
     const found = await this.lookup(async () => {
-      await this.reached(httpRequest, id);
+      const refusal = await this.reached(httpRequest, id);
+      if (refusal) return refusal;
       const scenario = await this.service.getScenario(id, scenarioId);
       const evaluation = await this.service.getById(id);
       return { scenario, evaluation };
     });
     if ('error' in found) return ok(found);
+    if ('content' in found.value) return found.value;
     const { scenario, evaluation } = found.value;
     const result =
       evaluation.results.find((r) => r.scenarioId === scenarioId) ?? null;
@@ -297,10 +348,12 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     httpRequest: Request,
   ) {
     requireOperator(httpRequest);
-    const found = await this.lookup(async () => {
-      await this.reached(httpRequest, id);
-      return this.service.getTrace(id, scenarioId);
-    });
+    const refused = await this.lookup(() => this.reached(httpRequest, id));
+    if ('error' in refused) return ok(refused);
+    if (refused.value) return refused.value;
+    const found = await this.lookup(() =>
+      this.service.getTrace(id, scenarioId),
+    );
     if ('error' in found) return ok(found);
     if (!found.value) {
       return ok({

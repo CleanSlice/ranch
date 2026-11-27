@@ -13,7 +13,8 @@ import type { IComparedCount } from './personalStats.types';
 //
 // Every figure, totals included, is of the agents the caller reaches. The
 // ones built from conversations (people, quality, channels) also leave out
-// an agent only the Owner manages, and `reach.ownerOnly` names it.
+// an agent only the Owner manages, and `reach.ownerOnly` names it. So do
+// the ones built from its usage and its limit refusals (CLEAN-268).
 
 /**
  * The figures of this view that are recorded in a table written for them,

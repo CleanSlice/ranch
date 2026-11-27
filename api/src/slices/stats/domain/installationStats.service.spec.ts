@@ -453,32 +453,47 @@ describe('InstallationStatsService: the assistant’s conversations are the Owne
     });
   });
 
-  it('keeps its spend, its refusals and its incidents for that Admin: they are operations', async () => {
+  // CLEAN-268: what the assistant spent, and how often its limits refused
+  // somebody, are records about everybody's use of it. They are the Owner's
+  // like its conversations, and the usage overview leaves them out by the
+  // same rule, so the two views still agree. That it was down is not.
+  it('keeps its spend and its refusals from that Admin, totals included, and still lists its incidents', async () => {
     const { access, admin } = fleetCallers();
     const stats = await view(WORLD, 7, admin, access);
 
-    expect(stats.board.tokens).toEqual({ input: 5_000_000, output: 500_000 });
-    expect(stats.board.calls.value).toBe(50);
+    expect(stats.board.tokens).toEqual({ input: 1_000_000, output: 100_000 });
+    expect(stats.board.calls.value).toBe(10);
     expect(stats.board.cost.value).toBeCloseTo(
-      costUsd(SONNET, 5_000_000, 500_000),
+      costUsd(SONNET, 1_000_000, 100_000),
       10,
     );
     expect(stats.agents.map((a) => [a.agentId, a.name, a.calls])).toEqual([
-      ['ranch', 'Ranch', 40],
       ['a1', 'Atlas', 10],
     ]);
     expect(stats.daily.find((d) => d.date === '2026-11-25')?.byModel).toEqual([
-      { model: SONNET, tokens: 5_500_000 },
+      { model: SONNET, tokens: 1_100_000 },
     ]);
     expect(stats.projection30d).not.toBeNull();
-    expect(stats.health.refusals).toEqual([
-      { agentId: 'ranch', name: 'Ranch', refused: 7 },
-    ]);
+    expect(stats.health.refusals).toEqual([]);
     expect(stats.health.incidents.map((i) => i.number)).toEqual([4]);
     expect(stats.health.incidentsTotal).toBe(1);
   });
 
-  it('asks for conversations and ratings without the assistant, and for spend, refusals and incidents with the plain reach', async () => {
+  it('gives the Owner its spend and its refusals', async () => {
+    const { access, owner } = fleetCallers();
+    const stats = await view(WORLD, 7, owner, access);
+
+    expect(stats.board.tokens).toEqual({ input: 5_000_000, output: 500_000 });
+    expect(stats.agents.map((a) => [a.agentId, a.calls])).toEqual([
+      ['ranch', 40],
+      ['a1', 10],
+    ]);
+    expect(stats.health.refusals).toEqual([
+      { agentId: 'ranch', name: 'Ranch', refused: 7 },
+    ]);
+  });
+
+  it('asks for conversations, ratings and refusals without the assistant, and for incidents with the plain reach', async () => {
     const { access, admin } = fleetCallers();
     const { service, reads } = installationHarness(WORLD, access);
 
@@ -490,11 +505,7 @@ describe('InstallationStatsService: the assistant’s conversations are the Owne
     expect(
       reads.events.incidentsInRange.calls[0][0].agentScope,
     ).toBeUndefined();
-    expect(reads.limits.loadDays.calls[0][0].sort()).toEqual([
-      'a1',
-      'a2',
-      'ranch',
-    ]);
+    expect(reads.limits.loadDays.calls[0][0].sort()).toEqual(['a1', 'a2']);
   });
 
   // The second lock: whatever a read answers, a row of the assistant is in
@@ -591,7 +602,7 @@ describe('InstallationStatsService: the assistant’s conversations are the Owne
       in: ['a1', 'ranch'],
     });
     expect(stats.quality.map((q) => q.agentId)).toEqual(['a1']);
-    expect(stats.agents.map((a) => a.agentId)).toEqual(['ranch', 'a1']);
+    expect(stats.agents.map((a) => a.agentId)).toEqual(['a1']);
   });
 
   it('names nothing on an installation with no assistant', async () => {

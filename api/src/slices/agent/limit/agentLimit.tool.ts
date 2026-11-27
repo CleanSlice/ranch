@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import {
+  ACCESS_SCOPE_NOTE,
+  accessScope,
   agentNotFound,
   callerHoldsManageTools,
   CONFIRM_SENTENCE,
@@ -11,6 +13,7 @@ import {
   manageCaller,
   ok,
   operatorOnly,
+  ownerOnlyLeftOutField,
   requireOperator,
   type ToolResult,
   callerParty,
@@ -197,7 +200,10 @@ export class AgentLimitTool implements IConditionallyListedTool {
       'visitor is refused) and needsLimits (public with no limit at all — ' +
       'offer set_agent_limits). atLimitNow and publicWithoutLimits repeat ' +
       'the names of those two groups. No usage figures here: call ' +
-      'get_agent_limits for how busy one agent is.',
+      'get_agent_limits for how busy one agent is. The Ranch assistant has ' +
+      'no line for anybody but the Owner: when the result carries ' +
+      '`notIncluded`, say that its limits are the Owner’s to read. ' +
+      ACCESS_SCOPE_NOTE,
     parameters: z.object({}),
   })
   async listAgentLimits(
@@ -206,9 +212,13 @@ export class AgentLimitTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    // One line per agent the caller reaches (CLEAN-231).
+    // One line per agent the caller reaches (CLEAN-231). The assistant's
+    // limit values are the Owner's to read, as `get_agent_limits` already
+    // answers for it (CLEAN-268): its line is left out and said to be.
     const reach = await this.access.reachableIds(callerParty(httpRequest));
-    const agents = reach.filter(await this.agents.findAll(), (a) => a.id);
+    const agents = reach
+      .forRecords()
+      .filter(await this.agents.findAll(), (a) => a.id);
     // The same call `GET /agent-limits` makes; the name and the values are
     // joined on so the answer can be read out without a second lookup.
     const marks = new Map(
@@ -233,6 +243,8 @@ export class AgentLimitTool implements IConditionallyListedTool {
         .filter((r) => r.needsLimits)
         .map((r) => r.agentName),
       agents: rows,
+      ...ownerOnlyLeftOutField(httpRequest, 'request limits'),
+      ...accessScope(reach),
     });
   }
 

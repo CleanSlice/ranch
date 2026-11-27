@@ -78,10 +78,17 @@ type Named = { id: string; name: string };
  * and CLEAN-267. So people, the quality rows and the channels are counted
  * over the reach less those agents, the scope chat history reads with, and
  * `reach.ownerOnly` names what was taken out: whoever leaves an agent out
- * owes the caller the reason. Tokens, calls, cost, the days, the agents by
- * cost, the projection, incidents and refusals are operations, not
- * conversations, and keep the plain reach: the admin usage overview shows
- * the same agents, and the two must give the same numbers (FR-037).
+ * owes the caller the reason.
+ *
+ * So are the records Ranch keeps about that agent (CLEAN-268): tokens,
+ * calls, cost, the days, the agents by cost, the projection and the
+ * requests refused by its limits are read over the same narrower reach.
+ * What the assistant spent is how much everybody leaned on it, and it stays
+ * in the installation's totals for the Owner alone. The admin usage
+ * overview leaves it out by the same rule since that change, so the two
+ * still give the same numbers (FR-037). Incidents keep the plain reach:
+ * that the assistant was down, and when, is what anybody who has it may
+ * know, as `list_agent_incidents` answers.
  *
  * Nothing that names a person leaves here: people are counted in the query
  * and arrive as two numbers.
@@ -126,7 +133,9 @@ export class InstallationStatsService {
     );
     // The agents whose conversations are the caller's to count: the same
     // subtraction as `ChatController.supervised`, so this view and chat
-    // history cannot disagree about whose a conversation is.
+    // history cannot disagree about whose a conversation is. Their spend
+    // and their limit refusals are read over the same agents (CLEAN-268):
+    // it is the cut `AgentReach.forRecords` makes for the usage overview.
     const talk = reach.without(ownerOnly);
     const talkScope = talk.where();
     const supervised = new Map<string, Named>(
@@ -142,7 +151,7 @@ export class InstallationStatsService {
         // which is what lets a deleted agent's spend through for a caller
         // with no allowed list and for nobody else.
         this.usage.findRange(range.previousFrom, endOfToday),
-        this.limits.loadDays([...reached.keys()], range.from, endOfToday),
+        this.limits.loadDays([...supervised.keys()], range.from, endOfToday),
         this.events.incidentsInRange({
           from: range.from,
           to: range.to,
@@ -156,8 +165,9 @@ export class InstallationStatsService {
       ]);
 
     // Rows of agents the caller does not reach are dropped before anything
-    // is summed, so no total carries them (CLEAN-231).
-    const visible = reach.filter(usage, (row) => row.agentId);
+    // is summed, so no total carries them (CLEAN-231). Nor the rows of an
+    // agent only the Owner manages, for anybody else (CLEAN-268).
+    const visible = talk.filter(usage, (row) => row.agentId);
     const fromMs = range.from.getTime();
     const period = visible.filter((row) => row.date.getTime() >= fromMs);
     const spend = rollUpAcrossAgents(period);
@@ -219,7 +229,7 @@ export class InstallationStatsService {
       health: {
         incidents: incidents.items.map(incidentOf),
         incidentsTotal: incidents.total,
-        refusals: refusalsOf(loadDays, reached),
+        refusals: refusalsOf(loadDays, supervised),
       },
       quality: qualityOf(
         conversations,

@@ -558,6 +558,27 @@ the agent carries `@AgentScoped(source, { records: true })` and answers the
 its own 404; a list is filtered. `agentRecordsRoutes.spec.ts` holds each of
 them to it, `mcp/narrowedLists.spec.ts` the tools.
 
+**The consoles say it too (CLEAN-269).** A 404 and a filtered list are the
+API's way of refusing; left as they come, a page shows them as "nothing
+here" or as a fault, which is what the tools were stopped from saying. So a
+console page that touches one of these records, for a viewer who is not the
+Owner, does two things. It does not ask for what it knows is not theirs: the
+viewer's role and `isAdmin` on the agent are on the page already
+(`ownerOnlyAssistant` in `admin/slices/agent/agent/utils/agentAccess.ts`,
+`canShareAgent` in the app's twin). And where a list or a total is without
+the assistant, it says so in one quiet line, in the tools' sentence
+(`ownerOnlyLeftOutText`: "The usage figures of Rancher, the Ranch assistant,
+are not included: only the Owner can read them."; the app's Statistics say
+the same through `stats.installation.owner_only`). The management console's
+Chats page with the assistant picked lists the viewer's own conversations
+with it (`GET /me/chats`), since those are theirs. A record opened by an
+address the API answers "not found" for is one "not available" state
+(`PageNotAvailable`), the same for an id that names nothing and for a
+record of the assistant, with nothing asked about it afterwards. A new page
+over these records does the same;
+`specs/032-agent-user-access/e2e/assistant-pages.mjs` walks them as an Admin
+and fails on a request for a route closed for the assistant.
+
 **What is done TO the assistant outside the manage rule.** A few tools
 change something about an agent and are open for every agent the caller
 reaches, because for an ordinary agent reaching it is all it takes. For the
@@ -771,8 +792,8 @@ list that carries the field, or with the reason it needs none.
 
 | Tools | How reach is applied |
 |---|---|
-| `list_agents`, `get_agent` (`reader`) | only reached agents; an agent the caller may not manage comes as its reader view (no `config`, credential, knowledge binding or deploy history); `pinned` is the person's own; the Ranch assistant carries `managedBy: "owner"` for anybody but the Owner (CLEAN-263) |
-| `pin_agent` (`person`) | pins for the person the call is made for; an unreached agent is not found; an agent acting for itself is refused |
+| `list_agents`, `get_agent` (`reader`) | only reached agents; an agent the caller may not manage comes as its reader view (no `config`, credential, knowledge binding or deploy history); `pinned` is the person's own, and always false for the Ranch assistant (CLEAN-269); the Ranch assistant carries `managedBy: "owner"` for anybody but the Owner (CLEAN-263) |
+| `pin_agent` (`person`) | pins for the person the call is made for; an unreached agent is not found; an agent acting for itself is refused. Asked to pin or unpin the Ranch assistant it answers one plain sentence and writes nothing, for the Owner too: "Rancher is the Ranch assistant: it is always first in every agent list, so it is not pinned. Nothing was changed." (`agent/pin/domain/pinRule.ts`, CLEAN-269). Not a refusal and not `owner_only`: nothing is denied, a pin there would do nothing. The consoles offer no pin on it and show none, also to a person who pinned it before; that row stays in `AgentPin`, unread |
 | `get_assistant_access`, `set_assistant_role_access` (`owner`); `get_user_assistant_access`, `set_user_assistant_access`, `reset_user_assistant_access` (`admin`); `get_my_assistant_access` (`person`) | no agent id: they are about the one assistant. `AssistantAccessService` asks who may edit whom (an Admin: Users only, and never above the Admin's own grant); a change that takes abilities away answers "who loses what" until `confirm: true` |
 | `get_user_agent_access`, `set_user_agent_access` (`admin`) | `AgentAccessService.view` / `adjust` as the party: an Admin sees and may name only agents they reach, and meets the ceiling |
 | the 35 `manage-agent` tools | through `manageable`; the Ranch assistant, for a person who reaches it, is refused as the Owner's and not as not found |

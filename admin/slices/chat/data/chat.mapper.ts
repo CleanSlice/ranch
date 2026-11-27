@@ -67,7 +67,24 @@ export class ChatMapper {
       archived: dto.archived,
       createdAt: dto.createdAt,
       updatedAt: dto.updatedAt,
+      // Who the conversation is with, in words (CLEAN-236). The list reads
+      // them (`chatUser`); they were dropped here, so every row fell back to
+      // the client id: "Admin" for the Owner, "Web visitor" for an Admin.
+      ...(dto.person
+        ? { person: { name: dto.person.name ?? null, role: dto.person.role ?? null } }
+        : {}),
+      ...(dto.peer ? { peer: { name: dto.peer.name ?? null } } : {}),
     };
+  }
+
+  /** A page of the viewer's own conversations: every row is marked `own`. */
+  toOwnList(dto: ChatListResponseDto): IChatListResult {
+    const list = this.toList(dto);
+    return { ...list, items: list.items.map((s) => this.asOwn(s)) };
+  }
+
+  asOwn(session: IChatSession): IChatSession {
+    return { ...session, own: true };
   }
 
   toMessages(dto: ChatMessagesResponseDto): IChatMessagesResult {

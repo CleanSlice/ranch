@@ -23,11 +23,24 @@ const getService = createServiceGetter<ShareService>('$shareService');
  * session-ended dialog; the panel must not echo a raw auth string beside it
  * (CLEAN-72). Everything else keeps its message.
  */
+function statusOf(err: unknown): number | undefined {
+  return (err as { response?: { status?: number } } | null)?.response?.status;
+}
+
 function errorText(err: unknown): string | null {
-  const status = (err as { response?: { status?: number } } | null)?.response
-    ?.status;
-  if (status === 401) return null;
+  if (statusOf(err) === 401) return null;
   return (err as Error).message;
+}
+
+/**
+ * The API refused the agent itself, not the action (CLEAN-269): "Agent not
+ * found" is what the share-link routes answer for an agent whose link is not
+ * this person's to hold (the Ranch assistant's, for anybody but the Owner)
+ * and for one taken out of their reach while the panel was open. It is an
+ * answer, not a failure: asking again changes nothing.
+ */
+function isRefusal(err: unknown): boolean {
+  return statusOf(err) === 404;
 }
 
 /**
@@ -64,6 +77,8 @@ export const useShareStore = defineStore('share', () => {
 
   /** Owner-side link state, one entry per agent the panel has looked at. */
   const links = ref<Record<string, IShareLinkState>>({});
+  /** Agents whose link the API said is not this account's to read or change. */
+  const refused = ref<Record<string, true>>({});
   const pending = ref(false);
   const error = ref<string | null>(null);
   /** Visitor side: the agent behind the token in the current page's URL. */
@@ -82,12 +97,15 @@ export const useShareStore = defineStore('share', () => {
   function resetForAccount() {
     accountGeneration += 1;
     links.value = {};
+    refused.value = {};
     pending.value = false;
     error.value = null;
   }
 
   const linkFor = (agentId: string): IShareLinkState | null =>
     links.value[agentId] ?? null;
+
+  const isRefused = (agentId: string): boolean => refused.value[agentId] === true;
 
   /**
    * Every owner-side endpoint answers with the agent's current link state, so
@@ -105,9 +123,17 @@ export const useShareStore = defineStore('share', () => {
       const state = withUrl(await call(getService()), appOrigin.value);
       if (generation !== accountGeneration) return null;
       links.value[agentId] = state;
+      delete refused.value[agentId];
       return state;
     } catch (err) {
-      if (generation === accountGeneration) error.value = errorText(err);
+      if (generation !== accountGeneration) return null;
+      if (isRefusal(err)) {
+        // Whatever was read before is not theirs any more, token included.
+        refused.value[agentId] = true;
+        delete links.value[agentId];
+      } else {
+        error.value = errorText(err);
+      }
       return null;
     } finally {
       if (generation === accountGeneration) pending.value = false;
@@ -167,6 +193,7 @@ export const useShareStore = defineStore('share', () => {
     resolved,
     resetForAccount,
     linkFor,
+    isRefused,
     loadLink,
     share,
     regenerate,

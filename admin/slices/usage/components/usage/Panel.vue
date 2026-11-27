@@ -27,9 +27,22 @@ const props = withDefaults(
      * fetched.
      */
     agentOnly?: boolean;
+    /**
+     * The sentence saying whose figures the workspace totals are without
+     * (CLEAN-269): the Ranch assistant's, for a viewer who is not the Owner.
+     * Shown under the Total and Calls views; the Agent tab, which would be
+     * that agent's, is then off (`agentId` is null) and says why.
+     */
+    leftOut?: string;
   }>(),
-  { title: 'Usage · 30d', collapsible: false, agentOnly: false },
+  { title: 'Usage · 30d', collapsible: false, agentOnly: false, leftOut: '' },
 );
+
+// Why the Agent tab is off: nothing deployed, or figures that are the Owner's.
+const agentTabHint = computed(() => {
+  if (props.agentId) return undefined;
+  return props.leftOut ? "Only the Owner can read this agent's usage" : 'No agent deployed yet';
+});
 
 type UsageView = 'total' | 'calls' | 'agent';
 
@@ -191,7 +204,7 @@ defineExpose({ refresh });
             value="agent"
             class="text-xs"
             :disabled="!agentId"
-            :title="agentId ? undefined : 'No agent deployed yet'"
+            :title="agentTabHint"
           >
             Agent
           </TabsTrigger>
@@ -379,6 +392,10 @@ defineExpose({ refresh });
           </div>
         </div>
       </template>
+
+      <AccessNote v-if="leftOut && view !== 'agent'" data-usage-left-out>
+        {{ leftOut }}
+      </AccessNote>
     </CardContent>
   </Card>
 </template>

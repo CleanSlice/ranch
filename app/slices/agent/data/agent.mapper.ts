@@ -48,7 +48,9 @@ export class AgentMapper {
         ? o.allowedOrigins.filter((v): v is string => typeof v === 'string')
         : [],
       isAdmin: o.isAdmin === true,
-      pinned: o.pinned === true,
+      // Never the Ranch assistant: it is first in every list as it is, so a
+      // pin on it is not shown, ordered by or counted (CLEAN-269).
+      pinned: o.pinned === true && o.isAdmin !== true,
       createdByMe: o.createdByMe === true,
       createdBy: this.toCreator(o.createdBy),
       // Absent from an older API and from a ready agent alike: no mark.

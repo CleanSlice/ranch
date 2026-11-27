@@ -2,8 +2,10 @@ import { createServiceGetter } from '#common/composables/createServiceGetter';
 import type { ChatService } from '#chat/domain';
 import type {
   ChatExportFormat,
+  ChatScope,
   IChatListQuery,
   IChatMessagesQuery,
+  IOwnChatListQuery,
 } from '#chat/domain';
 
 // Re-export the domain types so existing consumers that import them from
@@ -12,6 +14,7 @@ export type {
   ChatChannel,
   ChatExportFormat,
   ChatMessageRole,
+  ChatScope,
   IChatExportFile,
   IChatFeedback,
   IChatInsights,
@@ -22,6 +25,7 @@ export type {
   IChatMessagesResult,
   IChatSession,
   IChatSyncResult,
+  IOwnChatListQuery,
 } from '#chat/domain';
 
 const getService = createServiceGetter<ChatService>('$chatService');
@@ -46,12 +50,22 @@ export const useChatStore = defineStore('chat', () => {
     return getService().list(query);
   }
 
-  function getById(id: string) {
-    return getService().getById(id);
+  /** The viewer's own conversations (CLEAN-269). */
+  function listOwn(query: IOwnChatListQuery = {}) {
+    return getService().listOwn(query);
   }
 
-  function messages(id: string, query: IChatMessagesQuery = {}) {
-    return getService().messages(id, query);
+  /** Null when the API says "not found"; a failure is thrown. */
+  function getById(id: string, scope: ChatScope = 'supervised') {
+    return getService().getById(id, scope);
+  }
+
+  function messages(
+    id: string,
+    query: IChatMessagesQuery = {},
+    scope: ChatScope = 'supervised',
+  ) {
+    return getService().messages(id, query, scope);
   }
 
   function sync(agentId?: string) {
@@ -62,25 +76,35 @@ export const useChatStore = defineStore('chat', () => {
     return getService().summarize(id);
   }
 
-  function feedback(id: string) {
-    return getService().feedback(id);
+  function feedback(id: string, scope: ChatScope = 'supervised') {
+    return getService().feedback(id, scope);
   }
 
-  function rate(id: string, messageId: string, rating: 1 | -1) {
-    return getService().rate(id, messageId, rating);
+  function rate(
+    id: string,
+    messageId: string,
+    rating: 1 | -1,
+    scope: ChatScope = 'supervised',
+  ) {
+    return getService().rate(id, messageId, rating, scope);
   }
 
-  function unrate(id: string, messageId: string) {
-    return getService().unrate(id, messageId);
+  function unrate(id: string, messageId: string, scope: ChatScope = 'supervised') {
+    return getService().unrate(id, messageId, scope);
   }
 
-  async function exportChat(id: string, format: ChatExportFormat) {
-    const { blob, filename } = await getService().exportChat(id, format);
+  async function exportChat(
+    id: string,
+    format: ChatExportFormat,
+    scope: ChatScope = 'supervised',
+  ) {
+    const { blob, filename } = await getService().exportChat(id, format, scope);
     triggerDownload(blob, filename);
   }
 
   return {
     list,
+    listOwn,
     getById,
     messages,
     sync,

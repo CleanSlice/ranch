@@ -267,6 +267,9 @@ export const useAgentStore = defineStore('agent', () => {
   // rolls it back and rethrows for the caller to show. Nothing to upsert:
   // the routes answer 204, and the patched record already says what they did.
   async function setPinned(id: string, pinned: boolean) {
+    // The Ranch assistant is not pinned (`canPinAgent`, CLEAN-269): no
+    // control asks for it, and nothing is patched or sent if one did.
+    if (byId(id)?.isAdmin) return byId(id) ?? null;
     const rollback = patch(id, { pinned });
     try {
       await getService().setPinned(id, pinned);

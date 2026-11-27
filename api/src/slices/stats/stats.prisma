@@ -1,10 +1,15 @@
 // What the product knows about one figure's history (CLEAN-261). One row per
-// figure in the registry (`domain/figures/`), written once, the first time the
-// figure is seen at boot: the moment live recording starts for a figure that
-// has a recorder, the earliest row of its source for a figure read in place.
-// It is never moved later. A period view that starts before `completeSince`
-// carries a note, so a block says "counted since …" instead of showing a
-// smaller number as if it were the whole period (spec 038, FR-028).
+// recorded figure in the registry (`domain/figures/`), written once, the
+// first time the figure is seen at boot: the earliest row of its table, or
+// that boot when the table is still empty. It is never moved later. A period
+// view that starts before `completeSince` carries a note, so a block says
+// "counted since …" instead of showing a smaller number as if it were the
+// whole period (spec 038, FR-028).
+//
+// A figure read in place has no row here and never carries a note
+// (CLEAN-262): its rows are the source, so no rows before some day means
+// nothing happened before that day, not that something was missed. A row an
+// earlier release wrote for one is removed at boot.
 model StatFigure {
   key           String   @id
   completeSince DateTime

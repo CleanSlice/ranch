@@ -776,18 +776,11 @@ describe('PersonalStatsService: nothing to show', () => {
 });
 
 describe('PersonalStatsService: notes', () => {
-  it('carries a note for a figure that is complete only from inside the stretch it is shown for', async () => {
+  it('carries a note for activity recorded only from inside the stretch it is shown for', async () => {
     const stats = await view({
       completeSince: {
         // Recorded since three days ago: a 7-day period reaches before it.
         activity: '2026-11-24T08:00:00.000Z',
-        // Inside the period itself.
-        citations: '2026-11-25T00:00:00.000Z',
-        // Long complete.
-        ratings: '2026-01-01T00:00:00.000Z',
-        // Inside the previous period only. Hand-overs are shown for the
-        // period alone, with no comparison, so there is nothing to warn of.
-        handovers: '2026-11-16T00:00:00.000Z',
       },
     });
 
@@ -796,9 +789,38 @@ describe('PersonalStatsService: notes', () => {
         figure: 'activity',
         completeSince: new Date('2026-11-24T08:00:00.000Z'),
       },
+    ]);
+  });
+
+  it('has none for activity recorded since before everything that is shown', async () => {
+    // Before the 91 days of the calendar, which reach furthest back.
+    const stats = await view({
+      completeSince: { activity: '2026-08-01T00:00:00.000Z' },
+    });
+
+    expect(stats.notes).toEqual([]);
+  });
+
+  // CLEAN-262. Ratings, citations and hand-overs are read in place: their
+  // rows are the source, so no rating before some day means nobody rated
+  // before it, and there is nothing to warn of. The release before the fix
+  // wrote a row for each of them, and one of those may still be there.
+  it('carries none for a help figure, even when a stale row for it exists', async () => {
+    const stats = await view({
+      completeSince: {
+        activity: '2026-11-24T08:00:00.000Z',
+        // Each inside the period itself, where a note would be given if
+        // these rows were read.
+        citations: '2026-11-25T00:00:00.000Z',
+        ratings: '2026-11-26T09:00:00.000Z',
+        handovers: '2026-11-27T10:00:00.000Z',
+      },
+    });
+
+    expect(stats.notes).toEqual([
       {
-        figure: 'citations',
-        completeSince: new Date('2026-11-25T00:00:00.000Z'),
+        figure: 'activity',
+        completeSince: new Date('2026-11-24T08:00:00.000Z'),
       },
     ]);
   });

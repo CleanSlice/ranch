@@ -1,8 +1,4 @@
 import { AgentLimitService } from '#/agent/limit/domain';
-import { IDelegationGateway } from '#/agent/peer/domain/delegation.gateway';
-import { IChatGateway } from '#/chat/domain/chat.gateway';
-import { ChatSourceService } from '#/chat/domain/chatSource.service';
-import { IUsageGateway } from '#/usage/domain';
 import { FigureRegistry } from '../figureRegistry';
 import { IFigureDefinition } from '../figure.types';
 import {
@@ -24,7 +20,7 @@ describe('figure definitions', () => {
     expect(activityFigure.scopes).toEqual(['personal', 'installation']);
     expect(activityFigure.rebuild).toBe('chat.settle');
     // Null is what the registry turns into "from now".
-    expect(await activityFigure.firstRecord()).toBeNull();
+    expect(await activityFigure.firstRecord?.()).toBeNull();
   });
 
   it('refusals go back to the earliest day row of the limit slice', async () => {
@@ -36,88 +32,38 @@ describe('figure definitions', () => {
     );
     expect(figure.key).toBe('refusals');
     expect(figure.scopes).toEqual(['installation']);
-    expect(await figure.firstRecord()).toBe(first);
+    expect(figure.rebuild).toBe('agentLimit.rebuildMissingDays');
+    expect(await figure.firstRecord?.()).toBe(first);
   });
 
-  it('spend goes back to the first reported day and has no rebuild', async () => {
-    const first = new Date('2026-04-22T00:00:00.000Z');
-    const figure = spendFigure(
-      only<IUsageGateway>({ firstRecordAt: () => Promise.resolve(first) }),
-    );
-    expect(figure.key).toBe('spend');
-    expect(figure.rebuild).toBeUndefined();
-    expect(await figure.firstRecord()).toBe(first);
-  });
-
-  // The three figures of "How agents helped" (CLEAN-258). Each is read in
-  // place: its rows are the record, so there is no rebuild to name, and it
-  // is complete from the first of them.
-  it('ratings go back to the first rating anybody gave', async () => {
-    const first = new Date('2026-07-15T09:12:00.000Z');
-    const figure = ratingsFigure(
-      only<IChatGateway>({ firstFeedbackAt: () => Promise.resolve(first) }),
-    );
-    expect(figure.key).toBe('ratings');
-    expect(figure.scopes).toEqual(['personal']);
-    expect(figure.rebuild).toBeUndefined();
-    expect(await figure.firstRecord()).toBe(first);
-  });
-
-  it('citations go back to the first source an answer cited', async () => {
-    const first = new Date('2026-09-01T14:00:00.000Z');
-    const figure = citationsFigure(
-      only<ChatSourceService>({ firstRecordAt: () => Promise.resolve(first) }),
-    );
-    expect(figure.key).toBe('citations');
-    expect(figure.scopes).toEqual(['personal']);
-    expect(figure.rebuild).toBeUndefined();
-    expect(await figure.firstRecord()).toBe(first);
-  });
-
-  it('hand-overs go back to the first one on record', async () => {
-    const first = new Date('2026-09-14T10:00:00.000Z');
-    const figure = handoversFigure(
-      only<IDelegationGateway>({ firstRecordAt: () => Promise.resolve(first) }),
-    );
-    expect(figure.key).toBe('handovers');
-    expect(figure.scopes).toEqual(['personal']);
-    expect(figure.rebuild).toBeUndefined();
-    expect(await figure.firstRecord()).toBe(first);
-  });
-
-  it('a figure with no row yet is complete from now: its first record is null', async () => {
-    const none = () => Promise.resolve(null);
-    expect(
-      await ratingsFigure(
-        only<IChatGateway>({ firstFeedbackAt: none }),
-      ).firstRecord(),
-    ).toBeNull();
-    expect(
-      await citationsFigure(
-        only<ChatSourceService>({ firstRecordAt: none }),
-      ).firstRecord(),
-    ).toBeNull();
-    expect(
-      await handoversFigure(
-        only<IDelegationGateway>({ firstRecordAt: none }),
-      ).firstRecord(),
-    ).toBeNull();
-  });
+  // The figures read in place (CLEAN-262): spend, and the three of "How
+  // agents helped" (CLEAN-258). Their rows are the record, so there is no
+  // rebuild to name, which is what tells the registry to keep no row for
+  // them, and no first record to ask for: nothing came before the first row.
+  it.each([
+    ['spend', spendFigure, ['installation']],
+    ['ratings', ratingsFigure, ['personal']],
+    ['citations', citationsFigure, ['personal']],
+    ['handovers', handoversFigure, ['personal']],
+  ] as const)(
+    '%s is read in place: no rebuild and no first record',
+    (key, figure, scopes) => {
+      expect(figure.key).toBe(key);
+      expect(figure.scopes).toEqual(scopes);
+      expect(figure.rebuild).toBeUndefined();
+      expect('firstRecord' in figure).toBe(false);
+    },
+  );
 
   it('registers each figure once, under its own key', () => {
     const registered: IFigureDefinition[] = [];
-    const none = () => Promise.resolve(null);
     const figures = new StatFigures(
       only<FigureRegistry>({
         register: (definition: IFigureDefinition) => {
           registered.push(definition);
         },
       }),
-      only<AgentLimitService>({ firstLoadDayAt: none }),
-      only<IUsageGateway>({ firstRecordAt: none }),
-      only<IChatGateway>({ firstFeedbackAt: none }),
-      only<ChatSourceService>({ firstRecordAt: none }),
-      only<IDelegationGateway>({ firstRecordAt: none }),
+      only<AgentLimitService>({ firstLoadDayAt: () => Promise.resolve(null) }),
     );
     figures.onModuleInit();
     const keys = registered.map((definition) => definition.key);
@@ -130,5 +76,27 @@ describe('figure definitions', () => {
       'handovers',
     ]);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('registers two recorded figures, and the rest read in place', () => {
+    const registered: IFigureDefinition[] = [];
+    new StatFigures(
+      only<FigureRegistry>({
+        register: (definition: IFigureDefinition) => {
+          registered.push(definition);
+        },
+      }),
+      only<AgentLimitService>({ firstLoadDayAt: () => Promise.resolve(null) }),
+    ).onModuleInit();
+
+    expect(
+      registered.filter((d) => d.rebuild !== undefined).map((d) => d.key),
+    ).toEqual(['activity', 'refusals']);
+    // None read in place carries a first record: there is nothing to ask.
+    expect(
+      registered
+        .filter((d) => d.rebuild === undefined)
+        .every((d) => !('firstRecord' in d)),
+    ).toBe(true);
   });
 });

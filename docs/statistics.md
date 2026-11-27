@@ -121,15 +121,19 @@ is what refuses an agent that does not exist. A model missing from
 
 `api/src/slices/stats/domain/figures/` has one file per figure. A definition
 says what the figure is called, which scopes it has, which public read method
-of the owning slice returns it, and how to find the earliest moment its
-source covers. The `stats` slice owns periods, time zones, the registry and
+of the owning slice returns it, and, for a recorded figure, how to find the
+earliest moment its table covers. The `stats` slice owns periods, time zones, the registry and
 the routes. It reads no table but its own, `StatFigure`.
 
-`StatFigure` holds, per figure, the first instant it is complete from. The
-row is written once, the first time the figure is seen at boot, and never
-moved later. A period that starts before it carries a note, and the block
-says "counted since …" in one line instead of showing a smaller number as if
-it covered the whole period.
+`StatFigure` holds the first instant a recorded figure, one whose definition
+names a `rebuild`, is complete from. The row is written once, the first time
+the figure is seen at boot, and never moved later; a period that starts
+before it carries a note, and the block says "counted since …" in one line
+instead of showing a smaller number as if it covered the whole period. A
+figure read in place has no row and never carries a note: its rows are the
+source, so no rows before some day means nothing happened before that day,
+and "counted since" would claim that something was missed. A row an earlier
+release wrote for such a figure is removed at boot.
 
 ## Adding a figure
 

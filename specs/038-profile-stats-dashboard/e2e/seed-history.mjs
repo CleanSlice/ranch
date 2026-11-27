@@ -5,6 +5,15 @@
 //                                        messages are spread over the days
 //   node seed-history.mjs --check        compare ChatActivityHour with what
 //                                        the transcripts say, hour by hour
+//   node seed-history.mjs --stats        compare GET /me/stats with the same
+//                                        plan: the Owner and the User, three
+//                                        periods, two time zones (SC-001)
+//
+// Seeding also writes what a transcript cannot carry, straight into the
+// scratch database: two ratings, three citations and one hand-over per
+// person, on their newest closed conversation with Front Desk; and a hundred
+// days of usage through the report route, with a change of model ten days
+// ago, so "who answers you" has days to go by.
 //
 // The conversations are written as files, the way a runtime leaves them, and
 // indexed with the admin reconcile. Nothing here sends `session_activity`, so
@@ -25,14 +34,18 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import {
+  API,
   api,
   check,
+  DATABASE_URL,
   prisma,
   REPO,
   summary,
 } from "../../035-tool-reconnect-chat-queue/evidence/lib.mjs";
 import {
+  ACCOUNTS,
   AGENTS,
+  login,
   seed,
 } from "../../035-tool-reconnect-chat-queue/evidence/seed.mjs";
 
@@ -43,7 +56,11 @@ const {
   S3Client,
 } = require("@aws-sdk/client-s3");
 
-const BUCKET = "ranch-e2e-258";
+// One bucket per scratch database, named after it. A shared bucket keeps the
+// files of an earlier day's plan, the reconcile indexes them beside today's,
+// and the Owner (whose chat identity is `admin` in every database) ends up
+// with two sets of conversations where the plan knows one.
+const BUCKET = new URL(DATABASE_URL).pathname.slice(1).toLowerCase();
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -140,8 +157,10 @@ function plan(today, days, clientId, agent, seedValue) {
     }
     conversations.push({ agent, clientId, messages });
   }
-  // Nothing may reach into the last two hours.
-  const limit = Date.now() - 2 * HOUR;
+  // Nothing may reach into the last two hours. Cut at a fixed point of the
+  // UTC day, not at the clock, so the plan is the same whenever it is made
+  // that day: seeding in the morning and checking in the evening agree.
+  const limit = today - 2 * HOUR;
   const kept = conversations
     .map((c) => ({ ...c, messages: c.messages.filter((m) => m.ts < limit) }))
     .filter((c) => c.messages.length > 0);
@@ -182,6 +201,225 @@ function hoursOf(c) {
   return [...hours].sort(([a], [b]) => (a < b ? -1 : 1));
 }
 
+// ── What `GET /me/stats` must answer, from the plan alone ────────────────
+const ZONES = ["Europe/Kyiv", "America/Los_Angeles"];
+const PERIODS = [7, 30, 90];
+
+/** The calendar day of an instant in a zone, `YYYY-MM-DD`. */
+function dayIn(ts, zone) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ts));
+}
+const shiftDay = (day, n) =>
+  new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
+/** Monday = 0. */
+const weekdayOf = (day) => (new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7;
+
+/**
+ * One person's figures for a period in a zone. `conversations` are that
+ * person's, with the agents they reach. A conversation counts where the
+ * person wrote in it: in a period, and on each day.
+ */
+function expectedStats(conversations, period, zone, nowTs) {
+  const today = dayIn(nowTs, zone);
+  const from = shiftDay(today, -(period - 1));
+  const previousFrom = shiftDay(from, -period);
+  const inPeriod = (d) => d >= from && d <= today;
+  const inPrevious = (d) => d >= previousFrom && d < from;
+
+  let messages = 0;
+  let previousMessages = 0;
+  const current = new Set();
+  const previous = new Set();
+  const answered = new Set();
+  const byAgent = new Map();
+  const byDay = new Map();
+  for (const c of conversations) {
+    const id = `${c.agent.id}|${c.key}`;
+    for (const m of c.messages) {
+      const d = dayIn(m.ts, zone);
+      if (m.type !== "user") {
+        if (inPeriod(d)) answered.add(c.agent.id);
+        continue;
+      }
+      if (inPeriod(d)) {
+        messages += 1;
+        current.add(id);
+        const a = byAgent.get(c.agent.id) ?? { messages: 0, ids: new Set() };
+        a.messages += 1;
+        a.ids.add(id);
+        byAgent.set(c.agent.id, a);
+      }
+      if (inPrevious(d)) {
+        previousMessages += 1;
+        previous.add(id);
+      }
+      const set = byDay.get(d) ?? new Set();
+      set.add(id);
+      byDay.set(d, set);
+    }
+  }
+  const days = [];
+  for (let i = 90; i >= 0; i--) {
+    const date = shiftDay(today, -i);
+    days.push([date, byDay.get(date)?.size ?? 0]);
+  }
+  const weekdays = [0, 0, 0, 0, 0, 0, 0];
+  let activeDays = 0;
+  for (const [date, n] of days) {
+    if (!inPeriod(date) || n === 0) continue;
+    weekdays[weekdayOf(date)] += n;
+    activeDays += 1;
+  }
+  return {
+    conversations: [current.size, previous.size],
+    messages: [messages, previousMessages],
+    agentsAnswered: answered.size,
+    days,
+    weekdays,
+    activeDays,
+    agents: [...byAgent]
+      .map(([agentId, a]) => [agentId, a.messages, a.ids.size])
+      .sort(([a], [b]) => (a < b ? -1 : 1)),
+  };
+}
+
+/** The same figures, as the API answered them. */
+function answeredStats(data) {
+  return {
+    conversations: [
+      data.board.conversations.value,
+      data.board.conversations.previous,
+    ],
+    messages: [data.board.messages.value, data.board.messages.previous],
+    agentsAnswered: data.board.agents.value,
+    days: data.activity.days.map((d) => [d.date, d.conversations]),
+    weekdays: data.activity.weekdays,
+    activeDays: data.activity.activeDays,
+    agents: data.agents
+      .map((a) => [a.agentId, a.messages, a.conversations])
+      .sort(([a], [b]) => (a < b ? -1 : 1)),
+  };
+}
+
+// ── What the files cannot carry: ratings, citations, a hand-over, usage ──
+/** The conversation the extras hang on: this person's newest closed one with Front Desk. */
+function anchor(all, clientId) {
+  const mine = all.filter(
+    (c) => c.clientId === clientId && c.agent === AGENTS.A && c.key.endsWith(".archived"),
+  );
+  return mine[mine.length - 1];
+}
+
+async function extras(all, people) {
+  const db = prisma();
+  for (const { clientId, authorId } of people) {
+    const c = anchor(all, clientId);
+    if (!c) continue;
+    const session = await db.chatSession.findFirst({
+      where: { agentId: c.agent.id, sessionKey: c.key },
+    });
+    if (!session) throw new Error(`not indexed: ${c.key}`);
+    const answers = c.messages
+      .map((m, i) => ({ ...m, id: `${c.key}-${i}` }))
+      .filter((m) => m.type === "assistant");
+    const first = answers[0];
+    const last = answers[answers.length - 1];
+
+    // Two ratings by this person: one up, one down.
+    await db.chatFeedback.deleteMany({ where: { sessionId: session.id } });
+    await db.chatFeedback.createMany({
+      data: [
+        { sessionId: session.id, messageId: first.id, rating: 1, source: "app", authorId, createdAt: new Date(first.ts + MIN) },
+        { sessionId: session.id, messageId: last.id, rating: -1, source: "app", authorId, createdAt: new Date(last.ts + MIN) },
+      ],
+    });
+
+    // Three citations on the first answer: a knowledge base twice, the web once.
+    await db.chatMessageSource.deleteMany({ where: { messageId: first.id } });
+    await db.chatMessageSource.createMany({
+      data: [
+        { agentId: c.agent.id, clientId, sessionKey: `bridle:${clientId}`, messageId: first.id, n: 1, kind: "knowledge", knowledgeId: "kb-e2e-docs", knowledgeName: "Docs KB", name: "Deploying an agent", createdAt: new Date(first.ts) },
+        { agentId: c.agent.id, clientId, sessionKey: `bridle:${clientId}`, messageId: first.id, n: 2, kind: "knowledge", knowledgeId: "kb-e2e-docs", knowledgeName: "Docs KB", name: "Request limits", createdAt: new Date(first.ts) },
+        { agentId: c.agent.id, clientId, sessionKey: `bridle:${clientId}`, messageId: first.id, n: 3, kind: "web", name: "kubernetes.io", url: "https://kubernetes.io/docs/", createdAt: new Date(first.ts) },
+      ],
+    });
+
+    // One hand-over to Back Office while answering this person, answered.
+    await db.agentDelegation.deleteMany({ where: { clientId, contextId: "ctx-e2e-258" } });
+    await db.agentDelegation.create({
+      data: {
+        agentId: AGENTS.A.id,
+        peerAgentId: AGENTS.B.id,
+        peerName: AGENTS.B.name,
+        contextId: "ctx-e2e-258",
+        clientId,
+        task: "Are the October invoices closed?",
+        reason: "Back Office keeps the invoices.",
+        status: "answered",
+        startedAt: new Date(last.ts - 30_000),
+        finishedAt: new Date(last.ts - 5_000),
+        durationMs: 25_000,
+      },
+    });
+  }
+
+  // Usage, so "who answers you" has days to go by: Front Desk changed its
+  // model ten days ago; Back Office has one model and one it has no price for.
+  const key = need("BRIDLE_API_KEY");
+  const API_URL = API;
+  const today = Math.floor(Date.now() / DAY) * DAY;
+  for (let ago = 1; ago <= 100; ago++) {
+    const date = new Date(today - ago * DAY).toISOString().slice(0, 10);
+    const reports = [
+      [AGENTS.A, { [ago > 10 ? "claude-haiku-4-5" : "claude-sonnet-4-6"]: { inputTokens: 40_000 + ago * 900, outputTokens: 9_000 + ago * 200, callCount: 20 + (ago % 7) } }],
+      [AGENTS.B, { "claude-sonnet-4-6": { inputTokens: 15_000, outputTokens: 3_000, callCount: 8 }, "local/llama-3.1-70b": { inputTokens: 6_000, outputTokens: 1_500, callCount: 4 } }],
+    ];
+    for (const [agent, byModel] of reports) {
+      const res = await fetch(`${API_URL}/agents/${agent.id}/usage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-bridle-api-key": key },
+        body: JSON.stringify({ date, byModel }),
+      });
+      if (res.status >= 300) throw new Error(`usage ${agent.name} ${date}: ${res.status}`);
+    }
+  }
+}
+
+async function checkStats(all, userId) {
+  const now = Date.now();
+  const people = [
+    // The Owner reaches every agent; the User reaches Front Desk only.
+    { name: "owner", email: ACCOUNTS.owner.email, mine: all.filter((c) => c.clientId === "admin") },
+    { name: "user", email: ACCOUNTS.user.email, mine: all.filter((c) => c.clientId === userId && c.agent === AGENTS.A) },
+  ];
+  for (const person of people) {
+    const { accessToken } = await login(person.email);
+    for (const zone of ZONES) {
+      for (const period of PERIODS) {
+        const res = await api("GET", `/me/stats?period=${period}&tz=${encodeURIComponent(zone)}`, { token: accessToken });
+        const label = `${person.name} ${period}d ${zone}`;
+        if (res.status !== 200) {
+          check(`${label}: answers`, res.status, 200);
+          continue;
+        }
+        check(label, answeredStats(res.data), expectedStats(person.mine, period, zone, now));
+        if (period === 30 && zone === ZONES[0]) {
+          // The extras hang on a conversation of the last three days.
+          check(`${label}: ratings`, res.data.help.ratings, { up: 1, down: 1 });
+          check(`${label}: cited`, [res.data.help.cited.conversations, res.data.help.cited.sources], [1, [{ name: "Docs KB", citations: 2 }, { name: "web", citations: 1 }]]);
+          check(`${label}: hand-overs`, [res.data.help.handovers.total, res.data.help.handovers.answered], [1, 1]);
+          console.log(`      models: ${JSON.stringify(res.data.models)} | reachable: ${res.data.board.agents.reachable} | top peer: ${JSON.stringify(res.data.help.handovers.topPeer)}`);
+        }
+      }
+    }
+  }
+}
+
 async function main() {
   const days = Number(option("--days", "120"));
   if (!Number.isInteger(days) || days < 2) throw new Error("--days: 2 or more");
@@ -195,6 +433,12 @@ async function main() {
     ...plan(today, days, "admin", AGENTS.B, 2),
     ...plan(today, days, userId, AGENTS.A, 3),
   ];
+
+  if (flag("--stats")) {
+    await checkStats(all, userId);
+    process.exitCode = summary() ? 1 : 0;
+    return;
+  }
 
   if (flag("--check")) {
     const db = prisma();
@@ -240,6 +484,15 @@ async function main() {
       throw new Error(`sync ${agent.name}: ${res.status} ${res.text.slice(0, 200)}`);
     }
   }
+  // The owner's user id, for the ratings: the Owner's conversations are kept
+  // under `admin`, a rating under the account that gave it.
+  const owner = await prisma().user.findFirst({
+    where: { email: ACCOUNTS.owner.email },
+  });
+  await extras(all, [
+    { clientId: "admin", authorId: owner.id },
+    { clientId: userId, authorId: userId },
+  ]);
   const messages = all.reduce((n, c) => n + c.messages.length, 0);
   console.log(
     `seeded ${all.length} conversations, ${messages} messages over ${days} days`,

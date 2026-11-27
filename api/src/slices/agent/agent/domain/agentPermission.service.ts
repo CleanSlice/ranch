@@ -75,6 +75,15 @@ const GUEST: ICallerParty = { kind: 'guest' };
  * trusted party. So neither the Admin line, nor the creator line, nor the
  * assistant-setting line applies to it, whoever created it.
  *
+ * This rule is about the agent. What its pod is assembled from at the next
+ * restart (its template and that template's files, the skills and tool
+ * servers the template attaches, its model credential, its knowledge
+ * bases) is not the agent, and an Admin could write each of them until
+ * CLEAN-271: the same escalation through another door. Those are the
+ * Owner's too, by `AssistantBuildService` (`agent/assistantBuild`), which
+ * reads the assistant's bindings and is asked by the tools and routes that
+ * write such a resource. `canManage` is unchanged by it.
+ *
  * The creator line does little today, because only an Owner or Admin can
  * create an agent. It is what keeps an agent with the person who made it
  * after a demotion, and it is the line that opens when creation opens to

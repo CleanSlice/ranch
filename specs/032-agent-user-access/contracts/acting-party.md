@@ -231,6 +231,31 @@ it, so the routes and `AgentManageGuard` keep the three lines above: a User
 manages nothing in the console. The Ranch admin agent stays the Owner's
 alone under this line as under the others.
 
+### Amended 2026-11-27 (CLEAN-271): what the assistant is built from
+
+"The Ranch admin agent is the Owner's alone" covered the agent: its row,
+files, secrets, schedule, restart. Its pod is assembled at each restart from
+resources that are not the agent, and an Admin could write them: the
+template and its files, the skills and tool servers the template attaches
+(with the built-ins every agent is handed), the model credential, the
+knowledge bases and their documents. A change there reached the assistant at
+its next restart and ran with the Owner's standing.
+
+```text
+mayChange(caller, resource) =
+     caller is the Owner (or the assistant acting for itself)
+  OR resource is not one the assistant is built from now
+```
+
+"Built from" is read off the assistant's bindings at the moment of the call
+(`AssistantBuildService.ingredients`), plus the Rancher template by its id.
+Tools answer `reason: "owner_only"` in one sentence; routes keep their role
+and answer 403 `ASSISTANT_BUILT_FROM`. Reads are unchanged. Creating a
+resource is not a change; binding it to the assistant is a write to the
+assistant's template or row. `canManage` itself is unchanged. The
+`integrations` and `infrastructure` settings, which shape every pod, stay
+with Admins: an open decision, recorded in docs/agent-tools.md.
+
 ## 6. A role on every route
 
 `RolesGuard` becomes global, registered after `JwtAuthGuard` in

@@ -481,6 +481,8 @@ words for what they asked:
   link, an agent-wide tool server), `'conversations'`, `'records'` or
   `'evaluations'` (CLEAN-268, "The assistant's records" below). A new kind
   is a new entry in `OWNER_ONLY_CAN` in `#/mcp/tooling`, and nothing else.
+  `'built_from'` (CLEAN-271) is said about a thing the assistant is built
+  from, by `builtFromRefusal`: "What the assistant is built from" below.
 - Every chat tool answers it: `list_chats` and `sync_chats` for the
   assistant's agent id (`agentNotFound(httpRequest, id, 'conversations')`),
   `get_chat`, `get_chat_messages`, `summarize_chat` and `export_chat` for
@@ -596,6 +598,111 @@ not this: their pin, their own conversation, their own account on a tool
 server. `narrowedLists.spec.ts` reads every writing tool that names an
 agent, or asks the reach, without going through `manageable`, and fails
 until each is filed as one or the other.
+
+#### What the assistant is built from (CLEAN-271)
+
+Managing the assistant is the Owner's. Its pod, though, is put together at
+every restart from things that are not the agent, and an Admin could write
+each of them: rewrite `SOUL.md` in its template, and the next restart copied
+it into the assistant, whose next scheduled turn ran as a trusted party on
+an Admin's instructions. The escalation CLEAN-232 closed on the agent was
+open through its ingredients. So: **a resource the assistant is built from
+is changed by the Owner only.**
+
+What a restart assembles (`AgentDeployService.restartAgent`,
+`ArgoWorkflowGateway.resolveManifestInput`), and who writes it:
+
+| Ingredient | How it reaches the pod | Who writes it |
+|---|---|---|
+| The agent's row: name, config, resources, debug, `templateId`, `llmCredentialId`, `knowledgeIds`, `isAdmin` | read at deploy | the Owner (`manage-agent`, `@ManagesAgent`; `set_agent_admin` is `owner`). No tool or route moves an agent to another template |
+| Its workspace files, secrets, channels | S3 under `agents/<id>/`, the secret store | the Owner (CLEAN-232) |
+| Its template: `image`, tool allowlist, default knowledge bases | `template.image` is the pod's image | the Owner (this section) |
+| The template's files | copied over the workspace at every restart (`resyncFromTemplate`) | the Owner |
+| The skills the template attaches | written to `.agent/skills/<name>/` (`syncSkillsFromTemplate`) | the Owner, the skill and the attaching both |
+| The tool servers the template attaches, and the built-ins every agent is handed (CleanSlice, Documents, Knowledge: `INJECTED_MCP_IDS`) | `MCP_SERVERS_B64` (`AgentMcpResolver`). The Ranch server is sent the assistant's token, which carries Owner | the Owner: address, credential, enabled |
+| Its model credential | `LLM_*` | the Owner |
+| Its knowledge bases and their documents | what `query_knowledge` retrieves into its turns | the Owner |
+| `rancher.seeded_hash` | a changed hash makes the next API start wipe and reseed the Rancher template | the Owner (the `rancher` setting group) |
+| The settings every pod is built with: `integrations.*` (hub address and key, bucket, S3 endpoint and keys, `ranch_api_url`, secret provider), `infrastructure.*` | env of every pod | **an Admin still**: see "Left open" below |
+
+Which resources those are is read off the rows at the moment of the call
+(`AssistantBuildService.ingredients`, `agent/assistantBuild`): the
+assistant's row, its template, what that template attaches. Rebind the
+assistant to another credential and the old one is an ordinary credential
+again. Two things are named by the code and not by a row: the Rancher
+template (`template-rancher`), which the setup makes the assistant from and
+which is the Owner's before the assistant exists, and the injected
+built-in servers.
+
+**Tools.** The MCP handler asks once per call, for an operator who is not
+the Owner (`ASSISTANT_BUILD_RESOLVER`, the way it asks
+`AGENT_MANAGER_RESOLVER`), and notes the ids on the call's request. A tool
+asks `builtFromRefusal(httpRequest, kind, id, name)` before it writes, and
+before `confirm`:
+
+```json
+{
+  "error": "The skill «deploy» is part of what Rancher, the Ranch assistant, is built from. Only the Owner can change it.",
+  "reason": "owner_only"
+}
+```
+
+The kind is `built_from` in `OWNER_ONLY_CAN`. The assistant is named to a
+person who has it and is "the Ranch assistant" to one who does not: unlike
+the refusals above this one is said to every non-Owner, because an Admin
+without the assistant could rewrite its template just as well. A lookup that
+throws refuses every guarded write of that call (`BUILT_FROM_UNKNOWN`): an
+error must not open what the rule closes. The Owner and the assistant acting
+for itself are noted nothing and refused nothing.
+
+| Tool | Refused on |
+|---|---|
+| `update_template`, `set_template_skills`, `set_template_mcps`, `set_template_tools`, `write_template_file`, `delete_template` | the assistant's template |
+| `install_template_from_git` | a manifest whose `metadata.id` is the assistant's template, or that would register a server under an injected id. The service asks back before it writes (`InstallGuard`) |
+| `update_skill`, `delete_skill`; `import_skill`, `import_skill_from_url` with `overwrite` | a skill its template attaches. The import finds its target by slug, never by id |
+| `update_mcp_server`, `delete_mcp_server` | a server its template attaches, and each injected built-in |
+| `update_llm`, `delete_llm` | its credential |
+| `update_knowledge`, `set_knowledge_reader_access`, `index_knowledge`, `delete_knowledge`, and the five source tools | its knowledge bases, the template's defaults included |
+| `upsert_setting`, `delete_setting` | the `rancher` group |
+
+**Binding is a write.** A new skill, server, credential or base is an
+Admin's to create: it has a new id and is attached to nothing. Making it the
+assistant's is a write to the assistant's template or row, which is
+refused. Skills, servers, credentials and bases are bound by id; a skill's
+name is unique and is only the folder it is written to; no create tool or
+DTO takes an id. `restart_template_agents` and `redeploy_skill_agents`
+leave the assistant running (`skipped`), so nothing but the Owner's restart
+brings a change into it.
+
+**Routes** keep their role and answer **403** with
+`code: "ASSISTANT_BUILT_FROM"`, not a 404: an Admin reads these resources.
+A route that names its resource in the path carries
+`@ChangesAssistantIngredient(kind, param)` (`AssistantBuildGuard`, global);
+one that names it elsewhere calls `AssistantBuildService.assertMayChange`.
+`POST /rancher/template` is `@Roles(Owner)`. Lists and details carry
+`assistantDependency`, and the management console shows such a resource
+read-only with one line ("Part of what Rancher, the Ranch assistant, is
+built from: only the Owner can change it.", `useBuiltFrom`).
+
+**Shared resources.** The rule follows the resource, not the agent: one
+credential for every agent, the assistant included, is the Owner's to edit
+or delete; so is a template or a skill the assistant shares with ordinary
+agents, and the built-in servers for the whole Ranch.
+
+**Left open.** The `integrations` and `infrastructure` settings are still
+an Admin's, and several of them decide what the assistant loads or where its
+token goes: `s3_bucket` / `s3_endpoint` (the workspace it pulls),
+`ranch_api_url` and `bridle_url` (where it sends its Owner token and whom
+it takes messages from), `secret_provider`. Closing them takes the Settings
+area away from Admins and is a product decision, not made here.
+Template-scoped paddock scenarios are tests, not ingredients.
+
+`mcp/assistantBuiltFrom.spec.ts` calls every write tool through the real
+handler on each kind of ingredient, assembles the assistant's next pod with
+the deploy's own code before and after, and compares the bytes;
+`agent/assistantBuild/guards/assistantBuildRoutes.spec.ts` does the same
+for the routes. Each reads its slices and fails on a write tool or a
+non-GET route that is not filed as asking the rule or exempt with a reason.
 
 The `manage-agent` tools:
 
@@ -1011,6 +1118,14 @@ puts the block back (it is idempotent and `make init` runs it).
   account) or it asks `reach.forChanges()` and answers the assistant with
   the kind `'change'`; either way it is filed in the last table of
   `narrowedLists.spec.ts`.
+- Does the tool write to a template, a skill, a tool server, a model
+  credential, a knowledge base or its documents, or to anything else an
+  agent's pod is assembled from? Then it asks `builtFromRefusal` before it
+  writes and before `confirm`, the route beside it carries
+  `@ChangesAssistantIngredient` or calls `assertMayChange`, and both are
+  filed in `assistantBuiltFrom.spec.ts` and `assistantBuildRoutes.spec.ts`.
+  A write that finds its target by a name or a manifest asks about the row
+  it found.
 - Does the tool list, name or use an agent's colleagues? Then it takes the
   caller's view from `PeerAccessService` (see "Whose colleague"), answers a
   hidden connection as one that does not exist, and a masked one without its

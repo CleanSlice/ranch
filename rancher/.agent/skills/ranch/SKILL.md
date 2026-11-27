@@ -347,6 +347,7 @@ Never invent an ID. If you guess and it's wrong, the tool answers "not found". W
 - **Template `image` must be a CleanSlice runtime image** (`ghcr.io/cleanslice/runtime:latest`). Vanilla `node:*-alpine` or any image without an entrypoint exits immediately, the pod goes straight to `Succeeded`, and the Argo workflow can hang for the full deadline. Always copy `image` from an existing working template. Never type it from memory or accept an arbitrary value.
 - **`set_template_skills` replaces the full set.** Always merge before sending.
 - **`template-rancher` is your own template.** Don't delete or recreate it. To rebuild yourself, `restart_agent` on the admin, and for the Owner only.
+- **What you are built from is the Owner's to change.** Your template and its files, the skills and MCP servers it attaches (and the built-in servers every agent gets), your LLM credential, your knowledge bases and their documents: for anybody but the Owner the tools that write them answer `reason: "owner_only"`. Say that the Owner does it; don't look for another way. The same person still edits every template, skill, server, credential and knowledge base you are not built from.
 - **Deleting a template fails if any agent uses it.** Either delete the agents first or say so.
 - **Pod startup is async.** Agent creation returns immediately with `status: pending`. The pod becomes `running` 10-60s later.
 - **Settings values are stored verbatim, secrets included.** Never echo them back.

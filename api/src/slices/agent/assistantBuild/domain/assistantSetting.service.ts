@@ -135,7 +135,10 @@ function asSetting(pin: IPinRow): ISettingData | null {
  *    request that carries its token or names its id anywhere
  *    (`AssistantSettingInterceptor`). Inside it the one reader of settings,
  *    `ISettingGateway`, answers a pinned key with the pinned value. Work
- *    for another agent says so and reads live.
+ *    for another agent says so and reads live. The scope is a marker and
+ *    holds no copy: each read takes the row and the pins in one snapshot,
+ *    so a write that lands in the middle of the work is answered with the
+ *    value kept for it, not with the Admin's.
  *  - No pin means approved = live, which is the state of every installation
  *    at the migration and of every setting nobody but the Owner touched.
  *    There is no copy of the settings to initialise and none to keep in
@@ -175,10 +178,12 @@ export class AssistantSettingService
   /**
    * Read from the table every time: it is a handful of rows at most, and a
    * remembered answer would serve the assistant a value an Admin changed a
-   * moment ago on another copy of the API.
+   * moment ago, on another copy of the API or in the middle of this very
+   * deploy. `db` is the snapshot the settings reader takes its rows in.
    */
-  async overrides(): Promise<SettingOverrides> {
-    const pins = await this.table.assistantSettingPin.findMany();
+  async overrides(db?: unknown): Promise<SettingOverrides> {
+    const table = (db as IPinClient | undefined) ?? this.table;
+    const pins = await table.assistantSettingPin.findMany();
     return new Map(
       pins.map((pin) => [settingKeyOf(pin.group, pin.name), asSetting(pin)]),
     );

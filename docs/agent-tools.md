@@ -741,6 +741,13 @@ from the values **the Owner approved**, not from the live ones
   every other HTTP request), and **undeclared** for work that said nothing
   (the hub's socket handlers, scheduled jobs), which reads approved. Code
   that forgot to say whom it works for fails towards the Owner.
+- The state is a marker, never a copy of the approved values, and a request
+  for the assistant is approved whether or not anything is kept back when
+  it arrives. A deploy is long, and an Admin may change a setting in the
+  middle of it: each read that is not live takes the setting rows and the
+  kept values in one REPEATABLE READ transaction, which is one snapshot of
+  the database, and a write moves both in one transaction, so a read sees
+  both or neither. Nothing is remembered from one read to the next.
 - The Owner sees what is kept back: `GET /rancher/settings`,
   `get_assistant_settings`, `settingsDrift` on the Owner's
   `GET /rancher/status` and `get_rancher_status`, and a notice on the

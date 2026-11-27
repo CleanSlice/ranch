@@ -45,6 +45,7 @@ import {
   onUndeclaredSettingRead,
   servingAgentId,
   servingAssistant,
+  settingScopeState,
   withLiveSettings,
   type ISettingData,
 } from '#/setting/domain';
@@ -115,12 +116,32 @@ const db = {
   reads: [] as string[],
 };
 
-const prisma = {
+interface ITables {
+  settings: Map<string, IRow>;
+  pins: Map<string, IPin>;
+}
+
+/**
+ * What the spec does to the database while a read is on its way, to put a
+ * write exactly where it would hurt.
+ */
+const meanwhile = {
+  /** Before the n-th snapshot read (1-based) begins. */
+  beforeSnapshot: null as ((n: number) => Promise<void>) | null,
+  /** Inside a snapshot read, once it has been taken. */
+  insideSnapshot: null as ((n: number) => Promise<void>) | null,
+  snapshots: 0,
+  /** The isolation level each transaction asked for. */
+  asked: [] as (string | undefined)[],
+};
+
+/** The two tables as a client reads and writes them. */
+const clientOver = (at: ITables) => ({
   setting: {
     findMany: (args?: { where?: { group?: string } }) => {
       db.reads.push(args?.where?.group ? `${args.where.group}.*` : '*');
       return Promise.resolve(
-        [...db.settings.values()]
+        [...at.settings.values()]
           .filter(
             (row) => !args?.where?.group || row.group === args.where.group,
           )
@@ -132,7 +153,7 @@ const prisma = {
     }) => {
       db.reads.push(keyOf(args.where.group_name));
       return Promise.resolve(
-        db.settings.get(keyOf(args.where.group_name)) ?? null,
+        at.settings.get(keyOf(args.where.group_name)) ?? null,
       );
     },
     upsert: (args: {
@@ -147,53 +168,76 @@ const prisma = {
       update: { valueType: string; value: string };
     }) => {
       const key = keyOf(args.where.group_name);
-      const existing = db.settings.get(key);
+      const existing = at.settings.get(key);
       const row: IRow = existing
         ? { ...existing, ...args.update, updatedAt: now() }
         : { ...args.create, createdAt: AT, updatedAt: now() };
-      db.settings.set(key, row);
+      at.settings.set(key, row);
       return Promise.resolve(row);
     },
     delete: (args: {
       where: { group_name: { group: string; name: string } };
     }) => {
       const key = keyOf(args.where.group_name);
-      const row = db.settings.get(key);
+      const row = at.settings.get(key);
       if (!row)
         return Promise.reject(new Error('Record to delete does not exist.'));
-      db.settings.delete(key);
+      at.settings.delete(key);
       return Promise.resolve(row);
     },
   },
   assistantSettingPin: {
     findMany: () =>
       Promise.resolve(
-        [...db.pins.values()].sort((a, b) => keyOf(a).localeCompare(keyOf(b))),
+        [...at.pins.values()].sort((a, b) => keyOf(a).localeCompare(keyOf(b))),
       ),
     findUnique: (args: {
       where: { group_name: { group: string; name: string } };
-    }) => Promise.resolve(db.pins.get(keyOf(args.where.group_name)) ?? null),
+    }) => Promise.resolve(at.pins.get(keyOf(args.where.group_name)) ?? null),
     create: (args: { data: Omit<IPin, 'changedAt'> }) => {
       const pin = { ...args.data, changedAt: now() };
-      db.pins.set(keyOf(pin), pin);
+      at.pins.set(keyOf(pin), pin);
       return Promise.resolve(pin);
     },
     deleteMany: (args?: {
       where?: { group: string; name: string; changedAt?: Date };
     }) => {
-      const before = db.pins.size;
+      const before = at.pins.size;
       const where = args?.where;
-      if (!where) db.pins.clear();
+      if (!where) at.pins.clear();
       else {
-        const pin = db.pins.get(keyOf(where));
+        const pin = at.pins.get(keyOf(where));
         if (pin && (!where.changedAt || +where.changedAt === +pin.changedAt)) {
-          db.pins.delete(keyOf(where));
+          at.pins.delete(keyOf(where));
         }
       }
-      return Promise.resolve({ count: before - db.pins.size });
+      return Promise.resolve({ count: before - at.pins.size });
     },
   },
-  $transaction: <T>(run: (tx: unknown) => Promise<T>) => run(prisma),
+});
+
+const prisma = {
+  ...clientOver(db),
+  /**
+   * A transaction at REPEATABLE READ reads ONE snapshot, as Postgres gives
+   * it: the tables as they stood when it began, whatever is written while
+   * it runs. Any other transaction runs on the tables themselves.
+   */
+  $transaction: async <T>(
+    run: (tx: unknown) => Promise<T>,
+    options?: { isolationLevel?: string },
+  ): Promise<T> => {
+    meanwhile.asked.push(options?.isolationLevel);
+    if (options?.isolationLevel !== 'RepeatableRead') return run(prisma);
+    const n = (meanwhile.snapshots += 1);
+    await meanwhile.beforeSnapshot?.(n);
+    const snapshot = clientOver({
+      settings: new Map(db.settings),
+      pins: new Map(db.pins),
+    });
+    await meanwhile.insideSnapshot?.(n);
+    return run(snapshot);
+  },
 };
 
 // ── The real classes over it ─────────────────────────────────
@@ -317,6 +361,10 @@ beforeEach(() => {
   infraConfig.invalidate();
   db.reads.length = 0;
   onUndeclaredSettingRead(null);
+  meanwhile.beforeSnapshot = null;
+  meanwhile.insideSnapshot = null;
+  meanwhile.snapshots = 0;
+  meanwhile.asked.length = 0;
 });
 
 /** Every catalogued setting of the groups the assistant is served. */
@@ -933,24 +981,193 @@ describe('a request made for the assistant reads the approved settings', () => {
     );
   });
 
-  it('with nothing kept back the request is declared live at once', async () => {
+  it('with nothing kept back the request goes through, and is the assistant’s all the same', async () => {
     await applyShown();
-    expect(
-      await lastValueFrom(
+    expect(db.pins.size).toBe(0);
+    const states: string[] = [];
+    const seen = (req: object) =>
+      lastValueFrom(
         interceptor.intercept(
           {
             getType: () => 'http',
-            switchToHttp: () => ({
-              getRequest: () => ({
-                user: http(OWNER).user,
-                params: { id: RANCH },
-              }),
-            }),
+            switchToHttp: () => ({ getRequest: () => req }),
           } as unknown as ExecutionContext,
-          { handle: () => of('handled') },
+          {
+            handle: () =>
+              defer(() => {
+                states.push(settingScopeState());
+                return of('handled');
+              }),
+          },
         ),
+      );
+    expect(await seen({ user: http(OWNER).user, params: { id: RANCH } })).toBe(
+      'handled',
+    );
+    expect(await seen({ user: http(OWNER).user, params: { id: ALPHA } })).toBe(
+      'handled',
+    );
+    // Whether anything is kept back at this instant does not decide it.
+    expect(states).toEqual(['approved', 'live']);
+  });
+});
+
+// ── A write that lands in the middle of the work ─────────────
+
+describe('a setting changed while work for the assistant is under way', () => {
+  const adminSets = (group: string, name: string, value: string) =>
+    settingsController.upsert(
+      group,
+      name,
+      { value, valueType: 'string' },
+      http(ADMIN),
+    );
+
+  it('the scope holds no copy: a read made after an Admin’s write, in work that began before it, is the approved value', async () => {
+    expect(db.pins.size).toBe(0);
+    const [before, after] = await servingAssistant(true, async () => {
+      const first = await read('integrations', 's3_bucket');
+      await adminSets('integrations', 's3_bucket', 'admins-bucket');
+      return [first, await read('integrations', 's3_bucket')];
+    });
+    expect(before).toBe('approved-integrations-s3_bucket');
+    expect(after).toBe('approved-integrations-s3_bucket');
+    expect(await live('integrations', 's3_bucket')).toBe('admins-bucket');
+  });
+
+  it('a deploy: an Admin writes between any two of its setting reads, and the pod is byte-identical to the approved one', async () => {
+    const approvedPod = await world.assembled();
+    const reads = meanwhile.snapshots;
+    // The deploy does read settings, several times over.
+    expect(reads).toBeGreaterThan(3);
+
+    // Every setting a pod is built from, changed at once by the Admin.
+    const sabotage = async () => {
+      for (const key of IN_EVERY_POD) {
+        const [group, name] = key.split('.');
+        await adminSets(group, name, `admins-${name}`);
+      }
+    };
+    for (let at = 1; at <= reads; at += 1) {
+      approvedState();
+      infraConfig.invalidate();
+      world.reset();
+      meanwhile.snapshots = 0;
+      let fired = false;
+      meanwhile.beforeSnapshot = async (n) => {
+        if (n !== at || fired) return;
+        fired = true;
+        // The Admin's own request reads and writes live, outside the deploy.
+        await withLiveSettings(sabotage);
+      };
+      const pod = await world.assembled();
+      meanwhile.beforeSnapshot = null;
+      expect([at, fired]).toEqual([at, true]);
+      expect([at, pod === approvedPod]).toEqual([at, true]);
+      // The check has teeth: an ordinary agent deployed now has the change.
+      expect(await world.assembled(ALPHA)).toContain('admins-s3_bucket');
+    }
+  });
+
+  it('and inside one read: a write that commits after the snapshot was taken changes nothing of it', async () => {
+    const approvedPod = await world.assembled();
+    const reads = meanwhile.snapshots;
+    for (let at = 1; at <= reads; at += 1) {
+      approvedState();
+      infraConfig.invalidate();
+      world.reset();
+      meanwhile.snapshots = 0;
+      meanwhile.insideSnapshot = async (n) => {
+        if (n !== at) return;
+        await withLiveSettings(() =>
+          adminSets('integrations', 's3_bucket', 'admins-bucket'),
+        );
+        await withLiveSettings(() =>
+          adminSets('integrations', 'ranch_api_url', 'https://evil.example'),
+        );
+      };
+      const pod = await world.assembled();
+      meanwhile.insideSnapshot = null;
+      expect([at, pod === approvedPod]).toEqual([at, true]);
+    }
+  });
+
+  it('an Admin’s value that was put back while it was being read is not served either', async () => {
+    // The row holds the Admin's value and the approved one is kept for it.
+    await adminSets('integrations', 's3_bucket', 'admins-bucket');
+    meanwhile.snapshots = 0;
+    // After the snapshot: the Admin puts the approved value back, which
+    // drops what was kept. Read in two steps, the row would be the Admin's
+    // and nothing would be found kept for it.
+    meanwhile.insideSnapshot = async () => {
+      meanwhile.insideSnapshot = null;
+      await withLiveSettings(() =>
+        adminSets(
+          'integrations',
+          's3_bucket',
+          'approved-integrations-s3_bucket',
+        ),
+      );
+    };
+    expect(await approved('integrations', 's3_bucket')).toBe(
+      'approved-integrations-s3_bucket',
+    );
+    expect(db.pins.size).toBe(0);
+  });
+
+  it('every read that is not declared live asks the database for one snapshot', async () => {
+    await world.assembled();
+    await read('integrations', 's3_bucket');
+    await gateway.findByGroup('integrations');
+    await gateway.findAll();
+    expect(meanwhile.asked.length).toBeGreaterThan(5);
+    expect(new Set(meanwhile.asked)).toEqual(new Set(['RepeatableRead']));
+    // Live work reads the table as it is and opens no transaction.
+    meanwhile.asked.length = 0;
+    await live('integrations', 's3_bucket');
+    await world.assembled(ALPHA);
+    expect(meanwhile.asked).toEqual([]);
+  });
+
+  it('a request for the assistant that began with nothing kept back does not follow a change made a moment later', async () => {
+    const interceptor = new AssistantSettingInterceptor();
+    expect(db.pins.size).toBe(0);
+    const through = (req: object, handle: () => Promise<unknown>) =>
+      lastValueFrom(
+        interceptor.intercept(
+          {
+            getType: () => 'http',
+            switchToHttp: () => ({ getRequest: () => req }),
+          } as unknown as ExecutionContext,
+          { handle: () => defer(handle) },
+        ),
+      );
+    // The request is admitted, the table is empty; then the Admin writes;
+    // then the request does its work, which here is the assistant's deploy.
+    const approvedPod = await world.assembled();
+    world.reset();
+    const pod = await through(
+      { user: http(OWNER).user, params: { id: RANCH } },
+      async () => {
+        await withLiveSettings(async () => {
+          for (const key of IN_EVERY_POD) {
+            const [group, name] = key.split('.');
+            await adminSets(group, name, `admins-${name}`);
+          }
+        });
+        return [
+          await read('integrations', 's3_bucket'),
+          await world.assembled(),
+        ];
+      },
+    );
+    expect(pod).toEqual(['approved-integrations-s3_bucket', approvedPod]);
+    // The same request for another agent reads what the Admin wrote.
+    expect(
+      await through({ user: http(ADMIN).user, params: { id: ALPHA } }, () =>
+        read('integrations', 's3_bucket'),
       ),
-    ).toBe('handled');
+    ).toBe('admins-s3_bucket');
   });
 });
 

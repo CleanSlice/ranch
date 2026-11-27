@@ -10,7 +10,6 @@ import {
   assistantSettingSource,
   withApprovedSettings,
   withLiveSettings,
-  type SettingOverrides,
 } from '#/setting/domain';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 
@@ -33,9 +32,11 @@ const AGENT_SUB = 'agent:';
  * body that is not parsed JSON is not searched, and its route parameters
  * are what names the agent there.
  *
- * Cheap on purpose: while nothing differs from what the Owner approved
- * (the table is empty) the request is declared live at once, and which
- * agent the assistant is is not even asked.
+ * The decision does not look at whether anything differs from what the
+ * Owner approved at this instant: a request for the assistant is approved
+ * even when nothing is kept back, because an Admin may change a setting a
+ * moment after it began and the request's later reads must not follow it.
+ * What it costs is one read of which agent the assistant is.
  *
  * Work outside an HTTP request (the hub's socket handlers, scheduled jobs)
  * does not pass here. It either says whom it serves (`servingAgentId`, as
@@ -51,21 +52,19 @@ export class AssistantSettingInterceptor implements NestInterceptor {
       .getRequest<Request & { user?: IAuthTokenPayload }>();
 
     return from(
-      (async (): Promise<SettingOverrides | null> => {
-        const overrides = await source.overrides();
-        if (overrides.size === 0) return null;
+      (async (): Promise<boolean> => {
         const assistantId = await source.assistantId();
-        return assistantId && namesAgent(req, assistantId) ? overrides : null;
+        return assistantId !== null && namesAgent(req, assistantId);
       })(),
     ).pipe(
       switchMap(
-        (overrides) =>
+        (forAssistant) =>
           // The handler runs when it is subscribed to, so the subscription
           // is what has to happen inside the scope.
           new Observable<unknown>((subscriber) => {
             const run = () => next.handle().subscribe(subscriber);
-            return overrides
-              ? withApprovedSettings(overrides, run)
+            return forAssistant
+              ? withApprovedSettings(run)
               : withLiveSettings(run);
           }),
       ),

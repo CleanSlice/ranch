@@ -6,9 +6,10 @@ import {
 } from '../domain/setting.gateway';
 import {
   applySettingOverrides,
+  approvedSettingsFor,
   settingKeyOf,
-  settingOverridesFor,
   type ISettingWriter,
+  type SettingOverrides,
 } from '../domain/settingScope';
 import { ISettingData, IUpsertSettingData } from '../domain/setting.types';
 import { SettingMapper } from './setting.mapper';
@@ -43,35 +44,69 @@ export class SettingGateway extends ISettingGateway {
   // nothing. This gateway is the one reader of settings, so nothing below
   // it can read past that.
 
+  /**
+   * One read of the settings table in the state of the current work.
+   *
+   * Live: `rows` is asked of the database and that is all.
+   *
+   * Approved (and undeclared): the rows and the approved values are read in
+   * ONE transaction at REPEATABLE READ, which in Postgres is one snapshot
+   * taken at its first statement. A write of a setting moves the row and
+   * the approved value kept for it in one transaction (`writeBy`), so the
+   * snapshot holds either both or neither, whatever commits while this
+   * read is on its way. Two separate reads cannot promise that in either
+   * order: the approved values first, and an Admin's write between the two
+   * is answered with the Admin's row; the rows first, and an Admin's row
+   * read just before the Admin put the old value back is answered with
+   * nothing kept for it. Nothing is remembered between two reads either,
+   * so no await of the caller's can stand between a write and the answer.
+   * The transaction only reads and cannot fail on a conflict.
+   */
+  private async read<T>(
+    key: string,
+    rows: (db: Pick<PrismaService, 'setting'>) => Promise<T>,
+  ): Promise<{ rows: T; overrides: SettingOverrides | null }> {
+    const approved = approvedSettingsFor(key);
+    if (!approved) return { rows: await rows(this.prisma), overrides: null };
+    return this.prisma.$transaction(
+      async (tx) => {
+        const overrides = await approved.overrides(tx);
+        return {
+          rows: await rows(tx),
+          overrides: overrides.size > 0 ? overrides : null,
+        };
+      },
+      { isolationLevel: 'RepeatableRead' },
+    );
+  }
+
   async findAll(): Promise<ISettingData[]> {
-    const records = await this.prisma.setting.findMany({
-      orderBy: [{ group: 'asc' }, { name: 'asc' }],
-    });
+    const { rows, overrides } = await this.read('*', (db) =>
+      db.setting.findMany({ orderBy: [{ group: 'asc' }, { name: 'asc' }] }),
+    );
     return applySettingOverrides(
-      records.map((r) => this.mapper.toEntity(r)),
-      await settingOverridesFor('*'),
+      rows.map((r) => this.mapper.toEntity(r)),
+      overrides,
     );
   }
 
   async findByGroup(group: string): Promise<ISettingData[]> {
-    const records = await this.prisma.setting.findMany({
-      where: { group },
-      orderBy: { name: 'asc' },
-    });
+    const { rows, overrides } = await this.read(`${group}.*`, (db) =>
+      db.setting.findMany({ where: { group }, orderBy: { name: 'asc' } }),
+    );
     return applySettingOverrides(
-      records.map((r) => this.mapper.toEntity(r)),
-      await settingOverridesFor(`${group}.*`),
+      rows.map((r) => this.mapper.toEntity(r)),
+      overrides,
       group,
     );
   }
 
   async findByKey(group: string, name: string): Promise<ISettingData | null> {
     const key = settingKeyOf(group, name);
-    const overrides = await settingOverridesFor(key);
+    const { rows: record, overrides } = await this.read(key, (db) =>
+      db.setting.findUnique({ where: { group_name: { group, name } } }),
+    );
     if (overrides?.has(key)) return overrides.get(key) ?? null;
-    const record = await this.prisma.setting.findUnique({
-      where: { group_name: { group, name } },
-    });
     return record ? this.mapper.toEntity(record) : null;
   }
 

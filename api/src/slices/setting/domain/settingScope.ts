@@ -18,9 +18,9 @@ import type { ISettingData } from './setting.types';
  * consumer below a call (the workflow gateway, the S3 clients, the infra
  * config, the knowledge config) reads in it without being told:
  *
- *   approved    `withApprovedSettings(overrides, fn)`: work done for the
- *               assistant. A key the overrides hold is answered with the
- *               approved value (`null`: there is no such row).
+ *   approved    `withApprovedSettings(fn)`: work done for the assistant.
+ *               A key the Owner's approved values hold is answered with
+ *               the approved value (`null`: there is no such row).
  *   live        `withLiveSettings(fn)`: work that SAID it is not for the
  *               assistant: another agent's deploy, a request that names
  *               another agent or none, the Settings pages themselves.
@@ -31,8 +31,19 @@ import type { ISettingData } from './setting.types';
  *               value the Owner has not seen. The cost is that such work
  *               follows an Admin's change only once the Owner applied it.
  *
- * While nothing differs from what the Owner approved the three are the same
- * and cost one read of an empty table.
+ * The scope is a MARKER, never a copy of the approved values. A piece of
+ * work for the assistant is long (a deploy resyncs a template, syncs skills
+ * and resolves a manifest, with an await between every two of them), and an
+ * Admin may change a setting in the middle of it. A copy taken when the
+ * work began would not hold that change, and the next read would fall
+ * through to the Admin's live value. So each read asks again, and asks
+ * consistently: the reader takes the setting rows and the approved values
+ * in ONE snapshot of the database (`SettingGateway`), because a write moves
+ * both in one transaction and two separate reads could see one of them
+ * before it and the other after.
+ *
+ * While nothing differs from what the Owner approved the three states
+ * answer the same.
  *
  * Who decides what the overrides hold is the assistantBuild slice, which
  * registers itself here at start (`registerAssistantSettings`), the way the
@@ -45,16 +56,17 @@ export const settingKeyOf = (group: string, name: string): string =>
   `${group}.${name}`;
 
 const LIVE = Symbol('live settings');
-type Scope = typeof LIVE | SettingOverrides;
+const APPROVED = Symbol('approved settings');
+type Scope = typeof LIVE | typeof APPROVED;
 
 const scope = new AsyncLocalStorage<Scope>();
 
-/** Run `fn` as work done for the assistant: `overrides` answer for their keys. */
-export function withApprovedSettings<T>(
-  overrides: SettingOverrides,
-  fn: () => T,
-): T {
-  return scope.run(overrides, fn);
+/**
+ * Run `fn` as work done for the assistant: every read in it is answered
+ * with the values the Owner approved, as they stand at that read.
+ */
+export function withApprovedSettings<T>(fn: () => T): T {
+  return scope.run(APPROVED, fn);
 }
 
 /** Run `fn` as work that is not for the assistant: every read is live. */
@@ -83,19 +95,18 @@ export function onUndeclaredSettingRead(
 }
 
 /**
- * The overrides the current work reads through; null when it reads live.
- * `key` names the read, for the listener above.
+ * Where the current work's read of `key` takes the approved values from;
+ * null when it reads live (it said so, or the installation has no
+ * assistant settings at all). Nothing is read here and nothing remembered:
+ * the reader asks the source inside the snapshot it reads the rows in.
  */
-export async function settingOverridesFor(
+export function approvedSettingsFor(
   key: string,
-): Promise<SettingOverrides | null> {
+): IAssistantSettingSource | null {
   const current = scope.getStore();
   if (current === LIVE) return null;
-  if (current !== undefined) return current.size > 0 ? current : null;
-  undeclaredListener?.(key);
-  if (!source) return null;
-  const approved = await source.overrides();
-  return approved.size > 0 ? approved : null;
+  if (current === undefined) undeclaredListener?.(key);
+  return source;
 }
 
 /** `rows` of a group, or of every group, read through `overrides`. */
@@ -144,8 +155,13 @@ export interface ISettingWriter {
 }
 
 export interface IAssistantSettingSource {
-  /** The approved values that differ from the live ones; empty when none. */
-  overrides(): Promise<SettingOverrides>;
+  /**
+   * The approved values that differ from the live ones; empty when none.
+   * `db` is the client of the snapshot the caller reads the setting rows
+   * in (typed loosely: this file does not know the database), so that both
+   * are of one moment.
+   */
+  overrides(db?: unknown): Promise<SettingOverrides>;
   /** The id of the Ranch assistant, when there is one. */
   assistantId(): Promise<string | null>;
   drift(): Promise<ISettingDrift[]>;
@@ -164,15 +180,11 @@ export function registerAssistantSettings(
  * assistant reads the approved settings, any other agent the live ones.
  * The caller knows the agent it acts for; this is where it says so.
  */
-export async function servingAssistant<T>(
+export function servingAssistant<T>(
   isAssistant: boolean,
   fn: () => Promise<T>,
 ): Promise<T> {
-  if (!isAssistant) return withLiveSettings(fn);
-  return withApprovedSettings(
-    source ? await source.overrides() : new Map(),
-    fn,
-  );
+  return isAssistant ? withApprovedSettings(fn) : withLiveSettings(fn);
 }
 
 /** `servingAssistant`, for a caller that holds an agent id and not the row. */

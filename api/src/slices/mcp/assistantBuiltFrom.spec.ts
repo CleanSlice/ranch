@@ -325,6 +325,7 @@ const paddockEvaluations = new PaddockEvaluationService(
         id: `evaluation-${evaluationRows.size + 1}`,
         status: 'finished',
         results: [],
+        scenarios: [],
         currentScenarioId: null,
         reportS3Key: null,
         ...data,
@@ -350,6 +351,7 @@ const paddockEvaluations = new PaddockEvaluationService(
   {
     run: () => new Promise(() => undefined),
     getLogs: () => ['a line about text of scenario-ranch'],
+    clearLogs: () => undefined,
     abort: () => false,
   } as never,
   {
@@ -1684,6 +1686,10 @@ describe('the scenarios of a template the assistant is built from are the Ownerâ
         { scenarioId: 'scenario-ranch', verdict: 'fail' },
         { scenarioId: 'scenario-alpha', verdict: 'fail' },
       ];
+      // The run itself goes nowhere in this spec; let it settle first.
+      await new Promise((resolve) => setImmediate(resolve));
+      row.status = 'finished';
+      row.errorMessage = null;
       row.currentScenarioId = 'scenario-ranch';
       expect(row.scenariosSnapshot.map((s) => s.id).sort()).toEqual([
         'scenario-alpha',
@@ -1726,19 +1732,114 @@ describe('the scenarios of a template the assistant is built from are the Ownerâ
       }
     });
 
-    it('the report and the log are one text about every scenario: the Ownerâ€™s for such a run', async () => {
+    it('nothing of the run tells an Admin they were there: every field is that of a run that held only the rest', async () => {
+      const whole = evaluationRows.get(id)!;
+      Object.assign(whole, {
+        scenarios: whole.scenariosSnapshot.map((s) => ({
+          id: s.id,
+          name: `name of ${s.id}`,
+        })),
+        results: [
+          { scenarioId: 'scenario-ranch', verdict: 'pass' },
+          { scenarioId: 'scenario-alpha', verdict: 'fail' },
+        ],
+        scenarioCount: 2,
+        passCount: 1,
+        failCount: 1,
+        partialCount: 0,
+        skippedCount: 0,
+        passRate: 0.5,
+        currentScenarioId: 'scenario-ranch',
+        errorMessage: 'Watchdog: scenario "scenario-ranch" was idle',
+      });
+      const seen = JSON.parse(
+        await asAdmin('get_paddock_evaluation', { id }),
+      ) as Record<string, unknown>;
+      // The same run, had it held only the scenario the Admin reads.
+      const alphaOnly = whole.scenariosSnapshot.filter(
+        (s) => s.id === 'scenario-alpha',
+      );
+      const expected = JSON.parse(
+        JSON.stringify({
+          ...whole,
+          scenariosSnapshot: alphaOnly,
+          scenarios: [{ id: 'scenario-alpha', name: 'name of scenario-alpha' }],
+          results: [{ scenarioId: 'scenario-alpha', verdict: 'fail' }],
+          scenarioCount: 1,
+          passCount: 0,
+          failCount: 1,
+          partialCount: 0,
+          skippedCount: 0,
+          passRate: 0,
+          currentScenarioId: null,
+          errorMessage: 'The run stopped with an error.',
+        }),
+      ) as Record<string, unknown>;
+      expect(seen).toEqual(expected);
+      // No count of what was left out, under any name.
+      expect(Object.keys(seen).sort()).toEqual(Object.keys(expected).sort());
+      expect(JSON.stringify(seen)).not.toContain('scenario-ranch');
+      // The list says the same of it.
+      const listed = JSON.parse(
+        await asAdmin('list_paddock_evaluations', { agentId: ALPHA }),
+      ) as { evaluations: Record<string, unknown>[] };
+      expect(listed.evaluations[0]).toEqual(expected);
+      // And the Owner reads the stored numbers.
+      const owners = JSON.parse(
+        await asOwner('get_paddock_evaluation', { id }),
+      ) as Record<string, unknown>;
+      expect(owners.scenarioCount).toBe(2);
+      expect(owners.passRate).toBe(0.5);
+    });
+
+    it('the report and the log are one text about every scenario: for an Admin such a run has neither, in the words of a run that wrote none', async () => {
+      evaluationRows.get(id)!.reportS3Key = 'evaluations/x/report.json';
+      // A run with no report at all, to compare the answer with.
+      await asOwner('run_paddock_evaluation', {
+        agentId: ALPHA,
+        scenarioIds: ['scenario-alpha'],
+      });
+      const bare = evaluationsCreated[1].id;
+      expect(await asAdmin('get_paddock_evaluation_report', { id })).toBe(
+        await asAdmin('get_paddock_evaluation_report', { id: bare }),
+      );
       expect(await asAdmin('get_paddock_evaluation_report', { id })).toContain(
-        'covers scenarios only the Owner reads',
-      );
-      const log = await asAdmin('get_paddock_evaluation_logs', { id });
-      expect(log).toContain('covers scenarios only the Owner reads');
-      expect(log).not.toContain('text of scenario-ranch');
-      // The Owner reads both; the report of this run was never written.
-      expect(await asOwner('get_paddock_evaluation_logs', { id })).toContain(
-        'text of scenario-ranch',
-      );
-      expect(await asOwner('get_paddock_evaluation_report', { id })).toContain(
         'Report not yet available',
+      );
+      expect(
+        JSON.parse(await asAdmin('get_paddock_evaluation', { id })).reportS3Key,
+      ).toBeNull();
+    });
+
+    it('the log is the agentâ€™s, not the evaluationâ€™s: it is read only for the run that filled it, and never for a run that holds them', async () => {
+      const logs = (who: typeof asAdmin, of: string) =>
+        who('get_paddock_evaluation_logs', { id: of });
+      const settled = () => new Promise((resolve) => setImmediate(resolve));
+      await settled();
+      // The Owner's run filled the buffer, and holds a scenario of the
+      // assistant's template: the Owner reads it, an Admin reads nothing.
+      expect(await logs(asOwner, id)).toContain('a line about');
+      expect(await logs(asAdmin, id)).not.toContain('a line about');
+      // A later run of the same agent takes the buffer over.
+      await asAdmin('run_paddock_evaluation', { agentId: ALPHA });
+      await settled();
+      const later = evaluationsCreated[1].id;
+      expect(evaluationsCreated[1].scenariosSnapshot.map((s) => s.id)).toEqual([
+        'scenario-alpha',
+      ]);
+      expect(await logs(asAdmin, later)).toContain('a line about');
+      // Asked about the earlier run, nobody is handed the later run's lines:
+      // not the Owner, and not the Admin by way of an evaluation they read.
+      expect(await logs(asOwner, id)).not.toContain('a line about');
+      expect(await logs(asAdmin, id)).not.toContain('a line about');
+      // The other direction is the one that leaked: the Owner runs again,
+      // the buffer holds the assistant's scenarios, and the Admin asks for
+      // the log of THEIR run, which holds none.
+      await asOwner('run_paddock_evaluation', { agentId: ALPHA });
+      await settled();
+      expect(await logs(asAdmin, later)).not.toContain('a line about');
+      expect(await logs(asOwner, evaluationsCreated[2].id)).toContain(
+        'a line about',
       );
     });
 

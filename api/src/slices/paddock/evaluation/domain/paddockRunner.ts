@@ -84,4 +84,10 @@ export abstract class IPaddockRunner {
    * (lost on process restart — acceptable for live debugging).
    */
   abstract getLogs(agentId: string): string[];
+  /**
+   * Empty the log of an agent, before a run of it starts. The buffer is one
+   * per agent: whoever starts a run says here that what follows is that
+   * run's, so that no line of the run before it is read as this one's.
+   */
+  abstract clearLogs(agentId: string): void;
 }

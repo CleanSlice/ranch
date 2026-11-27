@@ -57,6 +57,10 @@ export class BunCliPaddockRunner extends IPaddockRunner {
     return this.logs.get(agentId) ?? [];
   }
 
+  clearLogs(agentId: string): void {
+    this.logs.set(agentId, []);
+  }
+
   private appendLog(agentId: string, line: string): void {
     let buf = this.logs.get(agentId);
     if (!buf) {

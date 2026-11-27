@@ -63,6 +63,36 @@ const INSIGHTS_LANGUAGE = 'en';
 export const INSIGHT_MIN_USER_MESSAGES = 3;
 
 /**
+ * Whether a topic the model proposes becomes a `ChatTopic`: not in this
+ * release (CLEAN-270, the owner's decision of 2026-11-28).
+ *
+ * The reason is the calibration of the version 2 prompt, three runs over 33
+ * conversations of our own installation (spec 038,
+ * contracts/summary-judgments.md, Results). Given a list, the model chose
+ * the reference's topic for 23 of 28 conversations and proposed 1 new topic
+ * in 33. With an empty vocabulary it coined 10 to 15 in 33 and cut the
+ * conversations along an axis of its own, another on each run: 17.9% and
+ * 35.9% of same-subject pairs got the same topic, against a target of 90%.
+ * So the model can choose from a vocabulary and cannot be left to make one.
+ *
+ * What the switch turns off is the one step that creates a row
+ * (`proposed`, its last case). Everything around it stays, with its specs,
+ * because the follow-up needs it: the parser still reads a proposal, the
+ * bound of a hundred standing topics (`TOPICS_STANDING_MAX`) still stands
+ * in front of the insert, and a run still offers its later conversations
+ * what it coined (`IRun.always`). CLEAN-278 is where a vocabulary comes to
+ * exist: proposed over the whole installation, approved by the owner, and
+ * from then on a conversation chooses from the list and one that fits no
+ * topic goes to a queue of suggestions. That change turns a proposal into a
+ * suggestion here; it does not turn this back to `true`.
+ *
+ * With this off, a conversation whose answer proposes a topic is stored
+ * with none. A proposal whose key a standing topic already has is not
+ * coining and is read as before (`proposed`).
+ */
+export const COINS_PROPOSED_TOPICS = false;
+
+/**
  * The most tokens the model may spend on one summary: `max_tokens` of the
  * call (CLEAN-270).
  *
@@ -187,6 +217,15 @@ interface IRun {
    * takes no topic.
    */
   ownerOnly: () => Promise<ReadonlySet<string>>;
+  /**
+   * Whether the installation has a vocabulary: a topic that stands. While
+   * it has none, no conversation is asked about topics (`summarizeSession`).
+   * Once for the run and not for each conversation: the run itself makes no
+   * topic out of nothing (`COINS_PROPOSED_TOPICS`, and with no list there
+   * is no proposal to make one from), and a vocabulary approved while it
+   * runs is offered from the next run on, a quarter of an hour later.
+   */
+  hasTopics: () => Promise<boolean>;
   /**
    * Topics the rest of the run is offered whatever their count: the ones it
    * coined, and the ones it found outside the list when a conversation
@@ -323,7 +362,9 @@ function lastsBeyondARetry(err: unknown): boolean {
  *
  * Since version 2 (CLEAN-270) a summary also carries the person's main
  * question, how the conversation ended, and topics chosen from the
- * installation's vocabulary. The prompt and the parser are
+ * installation's vocabulary, once it has one: until then no conversation is
+ * asked about topics, and a topic the model proposes is never made one
+ * (`COINS_PROPOSED_TOPICS`). The prompt and the parser are
  * `chatInsight.prompt.ts`; this class makes the call and stores the answer.
  */
 @Injectable()
@@ -362,7 +403,9 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
    *    request for what is in it (`lastsBeyondARetry`; review of
    *    CLEAN-270). What a conversation says can bring that about: an answer
    *    cut at the token limit or declined by the model (`endedUnusable`), a
-   *    transcript that tells the model to answer something else. It was asked about again on every run, one model
+   *    transcript that tells the model to answer something else, or to
+   *    read the topic list back in its summary (`ECHOED_TOPICS_MAX`). It
+   *    was asked about again on every run, one model
    *    call each time, and 25 of them written on purpose were every place
    *    of every run. Set aside for an hour, then twice as long each time it
    *    fails again, at most a day (`UNUSABLE_BACKOFF_START_MS`,
@@ -388,6 +431,14 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
    * first.
    */
   private readonly setAside = new Map<string, ISetAside>();
+
+  /**
+   * `COINS_PROPOSED_TOPICS` as this instance reads it. A field, and public,
+   * for one reason: the specs of the path that coins, which stays in the
+   * code for CLEAN-278, run it by setting this. Nothing in the application
+   * sets it, and the calibration script does not: it measures what ships.
+   */
+  coinsProposedTopics: boolean = COINS_PROPOSED_TOPICS;
 
   private readonly gate: IChatInsightGate = {
     cooldownMs: COOLDOWN_MS, // 1h settled
@@ -593,10 +644,13 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
     const ended = endedUnusable(answer.stopReason);
     if (ended) throw new UnusableInsightAnswerError(ended, answer.text.length);
     const raw = answer.text;
+    // Null also for an answer that is well formed and repeats the topic
+    // list in its summary or question (`ECHOED_TOPICS_MAX`): what a
+    // conversation can ask the model for, and so the same path.
     const parsed = parseInsights(raw, vocabulary, ask);
     if (!parsed) {
       throw new UnusableInsightAnswerError(
-        unusableAnswerReason(raw) ?? 'no JSON object',
+        unusableAnswerReason(raw, vocabulary, ask) ?? 'no JSON object',
         raw.length,
       );
     }
@@ -631,6 +685,7 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
       ownerOnly: once(
         async () => new Set(await this.permission.ownerOnlyAgentIds()),
       ),
+      hasTopics: once(() => this.topics.hasStanding()),
       always: new Set(),
     };
   }
@@ -786,7 +841,21 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
     // Asked before the model is: when the answer cannot be had (the
     // database is down), this throws and there is no summary on this run.
     // Not knowing is not "none of them".
-    const withTopics = !(await run.ownerOnly()).has(session.agentId);
+    const ownerOnly = (await run.ownerOnly()).has(session.agentId);
+
+    // Nor is any conversation asked about topics while the installation has
+    // no vocabulary (CLEAN-270, the owner's decision of 2026-11-28). With no
+    // list the model coined 10 to 15 topics in 33 conversations and cut them
+    // along another axis on each run (`COINS_PROPOSED_TOPICS`), so there is
+    // nothing to choose from and nothing it may make: the prompt is the one
+    // above, with no list and no topics question, and the pass over every
+    // conversation that orders a list is not made. From the first topic
+    // that stands (CLEAN-278) a conversation chooses from the list.
+    //
+    // The same rule for not knowing: a failed read throws, and the
+    // conversation waits for a run that can tell. A summary written without
+    // the topics question would not be asked it later.
+    const withTopics = !ownerOnly && (await run.hasTopics());
 
     // The topics it carries from an earlier summary, as the tally counts
     // them: each under the topic that stands for it, once.
@@ -893,9 +962,11 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
    *    is assigned, with the labels it has. The contract says so of a key
    *    outside the list: "reused rather than duplicated". The rest of the
    *    run is offered it.
-   *  - No topic has the key: it is coined, unless as many topics stand as
-   *    may (`TOPICS_STANDING_MAX`), in which case the proposal is dropped
-   *    and the conversation has no topic.
+   *  - No topic has the key: it would be coined, and in this release it is
+   *    not (`COINS_PROPOSED_TOPICS`, which has the reason): the proposal is
+   *    dropped and the conversation has no topic. With the switch on, it is
+   *    coined unless as many topics stand as may (`TOPICS_STANDING_MAX`),
+   *    in which case the proposal is dropped the same way.
    */
   private async proposed(
     proposal: IProposedTopic,
@@ -908,6 +979,8 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
       run.always.add(standing.id);
       return standing;
     }
+    // The one place a topic is made, and the switch in front of it.
+    if (!this.coinsProposedTopics) return null;
     if ((await this.topics.countStanding()) >= TOPICS_STANDING_MAX) {
       return null;
     }

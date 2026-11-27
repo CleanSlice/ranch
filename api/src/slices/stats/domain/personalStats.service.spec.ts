@@ -763,6 +763,7 @@ describe('PersonalStatsService: nothing to show', () => {
     // to read: the same shapes, empty.
     expect(stats.summaries).toEqual({
       enabled: false,
+      topicsReady: false,
       summarised: 0,
       waiting: 0,
       tooShort: 0,
@@ -896,6 +897,8 @@ describe('PersonalStatsService: what the summaries say', () => {
     expect(stats.board.conversations.value).toBe(6);
     expect(stats.summaries).toEqual({
       enabled: true,
+      // Three topics in the world, two of them standing.
+      topicsReady: true,
       summarised: 4,
       waiting: 1,
       tooShort: 1,
@@ -923,6 +926,7 @@ describe('PersonalStatsService: what the summaries say', () => {
 
     expect(stats.summaries).toEqual({
       enabled: true,
+      topicsReady: false,
       summarised: 0,
       waiting: 2,
       tooShort: 2,
@@ -1317,6 +1321,7 @@ describe('PersonalStatsService: what the summaries say', () => {
     const { service, reads } = statsHarness({
       agents: AGENTS,
       summaries: true,
+      topics: [BILLING],
       hours: [hour('c1', 'a1', '2026-11-25T09:00:00Z', 4)],
       summarised: { c1: done('2026-11-25T11:00:00Z') },
     });
@@ -1386,6 +1391,7 @@ describe('PersonalStatsService: what the summaries say', () => {
     // c3 and c4 were with Beacon.
     expect(stats.summaries).toEqual({
       enabled: true,
+      topicsReady: true,
       summarised: 2,
       waiting: 1,
       tooShort: 1,
@@ -1433,6 +1439,7 @@ describe('PersonalStatsService: an installation that produces no summaries', () 
 
     expect(stats.summaries).toEqual({
       enabled: false,
+      topicsReady: false,
       summarised: 0,
       waiting: 0,
       tooShort: 0,
@@ -1473,8 +1480,137 @@ describe('PersonalStatsService: an installation that produces no summaries', () 
     expect(reads.insight.isEnabled.calls).toHaveLength(1);
     expect(reads.chats.findOutcomesForSessions.calls).toHaveLength(0);
     expect(reads.topics.findByIds.calls).toHaveLength(0);
+    // Nor whether a topic stands: without summaries the page has no use
+    // for the answer, which is false whatever the table holds.
+    expect(reads.topics.hasStanding.calls).toHaveLength(0);
     // The conversations are read as before, for the last contact alone.
     expect(reads.chats.findSessionsByIds.calls).toHaveLength(1);
+  });
+});
+
+/**
+ * Summaries are produced and the installation has no vocabulary yet
+ * (CLEAN-270, the owner's decision of 2026-11-28): outcomes, tone, languages
+ * and open questions ship, and topics wait for a vocabulary, which is
+ * CLEAN-278. The summary batch asks no conversation about topics until a
+ * topic stands, so there is nothing to show; `summaries.topicsReady` tells
+ * the page, which then leaves the topics block out instead of drawing an
+ * empty one.
+ */
+describe('PersonalStatsService: summaries without a vocabulary', () => {
+  const summary = (over: Partial<IWorldSummary> = {}): IWorldSummary => ({
+    summaryAt: '2026-11-25T11:00:00Z',
+    outcome: 'resolved',
+    question: null,
+    topicIds: [],
+    sentiment: 'neutral',
+    language: 'en',
+    ...over,
+  });
+  const NO_VOCABULARY: Partial<IStatsWorld> = {
+    summaries: true,
+    topics: [],
+    hours: [
+      hour('c1', 'a1', '2026-11-25T09:00:00Z', 4),
+      hour('c2', 'a1', '2026-11-26T09:00:00Z', 3),
+      hour('c3', 'a2', '2026-11-24T09:00:00Z', 3),
+    ],
+    lastMessageAt: {
+      c1: '2026-11-25T09:40:00.000Z',
+      c2: '2026-11-26T09:30:00.000Z',
+    },
+    summarised: {
+      c1: summary({ sentiment: 'positive' }),
+      // An id left on a row by a topic that is no longer there.
+      c2: summary({
+        outcome: 'open',
+        question: 'Why was I charged twice?',
+        topicIds: ['t-gone'],
+        language: 'ru',
+      }),
+    },
+  };
+
+  it('says the topics are not ready, and keeps every count of the summaries', async () => {
+    const stats = await view(NO_VOCABULARY);
+
+    expect(stats.summaries).toEqual({
+      enabled: true,
+      topicsReady: false,
+      summarised: 2,
+      waiting: 1,
+      tooShort: 0,
+    });
+    expect(stats.board.resolved).toEqual({ resolved: 1, summarised: 2 });
+    expect(stats.outcome).toEqual({
+      resolved: 1,
+      open: 1,
+      unknown: 0,
+      notSummarised: 1,
+      sentiment: { positive: 1, neutral: 1, mixed: 0, negative: 0 },
+      languages: [
+        { code: 'en', conversations: 1 },
+        { code: 'ru', conversations: 1 },
+      ],
+    });
+  });
+
+  it('answers no topic, and an open question with none', async () => {
+    const stats = await view(NO_VOCABULARY);
+
+    expect(stats.topics).toEqual([]);
+    expect(stats.openQuestions).toEqual({
+      items: [
+        {
+          chatId: 'c2',
+          agentId: 'a1',
+          agentName: 'Atlas',
+          question: 'Why was I charged twice?',
+          topic: null,
+          at: new Date('2026-11-26T09:30:00.000Z'),
+        },
+      ],
+      more: 0,
+    });
+  });
+
+  it('asks once whether a topic stands, and reads no topic', async () => {
+    const { service, reads } = statsHarness({
+      agents: AGENTS,
+      ...NO_VOCABULARY,
+    });
+
+    await service.forPerson(me(), { period: 7 }, NOW);
+
+    expect(reads.topics.hasStanding.calls).toHaveLength(1);
+    expect(reads.topics.findByIds.calls).toHaveLength(0);
+    // The summaries themselves are read as with a vocabulary.
+    expect(reads.chats.findOutcomesForSessions.calls).toHaveLength(1);
+  });
+
+  it('is ready from the first topic that stands, whether or not a conversation of the period carries it', async () => {
+    const { service, reads } = statsHarness({
+      agents: AGENTS,
+      ...NO_VOCABULARY,
+      topics: [{ id: 't-billing', key: 'billing', labels: { en: 'Billing' } }],
+    });
+
+    const stats = await service.forPerson(me(), { period: 7 }, NOW);
+
+    expect(stats.summaries.topicsReady).toBe(true);
+    expect(stats.topics).toEqual([]);
+    expect(reads.topics.hasStanding.calls).toHaveLength(1);
+  });
+
+  it('is not ready on an installation that produces no summaries, whatever topics it has', async () => {
+    const stats = await view({
+      ...NO_VOCABULARY,
+      summaries: false,
+      topics: [{ id: 't-billing', key: 'billing', labels: { en: 'Billing' } }],
+    });
+
+    expect(stats.summaries.enabled).toBe(false);
+    expect(stats.summaries.topicsReady).toBe(false);
   });
 });
 

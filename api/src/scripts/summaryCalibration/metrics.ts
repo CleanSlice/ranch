@@ -28,10 +28,17 @@ export interface IJudgedTopics {
   n: number;
   /** The person's subject; null for "no subject". */
   subject: string | null;
-  /** The keys the summary would store: clear fits, or the topic it coined. */
+  /** The keys the summary would store: the clear fits. */
   topics: string[];
   /** The keys the model marked `loose`: never stored. */
   loose: string[];
+  /**
+   * The key of a new topic the model proposed, one no topic of the run has;
+   * null or absent for none. Never stored: a proposal is not coined in this
+   * release (CLEAN-270, the owner's decision of 2026-11-28; CLEAN-278 turns
+   * it into a suggestion), so it joins no pair and is counted apart.
+   */
+  proposed?: string | null;
 }
 
 export interface ITopicScores {
@@ -69,7 +76,7 @@ const unnamed = (item: IJudgedTopics) =>
  * How well the model's topics match the person's subjects.
  *
  * The two share no vocabulary: the person wrote subjects in their own
- * words, the model chose or coined keys. So nothing is compared label to
+ * words, the model chose keys. So nothing is compared label to
  * label. Every pair of conversations is asked one question of each side,
  * "are these two about the same subject?": the person says yes when they
  * wrote the same words for both, the model when the two would be stored
@@ -169,17 +176,30 @@ export interface IGivenListScores {
   chosen: IRatio;
   /** Of those, the ones stored with a second topic besides. */
   chosenWithSecond: number;
-  /** The rest, stored with a seeded topic that is not the reference's. */
-  otherSeeded: number;
-  /** The rest, stored with no topic. */
-  noTopic: number;
-  /** The rest, stored only with a topic coined during the run. */
-  coined: number;
   /**
-   * The rest one by one: what the model stored, and the seeded key of the
-   * reference's subject. Keys and a number, nothing else of a conversation.
+   * The rest, stored with a topic that is not the reference's. In a run
+   * every topic is a seeded one: nothing is coined in this release.
    */
-  misses: Array<{ n: number; model: string[]; reference: string }>;
+  otherSeeded: number;
+  /** The rest, stored with no topic, the model having proposed none. */
+  noTopic: number;
+  /**
+   * The rest, stored with no topic because the model proposed a new one,
+   * which is not coined in this release. Where the recorded runs of
+   * 2026-11-28 say "a topic coined in the run", this is that count.
+   */
+  proposed: number;
+  /**
+   * The rest one by one: what the model stored, the key it proposed when it
+   * stored nothing, and the seeded key of the reference's subject. Keys and
+   * a number, nothing else of a conversation.
+   */
+  misses: Array<{
+    n: number;
+    model: string[];
+    proposed: string | null;
+    reference: string;
+  }>;
   /** Conversations whose reference subject is not a seeded one: in no share. */
   notInList: number[];
   /** "No subject" by the reference, and stored with no topic. */
@@ -205,21 +225,21 @@ export interface IGivenListScores {
  *
  * A conversation is stored with up to two topics. It is chosen right when
  * the reference's is one of them, and how many of those carry a second is
- * kept beside the count, since two answers have two chances. A miss stored
- * with a seeded topic and with one coined earlier in the run is counted as
- * "another seeded topic": the model chose from the list, and chose wrong.
+ * kept beside the count, since two answers have two chances. A miss is one
+ * of three kinds, each counted once: stored with another topic (the model
+ * chose from the list, and chose wrong), stored with none because the model
+ * proposed a new topic, or stored with none because it named nothing.
  */
 export function givenListScores(
   items: readonly IJudgedTopics[],
   seed: ReadonlyArray<Pick<ISeedTopic, 'key' | 'subject'>>,
 ): IGivenListScores {
-  const seeded = new Set(seed.map((topic) => topic.key));
   let withSubject = 0;
   let chosen = 0;
   let chosenWithSecond = 0;
   let otherSeeded = 0;
   let noTopic = 0;
-  let coined = 0;
+  let proposed = 0;
   let noSubjectNoTopic = 0;
   const misses: IGivenListScores['misses'] = [];
   const notInList: number[] = [];
@@ -243,10 +263,17 @@ export function givenListScores(
       if (item.topics.length > 1) chosenWithSecond++;
       continue;
     }
-    misses.push({ n: item.n, model: [...item.topics], reference });
-    if (!item.topics.length) noTopic++;
-    else if (item.topics.some((key) => seeded.has(key))) otherSeeded++;
-    else coined++;
+    // What it proposed explains a miss only when nothing was stored.
+    const proposal = item.topics.length ? null : (item.proposed ?? null);
+    misses.push({
+      n: item.n,
+      model: [...item.topics],
+      proposed: proposal,
+      reference,
+    });
+    if (item.topics.length) otherSeeded++;
+    else if (proposal !== null) proposed++;
+    else noTopic++;
   }
 
   return {
@@ -254,7 +281,7 @@ export function givenListScores(
     chosenWithSecond,
     otherSeeded,
     noTopic,
-    coined,
+    proposed,
     misses,
     notInList,
     noSubjectNoTopic,
@@ -307,10 +334,10 @@ export function outcomeScores(
   };
 }
 
-/** Topics coined, scaled to a hundred conversations; null for none run. */
-export function coinedPer100(
-  coined: number,
+/** Topics proposed, scaled to a hundred conversations; null for none run. */
+export function proposedPer100(
+  proposed: number,
   conversations: number,
 ): number | null {
-  return conversations > 0 ? (coined / conversations) * 100 : null;
+  return conversations > 0 ? (proposed / conversations) * 100 : null;
 }

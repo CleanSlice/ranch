@@ -66,6 +66,20 @@ export abstract class IChatTopicGateway {
   abstract countStanding(): Promise<number>;
 
   /**
+   * Whether the installation has a vocabulary: at least one topic stands
+   * (CLEAN-270, the owner's decision of 2026-11-28). While it has none, the
+   * summary asks no conversation about topics and the statistics page shows
+   * no topics block; how a vocabulary comes to exist is CLEAN-278.
+   *
+   * Asked by the summary batch once per run and by every view of the
+   * statistics page, so it is bounded to one row: the first topic that
+   * stands, by its id alone, from a table that holds a row per subject
+   * (`TOPICS_STANDING_MAX` standing, and what was merged). Not a count, and
+   * no conversation is read.
+   */
+  abstract hasStanding(): Promise<boolean>;
+
+  /**
    * The topic with this key, created with `labels` when there is none. An
    * existing topic keeps the labels it has. When the key is one that was
    * merged, the answer is the topic it was folded into: the subject already

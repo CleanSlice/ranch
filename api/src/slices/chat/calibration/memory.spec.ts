@@ -100,11 +100,15 @@ describe('the vocabulary of a calibration run', () => {
       (t) => t.key,
     );
 
-  it('starts empty', async () => {
+  it('starts empty: no topic stands, which is what the service asks before it asks about topics', async () => {
     const { topics } = createCalibrationStore(SAMPLE);
     expect(await offered(topics)).toEqual([]);
+    expect(await topics.hasStanding()).toBe(false);
   });
 
+  // The store can coin, as the gateway it stands in for can. The service
+  // that ships does not ask it to (`COINS_PROPOSED_TOPICS`, CLEAN-270); the
+  // follow-up, CLEAN-278, is where an approved proposal becomes a topic.
   it('coins a topic once, and reuses it by its key with the labels it has', async () => {
     const { topics, coined } = createCalibrationStore(SAMPLE);
 
@@ -227,6 +231,7 @@ describe('the vocabulary of a calibration run that was given one', () => {
     ]);
     expect(await topics.usageCounts()).toEqual(new Map());
     expect(await topics.countStanding()).toBe(3);
+    expect(await topics.hasStanding()).toBe(true);
     expect(await topics.standingByKey('billing')).toMatchObject({
       key: 'billing',
       labels: { en: 'Billing', ru: 'Оплата' },
@@ -309,9 +314,9 @@ describe('the vocabulary of a calibration run that was given one', () => {
  * Only the model is replaced here; in a run it is the real one.
  */
 /**
- * Every conversation of a sample is asked the topic judgment: that judgment
- * is what a calibration measures. So no agent of a calibration is one only
- * the Owner manages, which is the one case the service asks for no topic.
+ * No agent of a calibration is one only the Owner manages: a conversation
+ * with such an agent is asked about no topic whatever the vocabulary, and a
+ * run that was given a list measures the choice from it.
  */
 describe('the agents of a calibration run', () => {
   it('has none that only the Owner manages', async () => {
@@ -338,17 +343,9 @@ describe('the summary service over a calibration store', () => {
       ...over,
     });
 
-  it('summarises the sample in order, offering the second conversation the topic the first coined', async () => {
+  /** The model, answering each call with the next text; keeps the prompts. */
+  const modelOf = (answers: string[]) => {
     const prompts: string[] = [];
-    const answers = [
-      answer({
-        newTopic: { key: 'refunds', labels: { en: 'Refunds', ru: 'Возврат' } },
-      }),
-      answer({
-        outcome: 'resolved',
-        topics: [{ key: 'refunds', fit: 'clear' }],
-      }),
-    ];
     global.fetch = jest.fn(async (_url: unknown, init?: { body?: string }) => {
       const body = JSON.parse(init?.body ?? '{}') as {
         messages: Array<{ content: string }>;
@@ -362,36 +359,82 @@ describe('the summary service over a calibration store', () => {
         text: async () => text,
       };
     }) as unknown as typeof fetch;
-    const store = createCalibrationStore(SAMPLE);
-    const llms = {
-      findActive: async () => [
-        {
-          id: 'llm-1',
-          provider: 'anthropic',
-          model: 'claude-x',
-          apiKey: 'sk',
-          updatedAt: new Date(0),
-        },
-      ],
-    } as unknown as ILlmGateway;
-    const service = new ChatInsightService(
+    return prompts;
+  };
+  const serviceOver = (store: ReturnType<typeof createCalibrationStore>) =>
+    new ChatInsightService(
       store.chats,
       store.reader,
-      llms,
+      {
+        findActive: async () => [
+          {
+            id: 'llm-1',
+            provider: 'anthropic',
+            model: 'claude-x',
+            apiKey: 'sk',
+            updatedAt: new Date(0),
+          },
+        ],
+      } as unknown as ILlmGateway,
       store.topics,
       store.permission,
     );
+  const REFUNDS = { key: 'refunds', labels: { en: 'Refunds', ru: 'Возврат' } };
+
+  // The service that ships (CLEAN-270, the owner's decision of 2026-11-28):
+  // with no topic standing it asks no conversation about topics.
+  it('summarises the sample in order and, over an empty store, asks about no topic and coins none', async () => {
+    const prompts = modelOf([
+      answer({ newTopic: REFUNDS }),
+      answer({
+        outcome: 'resolved',
+        topics: [{ key: 'refunds', fit: 'clear' }],
+      }),
+    ]);
+    const store = createCalibrationStore(SAMPLE);
+    const service = serviceOver(store);
 
     await service.summarize(store.sessionId(1));
     await service.summarize(store.sessionId(2));
 
     expect(prompts[0]).toContain('user: first question');
-    expect(prompts[0]).toContain('(none yet)');
     expect(prompts[1]).toContain('user: second question');
-    expect(prompts[1]).toContain('- refunds: Refunds');
-    expect(store.coined()).toEqual(['refunds']);
+    for (const prompt of prompts) {
+      expect(prompt).toContain('answer two questions about the conversation');
+      expect(prompt).not.toMatch(/topic/i);
+    }
+    expect(store.coined()).toEqual([]);
+    expect(store.standing()).toEqual([]);
     expect(store.saved.get(1)?.outcome).toBe('open');
     expect(store.saved.get(2)?.outcome).toBe('resolved');
+    expect(store.saved.get(1)?.topicIds).toEqual([]);
+    expect(store.saved.get(2)?.topicIds).toEqual([]);
+  });
+
+  it('over a store that was given topics, offers every conversation that list, stores what was chosen from it, and coins nothing a conversation proposes', async () => {
+    const prompts = modelOf([
+      answer({
+        newTopic: { key: 'invoices', labels: { en: 'Invoices', ru: 'Счета' } },
+      }),
+      answer({
+        outcome: 'resolved',
+        topics: [{ key: 'refunds', fit: 'clear' }],
+      }),
+    ]);
+    const store = createCalibrationStore(SAMPLE, [REFUNDS]);
+    const service = serviceOver(store);
+
+    await service.summarize(store.sessionId(1));
+    await service.summarize(store.sessionId(2));
+
+    for (const prompt of prompts) {
+      expect(prompt).toContain('answer three questions about the conversation');
+      expect(prompt).toContain('- refunds: Refunds');
+      expect(prompt).not.toContain('invoices');
+    }
+    expect(store.coined()).toEqual([]);
+    expect(store.standing()).toEqual([{ key: 'refunds', label: 'Refunds' }]);
+    expect(store.saved.get(1)?.topicIds).toEqual([]);
     expect(store.keysOf(store.saved.get(2)!.topicIds)).toEqual(['refunds']);
   });
 });

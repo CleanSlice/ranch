@@ -37,6 +37,12 @@ import {
 // them is 0 and every list empty, and `summaries.enabled` is false: the page
 // decides by that field, never by a zero, between "nothing was left open"
 // and "summaries are not produced".
+//
+// Topics have a second switch, `summaries.topicsReady` (CLEAN-270, the
+// owner's decision of 2026-11-28): the installation has a vocabulary. While
+// it has none `topics` is empty and no open question carries a topic, and
+// the page leaves the topics block out by that field, never by the empty
+// list, which also means "none of this period's conversations had a topic".
 
 export class StatsRangeDto implements IPeriodRange {
   @ApiProperty({
@@ -114,6 +120,19 @@ export class MyStatsSummariesDto implements IPersonalSummaries {
     example: true,
   })
   enabled: boolean;
+
+  @ApiProperty({
+    description:
+      'Whether topics are there to show: summaries are produced and the ' +
+      'installation has a vocabulary, at least one topic that stands. ' +
+      'False: no conversation is asked about topics yet, so `topics` is ' +
+      'empty and `topic` of every open question is null. Leave the topics ' +
+      'block out then, and do not say that the conversations were about ' +
+      'nothing. Everything else read from summaries is counted either ' +
+      'way. Always false when `enabled` is false.',
+    example: true,
+  })
+  topicsReady: boolean;
 
   @ApiProperty({
     description:
@@ -482,7 +501,8 @@ export class MyStatsOpenQuestionDto implements IPersonalOpenQuestion {
     nullable: true,
     description:
       "The name of the conversation's first topic, as `topics[].label` " +
-      'names it. Null when its summary assigned none.',
+      'names it. Null when its summary assigned none, and for every ' +
+      'question while `summaries.topicsReady` is false.',
     example: 'Billing',
   })
   topic: string | null;
@@ -662,9 +682,10 @@ export class MyStatsDto implements IPersonalStats {
   @ApiProperty({
     type: MyStatsSummariesDto,
     description:
-      'Whether conversation summaries are produced here, and how many of ' +
-      "the period's conversations have one, wait for one, or are too " +
-      'short for one.',
+      'Whether conversation summaries are produced here, whether their ' +
+      "topics are there to show, and how many of the period's " +
+      'conversations have a summary, wait for one, or are too short for ' +
+      'one.',
   })
   summaries: MyStatsSummariesDto;
 
@@ -688,7 +709,9 @@ export class MyStatsDto implements IPersonalStats {
     description:
       "What the period's summarised conversations were about: up to " +
       'eight topics, most conversations first. Empty when no summarised ' +
-      'conversation has a topic, and when `summaries.enabled` is false.',
+      'conversation has a topic, when `summaries.enabled` is false, and ' +
+      'while `summaries.topicsReady` is false: the installation has no ' +
+      'vocabulary yet, and no conversation is asked about topics.',
   })
   topics: MyStatsTopicDto[];
 

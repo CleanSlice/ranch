@@ -324,6 +324,11 @@ export function statsHarness(
       }
       return Promise.resolve(found);
     }),
+    // Whether the installation has a vocabulary: a topic that stands, as
+    // `ChatTopicGateway.hasStanding` answers (one row, no conversation).
+    hasStanding: recorded(() =>
+      Promise.resolve(world.topics.some((t) => !t.mergedIntoId)),
+    ),
   };
 
   const insight = {

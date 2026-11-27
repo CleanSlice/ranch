@@ -55,6 +55,17 @@ function makeStub(topics: Row[] = [], counts: Count[] = []) {
       async ({ where }: { where: { mergedIntoId: null } }) =>
         topics.filter((t) => t.mergedIntoId === where.mergedIntoId).length,
     ),
+    findFirst: jest.fn(
+      async ({
+        where,
+      }: {
+        where: { mergedIntoId: null };
+        select: { id: true };
+      }) => {
+        const found = topics.find((t) => t.mergedIntoId === where.mergedIntoId);
+        return found ? { id: found.id } : null;
+      },
+    ),
     create: jest.fn(async ({ data }: { data: Row }) => {
       if (topics.some((t) => t.key === data.key)) throw uniqueViolation();
       const created = { mergedIntoId: null, createdAt: at(20), ...data };
@@ -277,6 +288,41 @@ describe('ChatTopicGateway.countStanding', () => {
       row('invoices', { mergedIntoId: 'topic-billing' }),
     ]);
     expect(await gw.countStanding()).toBe(2);
+  });
+});
+
+// Whether the installation has a vocabulary at all (CLEAN-270, the owner's
+// decision of 2026-11-28): asked by the summary batch once per run and by
+// every view of the statistics page, so it is one row and no more.
+describe('ChatTopicGateway.hasStanding', () => {
+  it('is false while no topic stands, and true from the first one', async () => {
+    expect(await makeStub().gw.hasStanding()).toBe(false);
+    expect(await makeStub([row('billing')]).gw.hasStanding()).toBe(true);
+    expect(
+      await makeStub([
+        row('billing'),
+        row('invoices', { mergedIntoId: 'topic-billing' }),
+      ]).gw.hasStanding(),
+    ).toBe(true);
+  });
+
+  it('asks for one standing row and its id alone: no count, no list, no conversation', async () => {
+    const { gw, chatTopic, $queryRaw, $transaction } = makeStub([
+      row('billing'),
+      row('refunds'),
+    ]);
+
+    await gw.hasStanding();
+
+    expect(chatTopic.findFirst).toHaveBeenCalledTimes(1);
+    expect(chatTopic.findFirst).toHaveBeenCalledWith({
+      where: { mergedIntoId: null },
+      select: { id: true },
+    });
+    expect(chatTopic.findMany).not.toHaveBeenCalled();
+    expect(chatTopic.count).not.toHaveBeenCalled();
+    expect($queryRaw).not.toHaveBeenCalled();
+    expect($transaction).not.toHaveBeenCalled();
   });
 });
 

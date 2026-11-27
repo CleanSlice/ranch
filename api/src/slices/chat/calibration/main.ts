@@ -26,8 +26,8 @@
  *
  * A real run summarises the sample in file order with `ChatInsightService`,
  * the class the batch runs, over gateways held in memory (memory.ts): the
- * vocabulary starts empty, unless the run is given one (`--vocabulary`,
- * below), and grows as the batch's would. The one thing it
+ * vocabulary is empty, unless the run is given one (`--vocabulary`,
+ * below), and stays as it started. The one thing it
  * reads from the database is the credential, picked the way the batch picks
  * it; the one thing it sends anywhere is the prompt, to the model. It
  * writes nothing: not to the database, not into the repository, not into
@@ -36,29 +36,45 @@
  * `--dry` does everything but the model call. It opens no database and
  * loads none of the code that would.
  *
+ * What a run measures depends on the vocabulary, because it runs the service
+ * that ships (CLEAN-270, the owner's decision of 2026-11-28; the numbers
+ * behind it are in contracts/summary-judgments.md). That service asks no
+ * conversation about topics while no topic stands, and never makes a topic
+ * of one the model proposes:
+ *
+ *  - without `--vocabulary` the run measures outcomes only (judgment 2).
+ *    Its report says that topics are not asked while the vocabulary is
+ *    empty, and prints no topic number;
+ *  - with `--vocabulary` it measures the choice from that list (judgment 1)
+ *    and the outcomes. A new topic the model proposes is counted and printed
+ *    as proposed, "not coined in this release", where the recorded runs of
+ *    2026-11-28 say "coined": the conversation is stored with no topic, and
+ *    no later conversation is offered the proposal.
+ *
  * What is printed is counts, shares with their counts, and the numbers of
  * the conversations the person and the model disagree on. Never a
  * conversation's text, a subject the labeller wrote, or a topic.
  *
- * `--topics` adds, after the report of a real run, the topics the run made:
- * one line per topic with its key, its English label and the numbers of the
- * conversations stored with it as a clear fit, the most used first, then
- * the conversations stored with no topic. A miss cannot be read without
- * them: the report says that two conversations were joined or split, not
- * by which topic. Keys and labels are vocabulary the product shows to
- * everybody; no question, no summary and no subject of the labeller is
- * printed with them. Off by default, and a dry run has none to list.
+ * `--topics` adds, after the report of a real run that was given a list,
+ * the topics of the run: one line per topic with its key, its English label
+ * and the numbers of the conversations stored with it as a clear fit, the
+ * most used first, then the conversations stored with no topic, then the
+ * keys the model proposed as new topics, which were not coined, with the
+ * conversations that proposed each. A miss cannot be read without them: the
+ * report says that two conversations were joined or split, not by which
+ * topic. Keys and labels are vocabulary the product shows to everybody; no
+ * question, no summary and no subject of the labeller is printed with them.
+ * Off by default; a dry run has none to list, and neither has a run with an
+ * empty vocabulary, which says so.
  *
- * `--vocabulary <file>` gives the run its topics, where it otherwise starts
- * with none:
+ * `--vocabulary <file>` gives the run its topics, where it otherwise has
+ * none and asks about none:
  *
  *   [{ "key": "billing", "labels": { "en": "Billing", "ru": "Оплата" },
  *      "subject": "настройка оплаты" }, …]
  *
  * The contract's judgment is a choice from a list: "Is it one of the topics
- * in this list? Which one?" A run over an empty vocabulary has no list, and
- * what it compares, pair by pair, is two ways of cutting the sample into
- * groups: the model's own topics and the reference's own subjects. With the
+ * in this list? Which one?" With the
  * file, every `key` stands before the first conversation, with its `labels`
  * and no use, and each stands for the `subject` the reference labels write
  * in `labels.csv` for it. The report then says of each conversation with
@@ -73,8 +89,8 @@
  * A conversation the model failed on is in no share. How many failed is
  * printed beside each headline number, and no number is said to meet its
  * target when more than a tenth of the sample failed (report.ts). The topic
- * numbers are printed a second time for the second half of the sample
- * alone, because the run starts with no topic at all.
+ * numbers of a run that was given a list are printed a second time for the
+ * second half of the sample alone, as the recorded runs printed them.
  *
  * Deliberately does NOT boot the Nest AppModule, as purgeRussianChats does
  * not: its onModuleInit hooks start timers and touch agents. The service is
@@ -101,8 +117,10 @@ import {
 } from '../../../scripts/summaryCalibration/metrics';
 import {
   IPersonCounts,
+  IProposedKey,
   dryLines,
   dryVocabularyLines,
+  proposedLines,
   reportLines,
   topicLines,
 } from '../../../scripts/summaryCalibration/report';
@@ -125,13 +143,16 @@ const USAGE =
   'usage: (cd api && bun run build) && ' +
   'bun api/scripts/summary-calibration.ts --sample <dir> [--dry] [--topics] [--vocabulary <file>]\n' +
   '  --dry     check the sample without calling the model\n' +
-  '  --topics  after the report, list the topics the run made (key, English\n' +
-  '            label) and the numbers of the conversations stored with each\n' +
+  '  --topics  after the report, list the topics of the run (key, English\n' +
+  '            label) with the numbers of the conversations stored with\n' +
+  '            each, and the keys the model proposed, which are not coined\n' +
   '  --vocabulary <file>\n' +
   '            start the run with the topics of this JSON file, a list of\n' +
   '            { "key", "labels": { "en", "ru" }, "subject" }, and report how\n' +
   '            the model chose among them; "subject" is the text the labels\n' +
-  '            have in the subject column for that topic';
+  '            have in the subject column for that topic\n' +
+  '  Without --vocabulary no conversation is asked about topics, as on an\n' +
+  '  installation with no topic yet: the run measures outcomes only.';
 
 type Print = (line: string) => void;
 
@@ -222,10 +243,13 @@ function runDry(
     personSamePairs: scores.sameRecall.of,
     pairs: scores.pairs,
     pairsLeftOut: scores.leftOut,
-    // The prompt of a conversation that is asked for a topic, as every
-    // conversation of a sample is.
+    // The prompt the service would build: with the list and the topics
+    // question for a run that was given topics, and with neither while the
+    // vocabulary is empty (CLEAN-270, the owner's decision of 2026-11-28).
     promptSizes: texts.map(
-      (text) => buildInsightPrompt(text, offered, { topics: true }).length,
+      (text) =>
+        buildInsightPrompt(text, offered, { topics: offered.length > 0 })
+          .length,
     ),
     truncated: texts.filter((text) => text.length > TRANSCRIPT_CAP).length,
     ...(vocabulary ? { seeded: vocabulary.length } : {}),
@@ -330,6 +354,14 @@ async function runForReal(
     // What the model marked `loose` is not stored, so the summary does not
     // carry it. It is taken where the service receives the model's answer.
     const loose = new Map<number, string[]>();
+    // Nor is what it proposed: a proposal is not coined in this release
+    // (CLEAN-270, the owner's decision of 2026-11-28), so the conversation
+    // is stored with no topic and the key is taken here, to be reported as
+    // proposed. Only a key no topic of the run has: one that names a topic
+    // of the list is that topic not chosen, which the service stores as
+    // none, and not a new topic proposed.
+    const listedKeys = new Set(store.standing().map((topic) => topic.key));
+    const proposedBy = new Map<number, string>();
     // The conversations whose prompt did not list every topic the run was
     // given, taken at the same place: the list the service hands the model.
     const notOfferedAll: number[] = [];
@@ -344,23 +376,23 @@ async function runForReal(
       }
       const parsed = await analyze(...args);
       loose.set(current, parsed.looseTopicKeys);
+      if (parsed.proposal && !listedKeys.has(parsed.proposal.key)) {
+        proposedBy.set(current, parsed.proposal.key);
+      }
       return parsed;
     };
 
     const failed: Array<{ n: number; why: string }> = [];
     const noText: number[] = [];
     // The second half of the sample, in file order; of an odd number, the
-    // larger half. Its topic numbers are printed apart: the run starts with
-    // no topic at all, and by then the vocabulary is the first half's.
+    // larger half. Its topic numbers are printed apart, as the recorded
+    // runs printed them (report.ts, `ICalibrationHalf`).
     const halfAt = Math.floor(sample.transcripts.length / 2);
     const secondHalf = new Set(
       sample.transcripts.slice(halfAt).map((transcript) => transcript.n),
     );
-    let coinedBeforeHalf = 0;
-    // In file order and one at a time, as the batch goes through a run:
-    // each conversation is offered what the ones before it coined.
+    // In file order and one at a time, as the batch goes through a run.
     for (let i = 0; i < sample.transcripts.length; i++) {
-      if (i === halfAt) coinedBeforeHalf = store.coined().length;
       current = sample.transcripts[i].n;
       try {
         await service.summarize(store.sessionId(current));
@@ -371,6 +403,25 @@ async function runForReal(
         // A rejected credential fails every conversation the same way.
         if (err instanceof BadRequestException) break;
       }
+    }
+
+    // The keys proposed, each once, in the order first proposed, with the
+    // conversations that proposed it; and how many of them were first
+    // proposed in the second half. A conversation whose summary was not
+    // stored proposed nothing that is counted: it is in no number at all.
+    const proposedKeys: IProposedKey[] = [];
+    let proposedInHalf = 0;
+    for (let i = 0; i < sample.transcripts.length; i++) {
+      const n = sample.transcripts[i].n;
+      const key = proposedBy.get(n);
+      if (key === undefined || !store.saved.has(n)) continue;
+      const known = proposedKeys.find((proposed) => proposed.key === key);
+      if (known) {
+        known.conversations.push(n);
+        continue;
+      }
+      proposedKeys.push({ key, conversations: [n] });
+      if (secondHalf.has(n)) proposedInHalf++;
     }
 
     const topics: IJudgedTopics[] = [];
@@ -386,6 +437,7 @@ async function runForReal(
         subject: label.subject,
         topics: store.keysOf(summary.topicIds),
         loose: loose.get(label.n) ?? [],
+        proposed: proposedBy.get(label.n) ?? null,
       });
       outcomes.push({
         n: label.n,
@@ -408,7 +460,7 @@ async function runForReal(
       unlabelled: sample.labels.unlabelled,
       invalid: sample.labels.invalid,
       scored: scoredLabels.length,
-      coined: store.coined().length,
+      proposed: proposedKeys.length,
       person: personCounts(scoredLabels),
       topics: topicScores(topics),
       open: outcomeScores(outcomes, ChatOutcomeTypes.Open),
@@ -417,7 +469,7 @@ async function runForReal(
         conversations: secondHalf.size,
         summarised: summarisedInHalf,
         scored: topicsOfHalf.length,
-        coined: store.coined().length - coinedBeforeHalf,
+        proposed: proposedInHalf,
         topics: topicScores(topicsOfHalf),
       },
       ...(vocabulary
@@ -433,7 +485,14 @@ async function runForReal(
     });
     for (let i = 0; i < lines.length; i++) print(lines[i]);
 
-    if (args.topics) {
+    if (args.topics && !vocabulary) {
+      // An empty list would read as "the model chose nothing": it was not
+      // asked. Said in a line, as a dry run says it.
+      print(
+        '--topics: nothing to list, no conversation is asked about topics ' +
+          'while the vocabulary is empty.',
+      );
+    } else if (args.topics) {
       // Every conversation a summary was stored for, labelled or not, in
       // file order: what was stored is what the list is of. Only the keys
       // of a summary are read here, never its text.
@@ -452,7 +511,10 @@ async function runForReal(
           if (keys.includes(uses[u].key)) uses[u].conversations.push(n);
         }
       }
-      const listed = topicLines(uses, noTopic);
+      const listed = [
+        ...topicLines(uses, noTopic),
+        ...proposedLines(proposedKeys),
+      ];
       for (let i = 0; i < listed.length; i++) print(listed[i]);
     }
     return failed.length ? 1 : 0;

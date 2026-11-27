@@ -105,7 +105,10 @@ describe('summary calibration, dry', () => {
     expect(text).toContain('labelled: 2; unlabelled, skipped: 1 (n: 2)');
     expect(text).toContain('resolved 1, open 1, cannot tell 0; 1 subjects');
     expect(text).toContain('pairs the person put under one subject: 1 of 1\n');
-    expect(text).toMatch(/prompts built: 3, with an empty vocabulary/);
+    // As the service would build them: no list, and no topics question.
+    expect(text).toMatch(
+      /prompts built: 3, with an empty vocabulary and so with no topics question/,
+    );
   });
 
   it('prints nothing of what was said, and nothing the labeller wrote', async () => {
@@ -283,6 +286,12 @@ describe('summary calibration, dry', () => {
  * A real run, with the database and the model replaced (see the mocks at
  * the top). Three conversations: the person put 1 and 3 under one subject
  * and 2 under another, and called 1 resolved and the other two open.
+ *
+ * The service is the one that ships (CLEAN-270, the owner's decision of
+ * 2026-11-28): with no topic standing it asks no conversation about topics,
+ * and it never coins one. So a run without `--vocabulary` measures
+ * outcomes only, and a run with it measures the choice from the list and
+ * reports a proposal as proposed.
  */
 describe('summary calibration, for real', () => {
   let dir: string;
@@ -383,7 +392,7 @@ describe('summary calibration, for real', () => {
     }),
   ];
 
-  it('summarises the sample in order and prints the eight numbers', async () => {
+  it('summarises the sample in order and, with an empty vocabulary, prints the outcomes only', async () => {
     const fetched = model(ANSWERS);
 
     const { code, printed, text } = await run(['--sample', dir]);
@@ -395,60 +404,43 @@ describe('summary calibration, for real', () => {
       'summary calibration: prompt version 2, model claude-x',
     );
     expect(text).toContain('conversations in the sample: 3; summarised: 3');
-    expect(text).toContain('scored: 3 conversations, 3 pairs');
-    // 1 and 3 are one subject and got one topic; 2 got another.
-    expect(text).toContain('(target 90%): 100.0% (1 of 1)');
-    expect(text).toContain('same or different: 100.0% (3 of 3)');
-    expect(text).toContain(
-      '[2] clear fits the person agrees with: 100.0% (1 of 1)',
-    );
-    // 3 touched the topic of 2 loosely, and the person called them apart.
-    expect(text).toContain(
-      '[3] loose fits the person agrees with: 0.0% (0 of 1)',
-    );
-    expect(text).toContain(
-      '[4] topics coined: 2 in 3 conversations, 66.7 per 100',
-    );
+    // No pairs: a pair is of topics, and none was asked for.
+    expect(text).toContain('scored: 3 conversations\n');
     expect(text).toContain('[5] open, precision (target 80%): 100.0% (1 of 1)');
     expect(text).toContain('[6] open, recall: 50.0% (1 of 2)');
     expect(text).toContain('[7] resolved, precision: 100.0% (1 of 1)');
     expect(text).toContain('[8] resolved, recall: 100.0% (1 of 1)');
     expect(text).toContain('open by the person, not by the model: 3');
-    // Nothing failed, so each headline number says where it stands.
-    expect(text).toContain(
-      '(target 90%): 100.0% (1 of 1); failed, in no share: 0.0% (0 of 3); meets the target',
-    );
+    // Nothing failed, so the headline number says where it stands.
     expect(text).toContain(
       '(target 80%): 100.0% (1 of 1); failed, in no share: 0.0% (0 of 3); meets the target',
     );
   });
 
-  // The first conversation of a run is offered nothing and has to propose.
-  // The second half is 2 and 3 here: 2 coined a topic, 3 chose among two.
-  it('prints the topic numbers again for the second half of the sample, in file order', async () => {
+  // The answers above propose topics and name keys all the same: nothing is
+  // read from them about topics, because the prompt asked for none.
+  it('says that topics are not asked while the vocabulary is empty, and prints no topic number', async () => {
     model(ANSWERS);
 
-    const { text } = await run(['--sample', dir]);
+    const { printed, text } = await run(['--sample', dir]);
 
-    expect(text).toContain(
-      'second half of the sample only: the last 2 of 3 conversations in file order; 2 summarised, 2 scored, 1 pairs',
-    );
-    // 2 and 3 are two subjects and got two topics.
-    expect(text).toContain(
-      'second half (2 scored): pairs the two agree on, same or different: 100.0% (1 of 1)',
-    );
-    expect(text).toContain(
-      '[1] second half (2 scored): same-subject pairs that got the same topic: n/a (0 of 0)',
-    );
-    expect(text).toContain(
-      '[3] second half (2 scored): loose fits the person agrees with: 0.0% (0 of 1)',
-    );
-    expect(text).toContain(
-      '[4] second half: topics coined: 1 in 2 conversations, 50.0 per 100',
-    );
+    const lines = printed.map((args) => args[0] as string);
+    const at = lines.indexOf('Topics (judgment 1): not asked');
+    expect(at).toBeGreaterThan(-1);
+    expect(lines.slice(at + 1, at + 6)).toEqual([
+      'The vocabulary is empty, and while it is no conversation is asked about',
+      'topics and no topic is coined (CLEAN-270, the decision of 2026-11-28 in',
+      'contracts/summary-judgments.md). This run measures outcomes only: it has',
+      'no topic number to print. Give it a list with --vocabulary <file> to',
+      'measure the choice from that list.',
+    ]);
+    for (const mark of ['[1]', '[2]', '[3]', '[4]', '[9]', '[10]']) {
+      expect(text).not.toContain(mark);
+    }
+    expect(text).not.toMatch(/pairs|second half|proposed|common topic/);
   });
 
-  it('offers each conversation the topics the ones before it coined', async () => {
+  it('asks no conversation about topics: every prompt is the one with two questions and no list', async () => {
     const fetched = model(ANSWERS);
 
     await run(['--sample', dir]);
@@ -460,9 +452,14 @@ describe('summary calibration, for real', () => {
         (JSON.parse(init.body) as { messages: Array<{ content: string }> })
           .messages[0].content,
     );
-    expect(prompts[0]).toContain('(none yet)');
-    expect(prompts[1]).toContain('- password-reset: Password reset');
-    expect(prompts[2]).toContain('- invoices: Invoices');
+    expect(prompts).toHaveLength(3);
+    for (const prompt of prompts) {
+      expect(prompt).toContain('answer two questions about the conversation');
+      expect(prompt).not.toMatch(/topic/i);
+      expect(prompt).not.toContain('(none yet)');
+      // Nothing an earlier conversation proposed reaches a later one.
+      expect(prompt).not.toMatch(/password-reset|invoices/);
+    }
   });
 
   it('prints nothing of what was said, what the labeller wrote or what the model answered', async () => {
@@ -473,10 +470,10 @@ describe('summary calibration, for real', () => {
     );
   });
 
-  // Reading a miss needs the topics the model made (`--topics`). Conversation
-  // 1 coined a topic and 3 chose it; 2 coined another, which 3 only touched.
+  // With an empty vocabulary there is no topic of the run to list: no
+  // conversation was asked about one. Said, not printed as an empty list.
   describe('with --topics', () => {
-    it('lists the topics of the run after the report: key, English label, conversations', async () => {
+    it('has no topics to list while the vocabulary is empty, and says so after the report', async () => {
       model(ANSWERS);
 
       const { code, printed, text } = await run(['--sample', dir, '--topics']);
@@ -484,55 +481,13 @@ describe('summary calibration, for real', () => {
       expect(code).toBe(0);
       for (const args of printed) expect(args).toHaveLength(1);
       const lines = printed.map((args) => args[0] as string);
-      const at = lines.findIndex((line) =>
-        line.startsWith('Topics of the run (--topics): 2 standing'),
+      expect(lines[lines.length - 1]).toBe(
+        '--topics: nothing to list, no conversation is asked about topics while the vocabulary is empty.',
       );
-      // After everything the report prints, and the last thing printed.
-      expect(at).toBeGreaterThan(
-        lines.findIndex((line) =>
-          line.includes('a common topic, two subjects'),
-        ),
-      );
-      expect(lines.slice(at + 1)).toEqual([
-        '  password-reset (Password reset): 2 (n: 1, 3)',
-        // A loose fit is not stored: 3 is not listed with it.
-        '  invoices (Invoices): 1 (n: 2)',
-        '  no topic: 0',
-      ]);
-      // The report above it is the one printed without the flag.
-      expect(text).toContain(
-        '[4] topics coined: 2 in 3 conversations, 66.7 per 100',
-      );
-    });
-
-    it('prints the vocabulary and nothing else of a conversation', async () => {
-      model(ANSWERS);
-      const { text } = await run(['--sample', dir, '--topics']);
-      // Not what was said, the summary or the question (SPOKEN), not what
-      // the labeller wrote (LABELLED, PASSWORD), not the credential, and of
-      // a topic not the label of another language.
+      expect(text).not.toContain('Topics of the run');
+      // What the answers proposed all the same is printed nowhere.
+      expect(text).not.toMatch(/password-reset|Password reset|invoices/);
       expect(text).not.toMatch(/SPOKEN|LABELLED|PASSWORD|sk-secret/);
-      expect(text).not.toMatch(/Сброс|Счета/);
-    });
-
-    it('lists a conversation stored with no topic, and leaves out one that failed', async () => {
-      model([
-        ANSWERS[0],
-        answer({ outcome: 'open' }),
-        'SPOKEN where JSON should be',
-      ]);
-
-      const { code, printed } = await run(['--sample', dir, '--topics']);
-
-      expect(code).toBe(1);
-      const lines = printed.map((args) => args[0] as string);
-      const at = lines.findIndex((line) =>
-        line.startsWith('Topics of the run (--topics): 1 standing'),
-      );
-      expect(lines.slice(at + 1)).toEqual([
-        '  password-reset (Password reset): 1 (n: 1)',
-        '  no topic: 1 (n: 2)',
-      ]);
     });
 
     it('is off unless asked for: the report alone names no topic', async () => {
@@ -561,7 +516,7 @@ describe('summary calibration, for real', () => {
         subject: 'LABELLED invoice',
       },
     ];
-    // 1 chose the topic of its subject. 2 coined one although its subject
+    // 1 chose the topic of its subject. 2 proposed one although its subject
     // has one in the list. 3 chose from the list, and chose the other.
     const CHOSEN = [
       answer({
@@ -611,26 +566,55 @@ describe('summary calibration, for real', () => {
         [
           '  [9] chosen as the reference chose (target 90%): 33.3% (1 of 3); failed, in no share: 0.0% (0 of 3); under the target',
           '      of the 1 chosen so, stored with a second topic besides: 0',
-          '      of the 2 not chosen so: another seeded topic 1, no topic 0, a topic coined in the run 1',
-          '  [10] topics coined although a list was given: 1 in 3 conversations, 33.3 per 100',
+          '      of the 2 not chosen so: another seeded topic 1, no topic 0, a new topic proposed and not coined in this release 1',
+          '  [10] topics proposed although a list was given, not coined in this release: 1 in 3 conversations, 33.3 per 100',
           '      reference subject not in the list, in no share: 0',
           '      no subject by the reference: left without a topic by the model too 0, given a topic 0',
           '  [9] second half (2 scored): chosen as the reference chose: 0.0% (0 of 2)',
           '  not chosen as the reference chose, as "conversation -> the model\'s keys (the reference\'s key)": 2',
-          '    2 -> payments (invoices)',
+          '    2 -> no topic, proposed payments (invoices)',
           '    3 -> invoices (account-access)',
           '',
         ],
       );
-      // The pairs are printed as before, and a seeded topic is not coined.
+      // The pairs are printed as before, under the labels of the recorded
+      // runs, with what was proposed where those say "coined".
       const text = lines.join('\n');
+      expect(text).toContain('scored: 3 conversations, 3 pairs');
       expect(text).toContain(
-        '[4] topics coined: 1 in 3 conversations, 33.3 per 100',
+        '[4] topics proposed, not coined in this release: 1 in 3 conversations, 33.3 per 100',
       );
       expect(text).toContain(
-        '[4] second half: topics coined: 1 in 2 conversations, 50.0 per 100',
+        '[4] second half: topics proposed, not coined in this release: 1 in 2 conversations, 50.0 per 100',
       );
       expect(text).toContain('[5] open, precision (target 80%)');
+      expect(text).not.toContain('not asked');
+    });
+
+    // What a conversation proposed is no topic: the next one is offered the
+    // list the run was given, and is stored with what it chose from it.
+    it('coins nothing: a proposal reaches no later prompt, and a key proposed twice is counted once', async () => {
+      const fetched = model([CHOSEN[1], CHOSEN[1], CHOSEN[2]]);
+
+      const { text } = await run(['--sample', dir, '--vocabulary', file]);
+
+      for (const prompt of prompts(fetched)) {
+        expect(prompt).toContain(
+          '- account-access: Account access\n- invoices: Invoices\n',
+        );
+        expect(prompt).not.toContain('payments');
+      }
+      // 1 and 2 proposed the same key: one new topic, proposed twice.
+      expect(text).toContain(
+        '[10] topics proposed although a list was given, not coined in this release: 1 in 3 conversations, 33.3 per 100',
+      );
+      expect(text).toContain(
+        'of the 3 not chosen so: another seeded topic 1, no topic 0, a new topic proposed and not coined in this release 2',
+      );
+      // The key was first proposed in the first half: none is new in the second.
+      expect(text).toContain(
+        '[4] second half: topics proposed, not coined in this release: 0 in 2 conversations, 0.0 per 100',
+      );
     });
 
     it('lists every seeded topic in the first prompt, in the order of the file, and never its subject', async () => {
@@ -644,8 +628,8 @@ describe('summary calibration, for real', () => {
         '- account-access: Account access\n- invoices: Invoices\n',
       );
       expect(sent[0]).not.toContain('(none yet)');
-      // What 2 coined is offered to 3, after the topics in use.
-      expect(sent[2]).toContain('- payments: Payments');
+      // What 2 proposed is not a topic, and is not offered to 3.
+      expect(sent[2]).not.toContain('payments');
       for (const prompt of sent) {
         expect(prompt).not.toMatch(/LABELLED|password|invoice\b/i);
       }
@@ -669,17 +653,44 @@ describe('summary calibration, for real', () => {
         '[9] chosen as the reference chose (target 90%): 50.0% (1 of 2); failed, in no share: 33.3% (1 of 3); no verdict: more than 10% of the sample failed',
       );
       expect(text).toContain(
-        'of the 1 not chosen so: another seeded topic 1, no topic 0, a topic coined in the run 0',
+        'of the 1 not chosen so: another seeded topic 1, no topic 0, a new topic proposed and not coined in this release 0',
       );
       expect(text).toContain(
-        '[10] topics coined although a list was given: 0 in 2 conversations, 0.0 per 100',
+        '[10] topics proposed although a list was given, not coined in this release: 0 in 2 conversations, 0.0 per 100',
       );
       expect(text).toContain('    3 -> invoices (account-access)');
       expect(text).not.toContain('    2 -> ');
     });
 
+    // A summary that reads the list back is an unusable answer of its own
+    // kind (CLEAN-270, security review): the report names it, from the
+    // service's list of reasons, and quotes neither the summary nor a key.
+    it('names an answer that repeats the topic list, and quotes none of it', async () => {
+      const three = ['aa', 'ab', 'ac'].map((name) => ({
+        key: `topic-${name}`,
+        labels: { en: `Topic ${name}`, ru: `Тема ${name}` },
+        subject: `LABELLED ${name}`,
+      }));
+      writeFileSync(file, JSON.stringify(three));
+      model([
+        answer({ summary: 'SPOKEN, then: topic-aa, topic-ab, topic-ac' }),
+        answer({}),
+        answer({}),
+      ]);
+
+      const { code, text } = await run(['--sample', dir, '--vocabulary', file]);
+
+      expect(code).toBe(1);
+      expect(text).toContain('summarised: 2; failed: 1 (n: 1)');
+      expect(text).toContain(
+        'failed 1: the answer could not be used (repeats the topic list)',
+      );
+      expect(text).not.toMatch(/SPOKEN|topic-a[abc], /);
+    });
+
     // The service's own rule: an offered topic is stored as a clear fit or
-    // not at all, so naming its key again as a new topic stores nothing.
+    // not at all, so naming its key again as a new topic stores nothing. Nor
+    // is that a new topic proposed: the key is a topic of the list.
     it('counts a conversation left without a topic, a loose fit included, as a miss to none', async () => {
       model([
         answer({ topics: [{ key: 'account-access', fit: 'loose' }] }),
@@ -695,17 +706,17 @@ describe('summary calibration, for real', () => {
         '[9] chosen as the reference chose (target 90%): 0.0% (0 of 3)',
       );
       expect(text).toContain(
-        'of the 3 not chosen so: another seeded topic 0, no topic 3, a topic coined in the run 0',
+        'of the 3 not chosen so: another seeded topic 0, no topic 3, a new topic proposed and not coined in this release 0',
       );
       expect(text).toContain('    1 -> no topic (account-access)');
       expect(text).toContain('    2 -> no topic (invoices)');
       expect(text).toContain('    3 -> no topic (account-access)');
       expect(text).toContain(
-        '[10] topics coined although a list was given: 0 in 3 conversations, 0.0 per 100',
+        '[10] topics proposed although a list was given, not coined in this release: 0 in 3 conversations, 0.0 per 100',
       );
     });
 
-    it('lists the seeded topics among the topics of the run, with --topics', async () => {
+    it('lists the seeded topics as the topics of the run, then what was proposed and not coined, with --topics', async () => {
       model(CHOSEN);
 
       const { printed } = await run([
@@ -718,20 +729,22 @@ describe('summary calibration, for real', () => {
 
       const lines = printed.map((args) => args[0] as string);
       const at = lines.findIndex((line) =>
-        line.startsWith('Topics of the run (--topics): 3 standing'),
+        line.startsWith('Topics of the run (--topics): 2 standing'),
       );
       expect(lines.slice(at + 1)).toEqual([
         '  account-access (Account access): 1 (n: 1)',
         '  invoices (Invoices): 1 (n: 3)',
-        '  payments (Payments): 1 (n: 2)',
-        '  no topic: 0',
+        '  no topic: 1 (n: 2)',
+        'Proposed as new topics, not coined in this release (--topics): 1 keys, as "key: conversations that proposed it"',
+        '  payments: 1 (n: 2)',
       ]);
     });
 
-    // A prompt lists the sixty most used topics. Sixty seeded and one coined
-    // by conversation 1 are sixty-one: from then on the last seeded topic,
-    // which nobody used, is not in the list, and the report says for whom.
-    it('names the conversations that were not offered the whole list', async () => {
+    // A prompt lists the sixty most used topics. The recorded runs coined
+    // on the way, and the sixty-first topic pushed a seeded one out of the
+    // list. Nothing is coined now: sixty seeded stay sixty, whatever a
+    // conversation proposes, and every prompt lists all of them.
+    it('offers every conversation the whole list, whatever the ones before it proposed', async () => {
       const letters = 'abcdefghijklmnopqrstuvwxyz';
       const sixty = Array.from({ length: 60 }, (_, i) => {
         const name = `${letters[Math.floor(i / 26)]}${letters[i % 26]}`;
@@ -747,12 +760,11 @@ describe('summary calibration, for real', () => {
       const { text } = await run(['--sample', dir, '--vocabulary', file]);
 
       const sent = prompts(fetched);
-      expect(sent[0]).toContain('- topic-ch: Topic ch\n');
-      expect(sent[1]).toContain('- payments: Payments\n');
-      expect(sent[1]).not.toContain('- topic-ch: Topic ch\n');
-      expect(text).toContain(
-        '  note: 2 conversations were not offered the whole list (n: 2, 3): a prompt lists the 60 most used topics, and with the ones coined on the way more than that stood.',
-      );
+      for (const prompt of sent) {
+        expect(prompt).toContain('- topic-ch: Topic ch\n');
+        expect(prompt).not.toContain('payments');
+      }
+      expect(text).not.toContain('not offered the whole list');
       // No label of the sample is a subject of this file: nothing to share.
       expect(text).toContain(
         '[9] chosen as the reference chose (target 90%): n/a (0 of 0)',
@@ -803,7 +815,11 @@ describe('summary calibration, for real', () => {
   });
 
   it('counts an answer it cannot read as failed, by its number, without quoting it', async () => {
-    model([ANSWERS[0], 'SPOKEN where JSON should be', ANSWERS[2]]);
+    model([
+      ANSWERS[0],
+      'SPOKEN where JSON should be',
+      answer({ outcome: 'open' }),
+    ]);
 
     const { code, text } = await run(['--sample', dir]);
 
@@ -812,12 +828,12 @@ describe('summary calibration, for real', () => {
     expect(text).toContain(
       'failed 2: the answer could not be used (no JSON object)',
     );
-    expect(text).toContain('scored: 2 conversations, 1 pairs');
+    expect(text).toContain('scored: 2 conversations\n');
     expect(text).not.toContain('SPOKEN');
     // One of three failed: the shares are over the two that did not, and
     // no number is said to meet its target.
     expect(text).toContain(
-      '(target 90%): 100.0% (1 of 1); failed, in no share: 33.3% (1 of 3); no verdict: more than 10% of the sample failed',
+      '(target 80%): 100.0% (1 of 1); failed, in no share: 33.3% (1 of 3); no verdict: more than 10% of the sample failed',
     );
     expect(text).not.toContain('meets the target');
   });

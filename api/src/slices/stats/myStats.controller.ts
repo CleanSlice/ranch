@@ -59,7 +59,8 @@ export class MyStatsController {
       'and which models answered. Where the installation produces ' +
       'conversation summaries (`summaries.enabled`), also what their ' +
       'conversations were about (`topics`, named in the language of ' +
-      '`Accept-Language`), how they ended (`outcome`, `board.resolved`) ' +
+      '`Accept-Language`; empty until the installation has a vocabulary, ' +
+      '`summaries.topicsReady`), how they ended (`outcome`, `board.resolved`) ' +
       'and which were left open (`openQuestions`); where it does not, ' +
       'those parts are empty. Counts, names and times, and of what was ' +
       "written only the caller's own main questions, as the summaries of " +

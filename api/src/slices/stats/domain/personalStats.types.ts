@@ -93,6 +93,17 @@ export interface IPersonalBoard {
 export interface IPersonalSummaries {
   /** False: no summaries are produced, and the blocks read from them are empty. */
   enabled: boolean;
+  /**
+   * Whether the topics are there to show (CLEAN-270, the owner's decision of
+   * 2026-11-28): summaries are produced and the installation has a
+   * vocabulary, at least one topic that stands. While it has none, the
+   * summary asks no conversation about topics (`ChatInsightService`), so
+   * `topics` is empty and every open question's `topic` is null, and the
+   * page leaves the topics block out instead of drawing it empty. Everything
+   * else read from summaries is counted either way. How a vocabulary comes
+   * to exist is CLEAN-278.
+   */
+  topicsReady: boolean;
   /** Conversations of the period that have a summary. */
   summarised: number;
   /** Without one yet, and long enough to get one. */
@@ -213,7 +224,10 @@ export interface IPersonalOpenQuestion {
   agentName: string;
   /** Null when the summary found no question to quote. */
   question: string | null;
-  /** The label of the conversation's first topic; null when it has none. */
+  /**
+   * The label of the conversation's first topic; null when it has none,
+   * and for every question while `summaries.topicsReady` is false.
+   */
   topic: string | null;
   /** The conversation's last message. */
   at: Date;
@@ -237,7 +251,10 @@ export interface IPersonalStats {
   activity: IPersonalActivity;
   /** By messages, most first; equal ones by name. */
   agents: IPersonalAgent[];
-  /** At most `TOPICS_SHOWN`, most conversations first. Empty without summaries. */
+  /**
+   * At most `TOPICS_SHOWN`, most conversations first. Empty without
+   * summaries, and while `summaries.topicsReady` is false.
+   */
   topics: IPersonalTopic[];
   /** All zeros and no language without summaries. */
   outcome: IPersonalOutcome;

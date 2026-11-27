@@ -7,8 +7,8 @@ import {
   IOutcomeScores,
   IRatio,
   ITopicScores,
-  coinedPer100,
   formatRatio,
+  proposedPer100,
   ratio,
 } from './metrics';
 
@@ -18,9 +18,17 @@ import {
 // subject the labeller wrote or a topic the model chose, so it cannot print
 // one.
 //
+// Which sections there are depends on the vocabulary (CLEAN-270, the owner's
+// decision of 2026-11-28). The service that ships asks no conversation about
+// topics while no topic stands, and never coins one. So a run with an empty
+// vocabulary measures outcomes only and its report says so; a run that was
+// given its topics (`--vocabulary`) also prints how the model chose from
+// the list, and counts a topic the model proposed as proposed, not coined.
+//
 // The two exceptions are asked for by name. With `--topics`, `topicLines`
 // prints the topics of the run after the report: it is given their keys and
-// English labels and the numbers of the conversations, and nothing else.
+// English labels and the numbers of the conversations, and nothing else;
+// `proposedLines` adds the keys that were proposed and not coined.
 // With `--vocabulary`, the report is given the keys of the conversations it
 // lists as misses, the model's and the seeded one of the reference, and
 // prints those: keys are vocabulary, and the reference's own words for a
@@ -81,12 +89,12 @@ export interface IPersonCounts {
 /**
  * The topic numbers of the second half of the sample, in file order.
  *
- * A run starts with no topic at all: the sample is summarised over an empty
- * vocabulary, as an installation's first day would be. The first
- * conversations have nothing to choose among and can only propose, so the
- * numbers over the whole sample are partly numbers about that start, which
- * an installation goes through once. By the second half the vocabulary is
- * what the first half left, which is how a batch finds it on any later day.
+ * The recorded runs of 2026-11-28 coined topics as they went, so their
+ * second half was offered a longer list than their first, and its numbers
+ * were printed apart for that reason. In this release nothing is coined:
+ * both halves are offered the list the run was given. The numbers are still
+ * printed apart, under the same labels, so that a run of today is read
+ * against the recorded ones line by line.
  */
 export interface ICalibrationHalf {
   /** Conversations in the half: the last ones of the sample. */
@@ -95,8 +103,11 @@ export interface ICalibrationHalf {
   summarised: number;
   /** Labelled and summarised: what its scores are over. */
   scored: number;
-  /** Topics coined while the half was summarised. */
-  coined: number;
+  /**
+   * New topics the model proposed while the half was summarised: keys no
+   * topic has and no earlier conversation proposed. None is coined.
+   */
+  proposed: number;
   topics: ITopicScores;
 }
 
@@ -114,14 +125,23 @@ export interface ICalibrationReport {
   invalid: number[];
   /** Labelled and summarised: what every score is over. */
   scored: number;
-  /** Topics coined over the whole run. */
-  coined: number;
+  /**
+   * New topics the model proposed over the whole run, by key: each key no
+   * topic has, once. Not coined in this release; where a recorded run says
+   * "topics coined", this is the number to read beside it.
+   */
+  proposed: number;
   person: IPersonCounts;
   topics: ITopicScores;
   open: IOutcomeScores;
   resolved: IOutcomeScores;
   secondHalf: ICalibrationHalf;
-  /** Only of a run that was given its topics (`--vocabulary`). */
+  /**
+   * Only of a run that was given its topics (`--vocabulary`). Without it
+   * the vocabulary was empty, no conversation was asked about topics, and
+   * nothing of `topics`, `proposed` and `secondHalf` is printed: there
+   * is no topic to have scored.
+   */
   given?: IGivenListReport;
 }
 
@@ -139,8 +159,10 @@ export interface IGivenListReport {
   secondHalf: IGivenListScores;
   /**
    * Conversations whose prompt did not list every seeded topic. A prompt
-   * lists the `VOCABULARY_CAP` most used: once the seeded topics and the
-   * ones coined on the way are more than that, the least used drop out.
+   * lists the `VOCABULARY_CAP` most used: were more than that to stand,
+   * the least used would drop out. A vocabulary file is refused past the
+   * cap and nothing is coined on the way, so a run of this release has
+   * none; the report still says so if one ever does.
    */
   notOfferedAll: number[];
 }
@@ -167,10 +189,17 @@ const personLine = (person: IPersonCounts) =>
 const percent = (share: number) => `${Math.round(share * 100)}%`;
 
 /** "42.9 per 100", or "n/a per 100" when nothing was summarised. */
-const per100 = (coined: number, conversations: number) => {
-  const value = coinedPer100(coined, conversations);
+const per100 = (proposed: number, conversations: number) => {
+  const value = proposedPer100(proposed, conversations);
   return `${value === null ? 'n/a' : value.toFixed(1)} per 100`;
 };
+
+/**
+ * How a proposal is named wherever it is counted (CLEAN-270, the owner's
+ * decision of 2026-11-28): the model proposed a topic, and the release does
+ * not make it one. The recorded runs called the same event "coined".
+ */
+const NOT_COINED = 'not coined in this release';
 
 /**
  * A headline number as it is printed: the share with its counts, the
@@ -199,7 +228,8 @@ function headline(score: IRatio, target: number, failed: IRatio): string {
  * a conversation was taken for. Of a conversation it prints the number and
  * keys: the model's are vocabulary, cut by the parser to lower-case words,
  * and the reference's is the seeded key its subject stands for, never the
- * words of the subject.
+ * words of the subject. A conversation stored with no topic because the
+ * model proposed one is printed with the key it proposed.
  */
 function givenListLines(
   r: ICalibrationReport,
@@ -219,9 +249,9 @@ function givenListLines(
     `  [9] chosen as the reference chose (target ${percent(SAME_TOPIC_TARGET)}): ${headline(all.chosen, SAME_TOPIC_TARGET, failed)}`,
     `      of the ${all.chosen.hits} chosen so, stored with a second topic besides: ${all.chosenWithSecond}`,
     `      of the ${all.chosen.of - all.chosen.hits} not chosen so: another seeded topic ${all.otherSeeded}, ` +
-      `no topic ${all.noTopic}, a topic coined in the run ${all.coined}`,
-    `  [10] topics coined although a list was given: ${r.coined} in ${r.summarised} conversations, ` +
-      per100(r.coined, r.summarised),
+      `no topic ${all.noTopic}, a new topic proposed and ${NOT_COINED} ${all.proposed}`,
+    `  [10] topics proposed although a list was given, ${NOT_COINED}: ${r.proposed} in ${r.summarised} conversations, ` +
+      per100(r.proposed, r.summarised),
     `      reference subject not in the list, in no share: ${counted(all.notInList)}`,
     `      no subject by the reference: left without a topic by the model too ${all.noSubjectNoTopic}, ` +
       `given a topic ${counted(all.noSubjectGivenTopic)}`,
@@ -231,7 +261,7 @@ function givenListLines(
     lines.push(
       `  note: ${given.notOfferedAll.length} conversations were not offered the whole list ` +
         `(n: ${numbers(given.notOfferedAll)}): a prompt lists the ${VOCABULARY_CAP} most used topics, ` +
-        'and with the ones coined on the way more than that stood.',
+        'and more than that stood.',
     );
   }
   lines.push(
@@ -239,11 +269,35 @@ function givenListLines(
       `keys (the reference's key)": ${all.misses.length ? all.misses.length : 'none'}`,
   );
   for (const miss of all.misses) {
-    lines.push(
-      `    ${miss.n} -> ${miss.model.length ? miss.model.join(', ') : 'no topic'} (${miss.reference})`,
-    );
+    const stored = miss.model.length
+      ? miss.model.join(', ')
+      : miss.proposed === null
+        ? 'no topic'
+        : `no topic, proposed ${miss.proposed}`;
+    lines.push(`    ${miss.n} -> ${stored} (${miss.reference})`);
   }
   return lines;
+}
+
+/**
+ * The outcomes, and the conversations the two disagree on about them. The
+ * same lines for every run, with or without a list: the numbers of the
+ * recorded runs are read against these labels, which do not change.
+ */
+function outcomeLines(r: ICalibrationReport, failed: IRatio): string[] {
+  return [
+    `Outcomes (judgment 2), over ${r.scored} conversations`,
+    `  [5] open, precision (target ${percent(OPEN_PRECISION_TARGET)}): ${headline(r.open.precision, OPEN_PRECISION_TARGET, failed)}`,
+    `  [6] open, recall: ${formatRatio(r.open.recall)}`,
+    `  [7] resolved, precision: ${formatRatio(r.resolved.precision)}`,
+    `  [8] resolved, recall: ${formatRatio(r.resolved.recall)}`,
+    '',
+    'Disagreements, by the number of the conversation',
+    `  open by the model, not by the person: ${listed(r.open.wronglyCalled)}`,
+    `  open by the person, not by the model: ${listed(r.open.missed)}`,
+    `  resolved by the model, not by the person: ${listed(r.resolved.wronglyCalled)}`,
+    `  resolved by the person, not by the model: ${listed(r.resolved.missed)}`,
+  ];
 }
 
 export function reportLines(r: ICalibrationReport): string[] {
@@ -266,7 +320,10 @@ export function reportLines(r: ICalibrationReport): string[] {
       `no text: ${counted(r.noText)}`,
     `unlabelled, skipped: ${counted(r.unlabelled)}; ` +
       `outcome not one of the three, skipped: ${counted(r.invalid)}`,
-    `scored: ${r.scored} conversations, ${r.topics.pairs} pairs${leftOut}`,
+    // Pairs are of topics: a run that asked about none has none to count.
+    r.given
+      ? `scored: ${r.scored} conversations, ${r.topics.pairs} pairs${leftOut}`
+      : `scored: ${r.scored} conversations`,
     personLine(r.person),
   ];
   if (r.transcripts < CONTRACT_SAMPLE) {
@@ -278,7 +335,24 @@ export function reportLines(r: ICalibrationReport): string[] {
   for (const failure of r.failed) {
     lines.push(`  failed ${failure.n}: ${failure.why}`);
   }
-  if (r.given) lines.push(...givenListLines(r, r.given, failed));
+  if (!r.given) {
+    // An empty vocabulary: the service asked no conversation about topics
+    // and coined none, so there is no topic to score. Said, not left blank:
+    // a report with the topic section missing would read as a broken run.
+    lines.push(
+      '',
+      'Topics (judgment 1): not asked',
+      'The vocabulary is empty, and while it is no conversation is asked about',
+      'topics and no topic is coined (CLEAN-270, the decision of 2026-11-28 in',
+      'contracts/summary-judgments.md). This run measures outcomes only: it has',
+      'no topic number to print. Give it a list with --vocabulary <file> to',
+      'measure the choice from that list.',
+      '',
+      ...outcomeLines(r, failed),
+    );
+    return lines;
+  }
+  lines.push(...givenListLines(r, r.given, failed));
 
   lines.push(
     '',
@@ -300,42 +374,24 @@ export function reportLines(r: ICalibrationReport): string[] {
     '      it is the precision of "same")',
     `  [3] loose fits the person agrees with: ${formatRatio(r.topics.looseAgreed)}`,
     '      (pairs joined by a topic at least one of the two got only loosely)',
-    `  [4] topics coined: ${r.coined} in ${r.summarised} conversations, ` +
-      per100(r.coined, r.summarised),
+    `  [4] topics proposed, ${NOT_COINED}: ${r.proposed} in ${r.summarised} conversations, ` +
+      per100(r.proposed, r.summarised),
     '',
     `Topics again, for the second half of the sample only: the last ${half.conversations} of ` +
       `${r.transcripts} conversations in file order; ${half.summarised} summarised, ` +
       `${half.scored} scored, ${half.topics.pairs} pairs`,
-    ...(r.given
-      ? [
-          `This run started with the ${r.given.seeded} topics of the vocabulary file, not with`,
-          'none: its second half differs from the first by the topics coined on',
-          'the way.',
-        ]
-      : [
-          'The run starts with no topic at all, which pushes the first conversations',
-          'towards proposing one. By the second half the vocabulary is what the',
-          'first half left, as a batch finds it on any day but its first.',
-        ]),
+    `This run started with the ${r.given.seeded} topics of the vocabulary file and coins none`,
+    'on the way: the second half is offered the list the first half was. Its',
+    'numbers are printed apart as the recorded runs printed them.',
     `  [1] ${ofHalf}: same-subject pairs that got the same topic: ${formatRatio(half.topics.sameRecall)}`,
     `      ${ofHalf}: pairs with the same topic that are one subject: ${formatRatio(half.topics.samePrecision)}`,
     `      ${ofHalf}: pairs the two agree on, same or different: ${formatRatio(half.topics.agreement)}`,
     `  [2] ${ofHalf}: clear fits the person agrees with: ${formatRatio(half.topics.clearAgreed)}`,
     `  [3] ${ofHalf}: loose fits the person agrees with: ${formatRatio(half.topics.looseAgreed)}`,
-    `  [4] second half: topics coined: ${half.coined} in ${half.summarised} conversations, ` +
-      per100(half.coined, half.summarised),
+    `  [4] second half: topics proposed, ${NOT_COINED}: ${half.proposed} in ${half.summarised} conversations, ` +
+      per100(half.proposed, half.summarised),
     '',
-    `Outcomes (judgment 2), over ${r.scored} conversations`,
-    `  [5] open, precision (target ${percent(OPEN_PRECISION_TARGET)}): ${headline(r.open.precision, OPEN_PRECISION_TARGET, failed)}`,
-    `  [6] open, recall: ${formatRatio(r.open.recall)}`,
-    `  [7] resolved, precision: ${formatRatio(r.resolved.precision)}`,
-    `  [8] resolved, recall: ${formatRatio(r.resolved.recall)}`,
-    '',
-    'Disagreements, by the number of the conversation',
-    `  open by the model, not by the person: ${listed(r.open.wronglyCalled)}`,
-    `  open by the person, not by the model: ${listed(r.open.missed)}`,
-    `  resolved by the model, not by the person: ${listed(r.resolved.wronglyCalled)}`,
-    `  resolved by the person, not by the model: ${listed(r.resolved.missed)}`,
+    ...outcomeLines(r, failed),
     `  one subject by the person, no common topic: ${listed(pairsOf('same'))}`,
     `  a common topic, two subjects by the person: ${listed(pairsOf('different'))}`,
   );
@@ -356,7 +412,7 @@ export interface ITopicUse {
  * most used first, then the conversations stored with no topic.
  *
  * The report says that a pair was joined or split and not by what: reading
- * a miss needs the topics the model made. A key and a label are vocabulary
+ * a miss needs the topics the model chose from. A key and a label are vocabulary
  * the product shows to everybody who opens the statistics page, each cut by
  * the parser to 40 characters, and the label to three words. Nothing else
  * of a conversation is given to this function: not the question, not the
@@ -365,7 +421,7 @@ export interface ITopicUse {
  *
  * Every number is printed, with no "(+N more)": the list is read to find
  * one conversation in it. Equally used topics stay in the order given, the
- * order they were coined in.
+ * order of the vocabulary file.
  */
 export function topicLines(
   topics: readonly ITopicUse[],
@@ -389,6 +445,35 @@ export function topicLines(
         `  ${topic.key} (${topic.label}): ${all(topic.conversations)}`,
     ),
     `  no topic: ${all(noTopic)}`,
+  ];
+}
+
+/** A key the model proposed as a new topic, and who proposed it. */
+export interface IProposedKey {
+  key: string;
+  /** The numbers of the conversations whose answer proposed it. */
+  conversations: number[];
+}
+
+/**
+ * What `--topics` adds after the topics of a run: the keys the model
+ * proposed as new topics, in the order first proposed, with the
+ * conversations that proposed each. None of them is a topic: a proposal is
+ * not coined in this release (CLEAN-270, the owner's decision of
+ * 2026-11-28), and the conversation is stored with none. Read beside the
+ * misses, they say what the list was missing, or what the model would not
+ * find in it. A key is cut by the parser to lower-case words and dashes;
+ * nothing else of a conversation is given to this function.
+ */
+export function proposedLines(proposed: readonly IProposedKey[]): string[] {
+  const head = `Proposed as new topics, ${NOT_COINED} (--topics)`;
+  if (!proposed.length) return [`${head}: none`];
+  return [
+    `${head}: ${proposed.length} keys, as "key: conversations that proposed it"`,
+    ...proposed.map(
+      ({ key, conversations }) =>
+        `  ${key}: ${conversations.length} (n: ${conversations.join(', ')})`,
+    ),
   ];
 }
 
@@ -435,9 +520,11 @@ export function dryLines(r: IDryReport): string[] {
   const leftOut = r.pairsLeftOut
     ? ` (${r.pairsLeftOut} more left out: no subject for either conversation)`
     : '';
+  // As the service builds them: with no topic standing, the prompt lists
+  // none and asks for none.
   const vocabulary =
     r.seeded === undefined
-      ? 'with an empty vocabulary'
+      ? 'with an empty vocabulary and so with no topics question'
       : `with the ${r.seeded} seeded topics listed`;
   return [
     `summary calibration: prompt version ${r.promptVersion}`,

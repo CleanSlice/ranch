@@ -15,12 +15,16 @@ import type { ITranscript } from '../../../scripts/summaryCalibration/sample';
 // What the summary service reads and writes during a calibration, held in
 // memory (CLEAN-270). The script runs `ChatInsightService` itself, the class
 // the batch runs, so that the prompt, the call, the parser and the way a
-// topic is assigned or coined are the ones that ship. These stand in for
+// topic is assigned are the ones that ship. These stand in for
 // its two gateways, its transcript reader and the agent slice's answer to
 // "which agents are the Owner's alone": the sample's conversations go
 // in, what a summary would have written is kept here, and nothing reaches a
 // database. The vocabulary starts empty, or with the topics the run was
-// given.
+// given, and in this release it ends as it started: the service asks no
+// conversation about topics while none stands, and coins none
+// (`COINS_PROPOSED_TOPICS`, the owner's decision of 2026-11-28). The store
+// can still coin, as the gateway it stands in for can: CLEAN-278 is where a
+// proposal becomes a suggestion and an approved one a topic.
 
 const SESSION_PREFIX = 'calibration-';
 const AGENT_ID = 'calibration';
@@ -55,14 +59,16 @@ export interface ICalibrationStore {
   saved: Map<number, IChatSummaryData>;
   /**
    * The keys of the topics coined so far, in the order they were coined. A
-   * topic the run started with was not coined, and is not among them.
+   * topic the run started with was not coined, and is not among them. Empty
+   * for every run of this release, whose service coins none; kept, with
+   * `findOrCreateByKey`, so that a change which coins again shows here.
    */
   coined: () => string[];
   /** The keys of these topic ids; an id that names nothing is left out. */
   keysOf: (topicIds: readonly string[]) => string[];
   /**
    * The topics of the run by key and English label: the ones it started
-   * with, in the order given, then the ones coined, in the order they were
+   * with, in the order given, then any coined, in the order they were
    * coined. What `--topics` lists. Nothing is merged in a calibration, so
    * every topic stands. The label is the one the prompt lists a topic by,
    * with the same fallback to the key.
@@ -176,6 +182,9 @@ export function createCalibrationStore(
     standingByKey: (key: string) =>
       Promise.resolve(topics.find((t) => t.key === key) ?? null),
     countStanding: () => Promise.resolve(topics.length),
+    // What the service asks first: with no topic standing, which is a run
+    // that was given no list, it asks no conversation about topics.
+    hasStanding: () => Promise.resolve(topics.length > 0),
     findOrCreateByKey: (key: string, labels: IChatTopicLabels) =>
       // Coined later, sorted later among equally used ones.
       Promise.resolve(topics.find((t) => t.key === key) ?? stand(key, labels)),
@@ -199,9 +208,10 @@ export function createCalibrationStore(
     },
   });
 
-  // Every conversation of a sample is asked the topic judgment, which is
-  // what the calibration measures: none is with an agent only the Owner
-  // manages, the one case the service asks for no topic (CLEAN-270, review).
+  // No conversation of a sample is with an agent only the Owner manages,
+  // which the service asks about no topic whatever the vocabulary
+  // (CLEAN-270, review): a run that was given a list measures the choice
+  // from it for every conversation.
   const permission = only<AgentPermissionService>('permission', {
     ownerOnlyAgentIds: () => Promise.resolve([]),
   });

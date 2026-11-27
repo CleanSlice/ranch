@@ -159,6 +159,17 @@ export class ChatTopicGateway extends IChatTopicGateway {
     return this.prisma.chatTopic.count({ where: { mergedIntoId: null } });
   }
 
+  async hasStanding(): Promise<boolean> {
+    // One row and one column, `LIMIT 1`: the answer is "is there any", and
+    // a count would read every standing topic to say it. The table is a row
+    // per subject, a hundred standing at most (`TOPICS_STANDING_MAX`).
+    const first = await this.prisma.chatTopic.findFirst({
+      where: { mergedIntoId: null },
+      select: { id: true },
+    });
+    return first !== null;
+  }
+
   async findOrCreateByKey(
     key: string,
     labels: IChatTopicLabels,

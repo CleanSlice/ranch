@@ -1,9 +1,9 @@
 import {
   IJudgedTopics,
-  coinedPer100,
   formatRatio,
   givenListScores,
   outcomeScores,
+  proposedPer100,
   ratio,
   topicScores,
 } from './metrics';
@@ -38,7 +38,8 @@ const judged = (
   subject: string | null,
   topics: string[],
   loose: string[] = [],
-): IJudgedTopics => ({ n, subject, topics, loose });
+  proposed: string | null = null,
+): IJudgedTopics => ({ n, subject, topics, loose, proposed });
 
 describe('topicScores: do the model and the person agree, pair by pair', () => {
   // Three about billing, two about refunds, one about nothing.
@@ -235,7 +236,7 @@ describe('givenListScores: did the model choose the topic the reference chose', 
       chosenWithSecond: 0,
       otherSeeded: 0,
       noTopic: 0,
-      coined: 0,
+      proposed: 0,
       misses: [],
       notInList: [],
       noSubjectNoTopic: 0,
@@ -249,11 +250,11 @@ describe('givenListScores: did the model choose the topic the reference chose', 
       SEED,
     );
     expect(scores.chosen).toEqual(ratio(1, 2));
-    expect([scores.otherSeeded, scores.noTopic, scores.coined]).toEqual([
+    expect([scores.otherSeeded, scores.noTopic, scores.proposed]).toEqual([
       1, 0, 0,
     ]);
     expect(scores.misses).toEqual([
-      { n: 2, model: ['refunds'], reference: 'billing' },
+      { n: 2, model: ['refunds'], proposed: null, reference: 'billing' },
     ]);
   });
 
@@ -267,32 +268,55 @@ describe('givenListScores: did the model choose the topic the reference chose', 
       SEED,
     );
     expect(scores.chosen).toEqual(ratio(0, 2));
-    expect([scores.otherSeeded, scores.noTopic, scores.coined]).toEqual([
+    expect([scores.otherSeeded, scores.noTopic, scores.proposed]).toEqual([
       0, 2, 0,
     ]);
     expect(scores.misses).toEqual([
-      { n: 1, model: [], reference: 'billing' },
-      { n: 2, model: [], reference: 'billing' },
+      { n: 1, model: [], proposed: null, reference: 'billing' },
+      { n: 2, model: [], proposed: null, reference: 'billing' },
     ]);
   });
 
-  it('a miss to a coined topic: one the run made, by this conversation or an earlier one', () => {
+  // A proposal is not a topic in this release (CLEAN-270, the owner's
+  // decision of 2026-11-28): the conversation is stored with none. It is
+  // counted apart from "no topic", which is the model naming nothing, and
+  // named by the key it proposed.
+  it('a miss with a new topic proposed: stored with none, counted apart from the model naming nothing', () => {
     const scores = givenListScores(
       [
-        judged(1, 'Оплата', ['invoices']),
-        judged(2, 'Возврат', ['invoices']),
+        judged(1, 'Оплата', [], [], 'invoices'),
+        judged(2, 'Возврат', [], ['billing'], 'money-back'),
         judged(3, 'Возврат', ['refunds']),
+        judged(4, 'Возврат', []),
       ],
       SEED,
     );
-    expect(scores.chosen).toEqual(ratio(1, 3));
-    expect([scores.otherSeeded, scores.noTopic, scores.coined]).toEqual([
-      0, 0, 2,
+    expect(scores.chosen).toEqual(ratio(1, 4));
+    expect([scores.otherSeeded, scores.noTopic, scores.proposed]).toEqual([
+      0, 1, 2,
     ]);
     expect(scores.misses).toEqual([
-      { n: 1, model: ['invoices'], reference: 'billing' },
-      { n: 2, model: ['invoices'], reference: 'refunds' },
+      { n: 1, model: [], proposed: 'invoices', reference: 'billing' },
+      { n: 2, model: [], proposed: 'money-back', reference: 'refunds' },
+      { n: 4, model: [], proposed: null, reference: 'refunds' },
     ]);
+  });
+
+  // The three kinds of miss are every miss, each once.
+  it('counts every miss once: another topic, a proposal, or nothing', () => {
+    const scores = givenListScores(
+      [
+        judged(1, 'Оплата', ['refunds']),
+        judged(2, 'Оплата', [], [], 'invoices'),
+        judged(3, 'Оплата', []),
+        judged(4, 'Оплата', ['billing']),
+      ],
+      SEED,
+    );
+    expect(scores.otherSeeded + scores.noTopic + scores.proposed).toBe(
+      scores.chosen.of - scores.chosen.hits,
+    );
+    expect(scores.misses).toHaveLength(3);
   });
 
   // A conversation carries up to two topics. The reference's among them is
@@ -309,11 +333,16 @@ describe('givenListScores: did the model choose the topic the reference chose', 
     );
     expect(scores.chosen).toEqual(ratio(2, 3));
     expect(scores.chosenWithSecond).toBe(1);
-    expect([scores.otherSeeded, scores.noTopic, scores.coined]).toEqual([
+    expect([scores.otherSeeded, scores.noTopic, scores.proposed]).toEqual([
       1, 0, 0,
     ]);
     expect(scores.misses).toEqual([
-      { n: 3, model: ['invoices', 'refunds'], reference: 'billing' },
+      {
+        n: 3,
+        model: ['invoices', 'refunds'],
+        proposed: null,
+        reference: 'billing',
+      },
     ]);
   });
 
@@ -331,7 +360,7 @@ describe('givenListScores: did the model choose the topic the reference chose', 
     expect(scores.chosen).toEqual(ratio(1, 1));
     expect(scores.notInList).toEqual([2, 3, 4]);
     expect(scores.misses).toEqual([]);
-    expect([scores.otherSeeded, scores.noTopic, scores.coined]).toEqual([
+    expect([scores.otherSeeded, scores.noTopic, scores.proposed]).toEqual([
       0, 0, 0,
     ]);
   });
@@ -452,13 +481,13 @@ describe('outcomeScores', () => {
   });
 });
 
-describe('coinedPer100', () => {
-  it('scales the topics coined to a hundred conversations', () => {
-    expect(coinedPer100(6, 25)).toBe(24);
-    expect(coinedPer100(7, 23)).toBeCloseTo(30.43, 2);
+describe('proposedPer100', () => {
+  it('scales the topics proposed to a hundred conversations', () => {
+    expect(proposedPer100(6, 25)).toBe(24);
+    expect(proposedPer100(7, 23)).toBeCloseTo(30.43, 2);
   });
 
   it('is null for no conversations', () => {
-    expect(coinedPer100(0, 0)).toBeNull();
+    expect(proposedPer100(0, 0)).toBeNull();
   });
 });

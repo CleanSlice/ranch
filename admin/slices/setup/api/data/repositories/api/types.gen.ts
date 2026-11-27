@@ -3089,6 +3089,10 @@ export type MyStatsSummariesDto = {
    */
   enabled: boolean;
   /**
+   * Whether topics are there to show: summaries are produced and the installation has a vocabulary, at least one topic that stands. False: no conversation is asked about topics yet, so `topics` is empty and `topic` of every open question is null. Leave the topics block out then, and do not say that the conversations were about nothing. Everything else read from summaries is counted either way. Always false when `enabled` is false.
+   */
+  topicsReady: boolean;
+  /**
    * How many of the period's conversations have a summary. With `waiting` and `tooShort` it adds up to `board.conversations.value`.
    */
   summarised: number;
@@ -3311,7 +3315,7 @@ export type MyStatsOpenQuestionDto = {
    */
   question: string | null;
   /**
-   * The name of the conversation's first topic, as `topics[].label` names it. Null when its summary assigned none.
+   * The name of the conversation's first topic, as `topics[].label` names it. Null when its summary assigned none, and for every question while `summaries.topicsReady` is false.
    */
   topic: string | null;
   /**
@@ -3433,7 +3437,7 @@ export type MyStatsDto = {
    */
   notes: Array<StatsNoteDto>;
   /**
-   * Whether conversation summaries are produced here, and how many of the period's conversations have one, wait for one, or are too short for one.
+   * Whether conversation summaries are produced here, whether their topics are there to show, and how many of the period's conversations have a summary, wait for one, or are too short for one.
    */
   summaries: MyStatsSummariesDto;
   board: MyStatsBoardDto;
@@ -3443,7 +3447,7 @@ export type MyStatsDto = {
    */
   agents: Array<MyStatsAgentDto>;
   /**
-   * What the period's summarised conversations were about: up to eight topics, most conversations first. Empty when no summarised conversation has a topic, and when `summaries.enabled` is false.
+   * What the period's summarised conversations were about: up to eight topics, most conversations first. Empty when no summarised conversation has a topic, when `summaries.enabled` is false, and while `summaries.topicsReady` is false: the installation has no vocabulary yet, and no conversation is asked about topics.
    */
   topics: Array<MyStatsTopicDto>;
   /**

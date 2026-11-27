@@ -167,6 +167,16 @@ describe('get_my_stats: what the tool says it is', () => {
     expect(description).toMatch(/their own (main )?question/i);
     expect(description).toMatch(/unknown/);
   });
+
+  // Topics wait for a vocabulary (CLEAN-270, the owner's decision of
+  // 2026-11-28). An empty `topics` then says nothing about what the person
+  // talked about, and the model can only say so if it was told.
+  it('tells the model that `topics` is empty until `summaries.topicsReady`, and what to say then', () => {
+    const { description } = metadata;
+
+    expect(description).toMatch(/`summaries\.topicsReady` (is )?false/);
+    expect(description).toMatch(/topics are not (yet )?(set up|sorted)/i);
+  });
 });
 
 describe('get_my_stats: whose statistics', () => {
@@ -449,6 +459,78 @@ describe('get_my_stats: what it asks for and what it answers', () => {
       expect(owner).toContain('What the Owner asked');
       expect(owner).not.toContain('What user seven asked');
       expect(owner).not.toContain('What user eight asked');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // The same answer as the route's, so the same `summaries`: with
+  // `topicsReady`, false while the installation has no vocabulary
+  // (CLEAN-270, the owner's decision of 2026-11-28).
+  it('says whether the topics are ready, as the page is told', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-27T10:30:00.000Z') });
+    try {
+      const world = (topics: { id: string; key: string }[]) =>
+        statsHarness({
+          agents: [{ id: 'a1', name: 'Atlas', model: 'claude-sonnet-4-6' }],
+          summaries: true,
+          topics: topics.map((t) => ({ ...t, labels: { en: 'Billing' } })),
+          hours: [
+            {
+              sessionId: 'c-user',
+              agentId: 'a1',
+              externalUserId: 'user-7',
+              hour: '2026-11-25T09:00:00Z',
+              userMessages: 3,
+              agentMessages: 3,
+            },
+          ],
+          summarised: {
+            'c-user': {
+              summaryAt: '2026-11-25T11:00:00Z',
+              outcome: 'open' as const,
+              question: 'What user seven asked',
+              topicIds: ['t-billing'],
+            },
+          },
+        }).service;
+      const answer = async (service: PersonalStatsService) =>
+        JSON.parse(
+          textOf(
+            await new StatsTool(
+              service,
+              {} as InstallationStatsService,
+            ).getMyStats(
+              { period: 7 },
+              undefined,
+              answering(UserRoleTypes.User, 'user-7'),
+            ),
+          ),
+        ) as {
+          summaries: Record<string, unknown>;
+          topics: unknown[];
+          openQuestions: { items: { topic: string | null }[] };
+        };
+
+      const without = await answer(world([]));
+      expect(without.summaries).toEqual({
+        enabled: true,
+        topicsReady: false,
+        summarised: 1,
+        waiting: 0,
+        tooShort: 0,
+      });
+      expect(without.topics).toEqual([]);
+      expect(without.openQuestions.items.map((q) => q.topic)).toEqual([null]);
+
+      const withOne = await answer(
+        world([{ id: 't-billing', key: 'billing' }]),
+      );
+      expect(withOne.summaries.topicsReady).toBe(true);
+      expect(withOne.topics).toHaveLength(1);
+      expect(withOne.openQuestions.items.map((q) => q.topic)).toEqual([
+        'Billing',
+      ]);
     } finally {
       jest.useRealTimers();
     }

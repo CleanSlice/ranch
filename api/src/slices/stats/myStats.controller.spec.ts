@@ -378,4 +378,43 @@ describe('GET /me/stats: the period and the zone', () => {
     expect(unknown.period).toBe(30);
     expect(known.timeZone).toBe('Europe/Kyiv');
   });
+
+  // What the page decides the topics block by (CLEAN-270, the owner's
+  // decision of 2026-11-28): summaries produced and a topic standing.
+  it('says in `summaries` whether the topics are ready: not without summaries, not without a vocabulary', async () => {
+    const TOPIC = {
+      id: 't-billing',
+      key: 'billing',
+      labels: { en: 'Billing' },
+    };
+    const summaries = async (world: Parameters<typeof statsHarness>[0]) =>
+      (
+        await new MyStatsController(statsHarness(world).service).get(
+          await parse({}),
+          req('user-1'),
+        )
+      ).summaries;
+
+    expect(await summaries({ summaries: false, topics: [TOPIC] })).toEqual({
+      enabled: false,
+      topicsReady: false,
+      summarised: 0,
+      waiting: 0,
+      tooShort: 0,
+    });
+    expect(await summaries({ summaries: true, topics: [] })).toEqual({
+      enabled: true,
+      topicsReady: false,
+      summarised: 0,
+      waiting: 0,
+      tooShort: 0,
+    });
+    expect(await summaries({ summaries: true, topics: [TOPIC] })).toEqual({
+      enabled: true,
+      topicsReady: true,
+      summarised: 0,
+      waiting: 0,
+      tooShort: 0,
+    });
+  });
 });

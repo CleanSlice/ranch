@@ -68,6 +68,7 @@ import { ASSISTANT_GRANT_RESOLVER } from './interfaces/assistant-grant.interface
 import { McpToolsHandler } from './services/handlers/mcp-tools.handler';
 import type { McpRegistryService } from './services/mcp-registry.service';
 import { ToolCatalogService } from './services/tool-catalog.service';
+import { ACCESS_SCOPE_NOTE, ACCESS_SCOPE_TEXT } from './tooling';
 
 // ── The ranch ────────────────────────────────────────────────
 //
@@ -777,6 +778,7 @@ describe('the topics of the summaries', () => {
     topics: { key: string; conversations: number; labels: { en: string } }[];
     total: number;
     notIncluded?: string;
+    scope?: string;
   }
   const listed = async (said: Promise<string>) =>
     JSON.parse(await said) as ITopics;
@@ -800,6 +802,42 @@ describe('the topics of the summaries', () => {
     expect(topics.listWithCounts).toHaveBeenCalledWith({ in: [A] });
   });
 
+  // CLEAN-268, as for `list_chats`: this Admin is limited to `alpha`, so the
+  // counts are of one agent's conversations, and a list that does not say so
+  // is read as what the whole installation talks about.
+  it('an Admin limited to one agent: the list says it covers their agents only, beside what it left out', async () => {
+    const result = await listed(asAdmin('list_chat_topics', {}));
+
+    expect(result.scope).toBe(ACCESS_SCOPE_TEXT);
+    expect(result.notIncluded).toBe(LEFT_OUT);
+    // The sentence is the one constant: no topic, no agent and no count.
+    expect(result.scope).not.toMatch(/\d|billing|bravo|alpha/i);
+  });
+
+  it('a list with no topic in it still says so: none among theirs is not "people talk about nothing"', async () => {
+    topics.listWithCounts.mockResolvedValueOnce(
+      TOPICS.map((t) => ({ topic: t, conversations: 0, merged: [] })),
+    );
+    const result = await listed(asAdmin('list_chat_topics', {}));
+
+    expect(result.topics).toEqual([]);
+    expect(result.total).toBe(0);
+    expect(result.scope).toBe(ACCESS_SCOPE_TEXT);
+    expect(result.notIncluded).toBe(LEFT_OUT);
+  });
+
+  it('an Admin whose lists narrow nothing: told of the assistant’s conversations, and of no other limit', async () => {
+    // ADMIN2 with the assistant, as an Admin has it by default.
+    assistantSettings.delete(ADMIN2.id);
+    const result = await listed(
+      session(consoleOf(ADMIN2)).call('list_chat_topics', {}),
+    );
+
+    expect(counts(result)).toEqual({ billing: 1, 'bravo-things': 1 });
+    expect(result.notIncluded).toBe(LEFT_OUT);
+    expect(result).not.toHaveProperty('scope');
+  });
+
   it('the Owner, and the assistant for itself: every topic, every conversation, and no field', async () => {
     for (const actor of [as('owner'), TRUSTED]) {
       const result = await listed(
@@ -812,6 +850,7 @@ describe('the topics of the summaries', () => {
         'owner-plans': 1,
       });
       expect(result).not.toHaveProperty('notIncluded');
+      expect(result).not.toHaveProperty('scope');
     }
   });
 
@@ -821,8 +860,37 @@ describe('the topics of the summaries', () => {
 
     expect(counts(result)).toEqual({ billing: 1, 'bravo-things': 1 });
     expect(result).not.toHaveProperty('notIncluded');
+    // The assistant is out of this person's reach, which narrows it: the
+    // list says that it is a part, and not whose the rest is.
+    expect(result.scope).toBe(ACCESS_SCOPE_TEXT);
     expect(said).not.toMatch(/Owner|assistant|Rancher/);
     expect(said).not.toContain(SECRET);
+  });
+
+  it('list_chat_topics says in its description what each of the two fields means', () => {
+    const description = registered.find(
+      (t) => t.metadata.name === 'list_chat_topics',
+    )!.metadata.description;
+
+    expect(description).toContain('notIncluded');
+    expect(description).toContain(ACCESS_SCOPE_NOTE);
+  });
+
+  it('a merge names two topics and lists nothing: its answers carry no such field', async () => {
+    const refused = await asAdmin('merge_chat_topics', {
+      from: 'bravo-things',
+      into: 'billing',
+      confirm: true,
+    });
+    const asked = await asAdmin('merge_chat_topics', {
+      from: 'billing',
+      into: 'billing',
+    });
+
+    for (const said of [refused, asked]) {
+      expect(said).not.toContain(ACCESS_SCOPE_TEXT);
+      expect(said).not.toContain('"scope"');
+    }
   });
 
   it('an Admin cannot merge a subject raised only with the assistant: it is a topic that does not exist', async () => {

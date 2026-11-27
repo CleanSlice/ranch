@@ -120,6 +120,13 @@ type Hours = readonly IPersonActivityHour[];
  * an installation that produces no summaries, the ordinary one, nothing of
  * them is read at all and the blocks made of them are answered empty, with
  * `summaries.enabled` saying why (FR-011).
+ *
+ * Topics are read only where the installation has a vocabulary
+ * (`summaries.topicsReady`; CLEAN-270, the owner's decision of 2026-11-28).
+ * Until a topic stands the summary asks no conversation about topics, so
+ * there is none to read: `topics` is empty, an open question carries no
+ * topic, and the page leaves the block out. Outcomes, tone, languages and
+ * open questions are counted either way.
  */
 @Injectable()
 export class PersonalStatsService {
@@ -159,7 +166,7 @@ export class PersonalStatsService {
     const reach = await this.access.reachableIds(viewer.caller);
     const scope = reach.where();
 
-    const [hours, everyAgent, ratings, cited, handovers, notes, summariesOn] =
+    const [hours, everyAgent, ratings, cited, handovers, notes, summaries] =
       await Promise.all([
         this.activity.findHoursForPerson(
           viewer.clientId,
@@ -206,8 +213,9 @@ export class PersonalStatsService {
         ]).then((parts) => parts.flat()),
         // Whether this installation produces summaries. Asked before any
         // of them is read: when it does not, none is.
-        this.insight.isEnabled(),
+        this.summariesOf(),
       ]);
+    const summariesOn = summaries.enabled;
 
     // The agents this person reaches, as the agents list shows them.
     const reached = new Map(
@@ -283,6 +291,7 @@ export class PersonalStatsService {
             conversations.summaries.filter((s) => reached.has(s.agentId)),
             nameOf,
             question.language ?? topicLanguageOf(undefined),
+            summaries.topicsReady,
           );
 
     return {
@@ -341,6 +350,28 @@ export class PersonalStatsService {
   }
 
   /**
+   * Whether summaries are produced here, and whether their topics are there
+   * to show: one topic stands (CLEAN-270, the owner's decision of
+   * 2026-11-28; `IPersonalSummaries.topicsReady`).
+   *
+   * The second is asked only when the first is true: without summaries the
+   * page shows one card in the place of every block made of them, and the
+   * answer is false whatever the table holds. It is asked of the chat
+   * slice's gateway and costs one row of `ChatTopic` by its id
+   * (`IChatTopicGateway.hasStanding`): not a count, and no conversation.
+   */
+  private async summariesOf(): Promise<{
+    enabled: boolean;
+    topicsReady: boolean;
+  }> {
+    const enabled = await this.insight.isEnabled();
+    return {
+      enabled,
+      topicsReady: enabled && (await this.topics.hasStanding()),
+    };
+  }
+
+  /**
    * The period's conversations, read once and by id: the ids are the ones
    * the person's hour rows named, so the read is as large as that person's
    * period and nothing is looked for in `ChatSession`.
@@ -372,17 +403,24 @@ export class PersonalStatsService {
    * conversations. The one read made here is of the topics those
    * conversations carry, by id: two at most per conversation, and in
    * practice the few dozen subjects an installation has.
+   *
+   * Not made while the installation has no vocabulary (`topicsReady`
+   * false): no topic stands, so no id a row carries could name one, and
+   * every conversation is read as carrying none.
    */
   private async summaryBlocks(
     conversations: number,
     sessions: readonly IChatSessionOutcome[],
     nameOf: (agentId: string) => string,
     language: string,
+    topicsReady: boolean,
   ): Promise<ISummaryBlocks> {
     const summarised = sessions
       .filter((session) => session.summaryAt !== null)
       .sort(newestFirst);
-    const topicIds = distinct(summarised.flatMap((s) => s.topicIds));
+    const topicIds = topicsReady
+      ? distinct(summarised.flatMap((s) => s.topicIds))
+      : [];
     const standing = topicIds.length
       ? await this.topics.findByIds(topicIds)
       : new Map<string, IChatTopicData>();
@@ -390,6 +428,7 @@ export class PersonalStatsService {
       conversations,
       sessions,
       summarised,
+      topicsReady,
       // The topics a conversation carries, as they stand now: a merged one
       // is the topic it was folded into, and that one once.
       (session) => {
@@ -428,7 +467,13 @@ const NO_SHARE: IPersonalResolved = { resolved: 0, summarised: 0 };
  * answer: an answer is its caller's to keep.
  */
 const withoutSummaries = (): ISummaryBlocks => ({
-  summaries: { enabled: false, summarised: 0, waiting: 0, tooShort: 0 },
+  summaries: {
+    enabled: false,
+    topicsReady: false,
+    summarised: 0,
+    waiting: 0,
+    tooShort: 0,
+  },
   resolved: { ...NO_SHARE },
   byAgent: new Map(),
   topics: [],
@@ -464,11 +509,14 @@ const wordingOf = (question: string): string =>
  * The arithmetic of the summary blocks. `sessions` are the rows read for
  * the period's conversations, `summarised` the ones among them that have a
  * summary, newest first, and `conversations` how many the period has.
+ * `topicsReady` is passed through to `summaries`; when it is false,
+ * `topicsOf` answers none for every conversation.
  */
 function summaryBlocksOf(
   conversations: number,
   sessions: readonly IChatSessionOutcome[],
   summarised: readonly IChatSessionOutcome[],
+  topicsReady: boolean,
   topicsOf: (session: IChatSessionOutcome) => IChatTopicData[],
   nameOf: (agentId: string) => string,
   language: string,
@@ -561,6 +609,7 @@ function summaryBlocksOf(
   return {
     summaries: {
       enabled: true,
+      topicsReady,
       summarised: summarised.length,
       waiting: notSummarised - tooShort,
       tooShort,

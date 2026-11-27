@@ -4,6 +4,7 @@ import {
   ICalibrationReport,
   dryLines,
   dryVocabularyLines,
+  proposedLines,
   reportLines,
   topicLines,
 } from './report';
@@ -13,7 +14,8 @@ const judged = (
   subject: string | null,
   topics: string[],
   loose: string[] = [],
-) => ({ n, subject, topics, loose });
+  proposed: string | null = null,
+) => ({ n, subject, topics, loose, proposed });
 
 /** Six conversations: see metrics.spec.ts for the same sample, counted. */
 const TOPICS = topicScores([
@@ -33,6 +35,47 @@ const OUTCOMES = [
   { n: 6, person: 'unknown', model: 'open' },
 ];
 
+/**
+ * The list a run was given (`--vocabulary`): three seeded topics, each
+ * standing for one subject of the reference. The subjects are written
+ * SUBJECT here so that one in the output would show.
+ */
+const SEED = [
+  { key: 'billing', subject: 'SUBJECT one' },
+  { key: 'refunds', subject: 'SUBJECT two' },
+  { key: 'agent-setup', subject: 'SUBJECT three' },
+];
+const JUDGED = [
+  judged(1, 'SUBJECT one', ['billing']),
+  judged(2, 'SUBJECT one', ['refunds']),
+  judged(3, 'SUBJECT two', []),
+  // Proposed a topic of its own, which is not coined: stored with none.
+  judged(4, 'SUBJECT three', [], [], 'onboarding'),
+  judged(5, 'SUBJECT two', ['refunds', 'billing']),
+  judged(6, null, ['billing']),
+  judged(7, 'SUBJECT elsewhere', ['billing']),
+  judged(9, null, []),
+];
+const given = (
+  items = JUDGED,
+  notOfferedAll: number[] = [],
+): NonNullable<ICalibrationReport['given']> => ({
+  seeded: SEED.length,
+  scores: givenListScores(items, SEED),
+  // The second half of the fixture's eight: 4, 5 and 6 are scored.
+  secondHalf: givenListScores(
+    items.filter((item) => item.n >= 4 && item.n <= 6),
+    SEED,
+  ),
+  notOfferedAll,
+});
+
+/**
+ * The report of a run that was given its topics, which is the run that has
+ * topic numbers at all: with an empty vocabulary no conversation is asked
+ * about topics (CLEAN-270, the owner's decision of 2026-11-28), and
+ * `report({ given: undefined })` is that run.
+ */
 const report = (
   over: Partial<ICalibrationReport> = {},
 ): ICalibrationReport => ({
@@ -45,7 +88,8 @@ const report = (
   unlabelled: [7],
   invalid: [],
   scored: 6,
-  coined: 3,
+  proposed: 3,
+  given: given(),
   person: { resolved: 3, open: 2, unknown: 1, subjects: 2, noSubject: 1 },
   topics: TOPICS,
   open: outcomeScores(OUTCOMES, 'open'),
@@ -55,7 +99,7 @@ const report = (
     conversations: 4,
     summarised: 3,
     scored: 3,
-    coined: 1,
+    proposed: 1,
     topics: topicScores([
       judged(4, 'refunds', ['refunds']),
       judged(5, 'refunds', ['refunds'], ['billing']),
@@ -95,7 +139,7 @@ describe('reportLines', () => {
       '[3] loose fits the person agrees with: 0.0% (0 of 3)',
     );
     expect(out).toContain(
-      '[4] topics coined: 3 in 7 conversations, 42.9 per 100',
+      '[4] topics proposed, not coined in this release: 3 in 7 conversations, 42.9 per 100',
     );
     expect(out).toContain('[5] open, precision (target 80%): 33.3% (1 of 3)');
     expect(out).toContain('[6] open, recall: 50.0% (1 of 2)');
@@ -151,14 +195,19 @@ describe('reportLines', () => {
     expect(out).not.toContain('Infinity');
   });
 
-  it('prints n/a for the topics coined when nothing was summarised', () => {
-    expect(text(reportLines(report({ summarised: 0, coined: 0 })))).toContain(
-      '[4] topics coined: 0 in 0 conversations, n/a per 100',
+  it('prints n/a for the topics proposed when nothing was summarised', () => {
+    expect(text(reportLines(report({ summarised: 0, proposed: 0 })))).toContain(
+      '[4] topics proposed, not coined in this release: 0 in 0 conversations, n/a per 100',
     );
   });
 
   it('names disagreements by the number of the conversation, and nothing else of it', () => {
-    const out = text(reportLines(report()));
+    const lines = reportLines(report());
+    const out = text(
+      lines.slice(
+        lines.indexOf('Disagreements, by the number of the conversation'),
+      ),
+    );
     expect(out).toContain('open by the model, not by the person: 3, 6');
     expect(out).toContain('open by the person, not by the model: 2');
     expect(out).toContain(
@@ -167,7 +216,7 @@ describe('reportLines', () => {
     expect(out).toContain(
       'a common topic, two subjects by the person: 1-6, 2-6',
     );
-    // The words of the labeller and of the model are not in the report.
+    // The words of the labeller and of the model are not among them.
     expect(out).not.toMatch(/billing|refunds|invoices/);
   });
 
@@ -217,7 +266,7 @@ describe('dryLines', () => {
     expect(out).toContain('labelled: 1');
     expect(out).toContain('unlabelled, skipped: 1 (n: 2)');
     expect(out).toContain(
-      'prompts built: 2, with an empty vocabulary; characters: least 900, median 7200, most 13500',
+      'prompts built: 2, with an empty vocabulary and so with no topics question; characters: least 900, median 7200, most 13500',
     );
     expect(out).toContain('longer than 12000 characters, cut at the start: 1');
     expect(out).toContain('resolved 1, open 0, cannot tell 0');
@@ -411,41 +460,12 @@ describe('reportLines: the failures, beside each headline number', () => {
 
 /**
  * A run that was given its topics (`--vocabulary`): the judgment as the
- * contract states it, a choice from a list, printed before the pairs. Three
- * seeded topics, each standing for one subject of the reference; the
- * subjects are written SUBJECT here so that one in the output would show.
+ * contract states it, a choice from a list, printed before the pairs. The
+ * list, the conversations and `given` are at the top of this file.
  */
 describe('reportLines: the choice from a given list', () => {
   const HEADING =
     'Topics, chosen from a given list (judgment 1 as the contract states it)';
-  const SEED = [
-    { key: 'billing', subject: 'SUBJECT one' },
-    { key: 'refunds', subject: 'SUBJECT two' },
-    { key: 'agent-setup', subject: 'SUBJECT three' },
-  ];
-  const JUDGED = [
-    judged(1, 'SUBJECT one', ['billing']),
-    judged(2, 'SUBJECT one', ['refunds']),
-    judged(3, 'SUBJECT two', []),
-    judged(4, 'SUBJECT three', ['onboarding']),
-    judged(5, 'SUBJECT two', ['refunds', 'billing']),
-    judged(6, null, ['billing']),
-    judged(7, 'SUBJECT elsewhere', ['billing']),
-    judged(9, null, []),
-  ];
-  const given = (
-    items = JUDGED,
-    notOfferedAll: number[] = [],
-  ): ICalibrationReport['given'] => ({
-    seeded: SEED.length,
-    scores: givenListScores(items, SEED),
-    // The second half of the fixture's eight: 4, 5 and 6 are scored.
-    secondHalf: givenListScores(
-      items.filter((item) => item.n >= 4 && item.n <= 6),
-      SEED,
-    ),
-    notOfferedAll,
-  });
   const section = (lines: string[]) =>
     lines.slice(lines.indexOf(HEADING), lines.indexOf('Topics (judgment 1)'));
 
@@ -460,15 +480,15 @@ describe('reportLines: the choice from a given list', () => {
       'failed on is in no share.',
       '  [9] chosen as the reference chose (target 90%): 40.0% (2 of 5); failed, in no share: 12.5% (1 of 8); no verdict: more than 10% of the sample failed',
       '      of the 2 chosen so, stored with a second topic besides: 1',
-      '      of the 3 not chosen so: another seeded topic 1, no topic 1, a topic coined in the run 1',
-      '  [10] topics coined although a list was given: 3 in 7 conversations, 42.9 per 100',
+      '      of the 3 not chosen so: another seeded topic 1, no topic 1, a new topic proposed and not coined in this release 1',
+      '  [10] topics proposed although a list was given, not coined in this release: 3 in 7 conversations, 42.9 per 100',
       '      reference subject not in the list, in no share: 1 (n: 7)',
       '      no subject by the reference: left without a topic by the model too 1, given a topic 1 (n: 6)',
       '  [9] second half (3 scored): chosen as the reference chose: 50.0% (1 of 2)',
       '  not chosen as the reference chose, as "conversation -> the model\'s keys (the reference\'s key)": 3',
       '    2 -> refunds (billing)',
       '    3 -> no topic (refunds)',
-      '    4 -> onboarding (agent-setup)',
+      '    4 -> no topic, proposed onboarding (agent-setup)',
       '',
     ]);
   });
@@ -503,7 +523,7 @@ describe('reportLines: the choice from a given list', () => {
           transcripts: 100,
           failed: [],
           summarised: 0,
-          coined: 0,
+          proposed: 0,
           given: given([
             judged(1, null, []),
             judged(2, 'SUBJECT elsewhere', []),
@@ -515,10 +535,10 @@ describe('reportLines: the choice from a given list', () => {
       '[9] chosen as the reference chose (target 90%): n/a (0 of 0); failed, in no share: 0.0% (0 of 100); no verdict: nothing to take a share of',
     );
     expect(out).toContain(
-      'of the 0 not chosen so: another seeded topic 0, no topic 0, a topic coined in the run 0',
+      'of the 0 not chosen so: another seeded topic 0, no topic 0, a new topic proposed and not coined in this release 0',
     );
     expect(out).toContain(
-      '[10] topics coined although a list was given: 0 in 0 conversations, n/a per 100',
+      '[10] topics proposed although a list was given, not coined in this release: 0 in 0 conversations, n/a per 100',
     );
     expect(out).toContain(
       'chosen as the reference chose: n/a (0 of 0)\n  not chosen as the reference chose, as "conversation -> the model\'s keys (the reference\'s key)": none\n',
@@ -540,47 +560,91 @@ describe('reportLines: the choice from a given list', () => {
     expect(misses).toHaveLength(50);
   });
 
-  // A prompt lists the sixty most used topics: with the ones coined on the
-  // way a seeded topic nobody chose yet can drop out of it.
+  // A prompt lists the sixty most used topics. A vocabulary file is refused
+  // past sixty and nothing is coined on the way in this release, so a run
+  // has none to name; the line is kept for the day more than sixty stand.
   it('says which conversations were not offered the whole list, when there were any', () => {
     const none = text(reportLines(report({ given: given() })));
     expect(none).not.toContain('not offered the whole list');
 
     const some = text(reportLines(report({ given: given(JUDGED, [7, 9]) })));
     expect(some).toContain(
-      '  note: 2 conversations were not offered the whole list (n: 7, 9): a prompt lists the 60 most used topics, and with the ones coined on the way more than that stood.',
+      '  note: 2 conversations were not offered the whole list (n: 7, 9): a prompt lists the 60 most used topics, and more than that stood.',
     );
   });
 
-  it('says of the second half that this run did not start with no topic', () => {
+  it('says of the second half that it was offered the list the first half was', () => {
     const out = text(reportLines(report({ given: given() })));
     expect(out).not.toMatch(/starts with no topic at all/);
     expect(out).toContain(
-      'This run started with the 3 topics of the vocabulary file, not with\nnone: its second half differs from the first by the topics coined on\nthe way.',
+      'This run started with the 3 topics of the vocabulary file and coins none\non the way: the second half is offered the list the first half was. Its\nnumbers are printed apart as the recorded runs printed them.',
+    );
+  });
+});
+
+/**
+ * A run with an empty vocabulary (no `--vocabulary`). The service that
+ * ships asks no conversation about topics while no topic stands, and coins
+ * none (CLEAN-270, the owner's decision of 2026-11-28), so such a run has no
+ * topic to score: it measures outcomes, and says so.
+ */
+describe('reportLines: a run with an empty vocabulary', () => {
+  const plain = () => reportLines(report({ given: undefined }));
+
+  it('prints the outcomes and no topic number, and says why', () => {
+    expect(plain()).toEqual([
+      'summary calibration: prompt version 2, model claude-x',
+      'conversations in the sample: 8; summarised: 7; failed: 1 (n: 8); no text: 0',
+      'unlabelled, skipped: 1 (n: 7); outcome not one of the three, skipped: 0',
+      'scored: 6 conversations',
+      "the person's labels: resolved 3, open 2, cannot tell 1; 2 subjects, 1 with no subject",
+      'note: 8 conversations is under the 100 the contract asks for; read the counts, not only the shares.',
+      '  failed 8: the answer was not usable JSON',
+      '',
+      'Topics (judgment 1): not asked',
+      'The vocabulary is empty, and while it is no conversation is asked about',
+      'topics and no topic is coined (CLEAN-270, the decision of 2026-11-28 in',
+      'contracts/summary-judgments.md). This run measures outcomes only: it has',
+      'no topic number to print. Give it a list with --vocabulary <file> to',
+      'measure the choice from that list.',
+      '',
+      'Outcomes (judgment 2), over 6 conversations',
+      '  [5] open, precision (target 80%): 33.3% (1 of 3); failed, in no share: 12.5% (1 of 8); no verdict: more than 10% of the sample failed',
+      '  [6] open, recall: 50.0% (1 of 2)',
+      '  [7] resolved, precision: 66.7% (2 of 3)',
+      '  [8] resolved, recall: 66.7% (2 of 3)',
+      '',
+      'Disagreements, by the number of the conversation',
+      '  open by the model, not by the person: 3, 6',
+      '  open by the person, not by the model: 2',
+      '  resolved by the model, not by the person: 2',
+      '  resolved by the person, not by the model: 3',
+    ]);
+  });
+
+  it('has no line of a pair, of a topic proposed or of the second half', () => {
+    const out = text(plain());
+    for (const mark of ['[1]', '[2]', '[3]', '[4]', '[9]', '[10]']) {
+      expect(out).not.toContain(mark);
+    }
+    expect(out).not.toMatch(
+      /pairs|second half|proposed|given list|common topic/,
     );
   });
 
-  // Without the flag the report is given no `given`, and prints what it did.
-  it('changes no other line, and is not printed for a run that was given no list', () => {
-    const plain = reportLines(report());
-    const withList = reportLines(report({ given: given() }));
-
-    expect(text(plain)).not.toMatch(/given list|\[9\]|\[10\]|vocabulary file/);
-    const added = section(withList).length;
-    const at = withList.indexOf(HEADING);
-    // The blank line before the heading is the section's own.
-    const rest = [
-      ...withList.slice(0, at - 1),
-      ...withList.slice(at - 1 + added),
-    ];
-    const differing = rest.filter((line, i) => line !== plain[i]);
-    expect(rest).toHaveLength(plain.length);
-    // The three lines of why the second half is printed apart.
-    expect(differing).toEqual([
-      'This run started with the 3 topics of the vocabulary file, not with',
-      'none: its second half differs from the first by the topics coined on',
-      'the way.',
-    ]);
+  // The outcome lines are the ones of the recorded runs, to the letter: a
+  // number of 2026-11-28 is compared with the line it was read from.
+  it('prints the outcome lines exactly as a run that was given a list prints them', () => {
+    const withList = reportLines(report());
+    const outcomes = (lines: string[]) =>
+      lines.filter(
+        (line) =>
+          /^ {2}\[[5-8]\] /.test(line) ||
+          / by the (model|person), not by the /.test(line) ||
+          line.startsWith('Outcomes (judgment 2)'),
+      );
+    expect(outcomes(plain())).toHaveLength(9);
+    expect(outcomes(plain())).toEqual(outcomes(withList));
   });
 });
 
@@ -676,7 +740,7 @@ describe('topicLines', () => {
     expect(some[some.length - 1]).toBe('  no topic: 1 (n: 9)');
   });
 
-  it('says so for a run that made no topic', () => {
+  it('says so for a run with no topic', () => {
     expect(topicLines([], [1, 2])).toEqual([
       '',
       'Topics of the run (--topics): 0 standing, most used first, as "key (label): conversations stored with it as a clear fit"',
@@ -698,11 +762,37 @@ describe('topicLines', () => {
 });
 
 /**
- * The run starts with no topic at all (the sample is summarised over an
- * empty vocabulary), which pushes the first conversations towards proposing
- * one: the numbers over the whole sample are partly numbers about that
- * start. Every topic number is printed again for the second half alone, in
- * file order, where the vocabulary is what the first half left.
+ * What `--topics` adds after the topics of a run: the keys the model
+ * proposed as new topics, none of which was coined, with the conversations
+ * that proposed each.
+ */
+describe('proposedLines', () => {
+  it('prints one line per key, in the order first proposed, with the conversations that proposed it', () => {
+    expect(
+      proposedLines([
+        { key: 'payments', conversations: [2, 9] },
+        { key: 'onboarding', conversations: [4] },
+      ]),
+    ).toEqual([
+      'Proposed as new topics, not coined in this release (--topics): 2 keys, as "key: conversations that proposed it"',
+      '  payments: 2 (n: 2, 9)',
+      '  onboarding: 1 (n: 4)',
+    ]);
+  });
+
+  it('says so when none was proposed', () => {
+    expect(proposedLines([])).toEqual([
+      'Proposed as new topics, not coined in this release (--topics): none',
+    ]);
+  });
+});
+
+/**
+ * Every topic number of a run that was given its list is printed again for
+ * the second half of the sample alone, in file order, as the recorded runs
+ * of 2026-11-28 printed it. Those runs coined topics on the way, so their
+ * second half was offered more than their first. In this release nothing is
+ * coined, and the two halves are offered the same list.
  */
 describe('reportLines: the topic numbers of the second half', () => {
   it('prints each of them again, labelled, with the size of that half beside it', () => {
@@ -727,12 +817,14 @@ describe('reportLines: the topic numbers of the second half', () => {
       '[3] second half (3 scored): loose fits the person agrees with: 0.0% (0 of 1)',
     );
     expect(out).toContain(
-      '[4] second half: topics coined: 1 in 3 conversations, 33.3 per 100',
+      '[4] second half: topics proposed, not coined in this release: 1 in 3 conversations, 33.3 per 100',
     );
   });
 
   it('says why they are printed apart', () => {
-    expect(text(reportLines(report()))).toMatch(/starts with no topic at all/);
+    expect(text(reportLines(report()))).toMatch(
+      /coins none\non the way: the second half is offered the list the first half was/,
+    );
   });
 
   it('has no share to give for a half with nothing in it', () => {
@@ -744,7 +836,7 @@ describe('reportLines: the topic numbers of the second half', () => {
             conversations: 1,
             summarised: 0,
             scored: 0,
-            coined: 0,
+            proposed: 0,
             topics: topicScores([]),
           },
         }),
@@ -754,7 +846,7 @@ describe('reportLines: the topic numbers of the second half', () => {
       '[1] second half (0 scored): same-subject pairs that got the same topic: n/a (0 of 0)',
     );
     expect(out).toContain(
-      '[4] second half: topics coined: 0 in 0 conversations, n/a per 100',
+      '[4] second half: topics proposed, not coined in this release: 0 in 0 conversations, n/a per 100',
     );
     expect(out).not.toContain('NaN');
   });

@@ -152,7 +152,10 @@ function toToolChat(
  * when the summaries gave one subject two labels. They live here because
  * the fact they change, `ChatTopic`, is this slice's. They follow the same
  * rule as the rest of the class: a count over conversations is a reading of
- * them, so it is asked for the agents `supervised` answers.
+ * them, so it is asked for the agents `supervised` answers. The list is a
+ * list across agents like `list_chats`, and says so in `scope` when the
+ * caller's access lists narrowed it (CLEAN-268); the merge names two topics
+ * and lists nothing.
  */
 @ToolAudience('admin')
 @Injectable()
@@ -293,16 +296,21 @@ export class ChatTool implements IConditionallyListedTool {
    * is a reading of those conversations too.
    *
    * `whole` says which of the two the caller is: true for the one who reads
-   * every conversation.
+   * every conversation. `used` is the reach the scope was cut from, for the
+   * list to say whether the caller's access lists narrowed it (`readable`).
    */
-  private async shownTopics(
-    httpRequest: Request,
-  ): Promise<{ shown: IChatTopicUsage[]; whole: boolean }> {
-    const scope = (await this.supervised(httpRequest)).where();
+  private async shownTopics(httpRequest: Request): Promise<{
+    shown: IChatTopicUsage[];
+    whole: boolean;
+    used: { readonly unrestricted: boolean };
+  }> {
+    const { reach, used } = await this.readable(httpRequest);
+    const scope = reach.where();
     const usage = await this.topics.listWithCounts(scope);
     return {
       shown: scope ? usage.filter((entry) => entry.conversations > 0) : usage,
       whole: !scope,
+      used,
     };
   }
 
@@ -656,7 +664,8 @@ export class ChatTool implements IConditionallyListedTool {
       'this installation produces no summaries, so say that no new topics ' +
       'appear, never that people talk about nothing. When the result ' +
       'carries `notIncluded`, conversations exist that this person may not ' +
-      'read and they are not in the counts.',
+      'read and they are not in the counts. ' +
+      ACCESS_SCOPE_NOTE,
     parameters: z.object({}),
   })
   async listChatTopics(
@@ -665,7 +674,7 @@ export class ChatTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    const [{ shown, whole }, summariesEnabled] = await Promise.all([
+    const [{ shown, whole, used }, summariesEnabled] = await Promise.all([
       this.shownTopics(httpRequest),
       this.insight.isEnabled(),
     ]);
@@ -689,6 +698,11 @@ export class ChatTool implements IConditionallyListedTool {
       total: shown.length,
       summariesEnabled,
       ...this.leftOut(httpRequest, undefined),
+      // The counts are over the agents this caller reads, and so is which
+      // topics are listed at all: a list across agents, narrowed by the
+      // caller's lists (CLEAN-268). Without the field "no topic" among one
+      // person's agents is read as what nobody here talks about.
+      ...accessScope(used),
     });
   }
 

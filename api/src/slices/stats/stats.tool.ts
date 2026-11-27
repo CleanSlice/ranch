@@ -53,7 +53,10 @@ import {
  * `Accept-Language`, and the agent words its answer in the person's
  * language itself. Both descriptions say what an installation without
  * summaries looks like (`summaries.enabled` false), the ordinary case: the
- * model can only say "not produced" instead of "none" if it was told.
+ * model can only say "not produced" instead of "none" if it was told. For
+ * the same reason `get_my_stats` says what an empty `topics` means while
+ * the installation has no vocabulary (`summaries.topicsReady` false, the
+ * owner's decision of 2026-11-28; CLEAN-278 is where one comes to exist).
  *
  * Which agents are counted is asked of the access lists for the party the
  * call is made for (`callerParty`), inside each service, so an agent that
@@ -105,7 +108,10 @@ export class StatsTool {
       'the rest). When `summaries.enabled` is false this Ranch produces no ' +
       'summaries: those parts are all zero or empty and say nothing. Tell ' +
       'the person that summaries are not produced here, never that ' +
-      'nothing was left open or that they talked about nothing. Counts, ' +
+      'nothing was left open or that they talked about nothing. When ' +
+      '`summaries.topicsReady` is false, `topics` is empty and no open ' +
+      'question has a `topic` because topics are not set up on this Ranch ' +
+      'yet: say that, and answer from the rest. Counts, ' +
       'names and times, and of what was written only their own main ' +
       'questions, as the summaries worded them. Agents the person cannot ' +
       'use are left out everywhere. ' +

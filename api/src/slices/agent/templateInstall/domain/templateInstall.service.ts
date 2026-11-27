@@ -393,7 +393,10 @@ export class TemplateInstallService {
       transport: m.transport,
       authType: m.authType ?? 'none',
       authValue: this.resolveSecretReference(m.authValue, suppliedSecrets),
-      builtIn: m.builtIn ?? false,
+      // Never from the archive. `builtIn` marks the servers this API
+      // seeds itself: it puts a row first in every list and makes it
+      // undeletable, and an archive is somebody else's file (CLEAN-271).
+      builtIn: false,
     });
     return { id: created.id };
   }

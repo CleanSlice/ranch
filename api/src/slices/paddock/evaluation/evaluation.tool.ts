@@ -14,6 +14,7 @@ import {
   accessScope,
   ownerOnlyLeftOutField,
   ownerOnlyRefusal,
+  isBuiltIntoAssistant,
   type ToolResult,
 } from '#/mcp/tooling';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
@@ -130,7 +131,14 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     if (!records.has(input.agentId)) {
       return agentNotFound(httpRequest, input.agentId, 'evaluations');
     }
-    return ok(await this.service.start(input));
+    // The scenarios of a template the assistant is built from are the
+    // Owner's (CLEAN-271): for anybody else the run leaves them out.
+    return ok(
+      await this.service.start(input, {
+        hidesTemplate: (templateId) =>
+          isBuiltIntoAssistant(httpRequest, 'template', templateId),
+      }),
+    );
   }
 
   @Tool({

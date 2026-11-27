@@ -126,6 +126,16 @@ export const APPROVED_SETTING_GROUPS: readonly string[] = [
 ];
 
 /** What an Admin reads under a form that edits one of those settings. */
+/**
+ * The Evaluations tab of a template the assistant is built from, for anybody
+ * but the Owner (CLEAN-271). A scenario is text that is sent to an agent
+ * when it is evaluated; those of the assistant's template are sent to the
+ * assistant when the Owner evaluates it. The API keeps them from anybody
+ * else, to read as to write, so the tab says so and offers nothing.
+ */
+export const BUILT_FROM_SCENARIOS_TEXT =
+  'The scenarios of this template are what the Owner tests the Ranch assistant with. Only the Owner can read or change them.';
+
 export const APPROVED_SETTINGS_TEXT =
   'The Ranch assistant keeps the values the Owner approved; this change applies to other agents.';
 

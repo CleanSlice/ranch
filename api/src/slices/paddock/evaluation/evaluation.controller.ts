@@ -15,6 +15,8 @@ import { AgentScoped, accessCallerOf } from '#/user/agentAccess/guards';
 import { PaddockEvaluationService } from './domain/evaluation.service';
 import { PaddockEvaluationReportDto, RunPaddockEvaluationDto } from './dtos';
 import { IRunPaddockEvaluationData } from './domain/evaluation.types';
+import { AssistantBuildService } from '#/agent/assistantBuild/domain/assistantBuild.service';
+import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 
 /** What the service answers for an evaluation that does not exist. */
 const EVALUATION_NOT_FOUND = 'Evaluation not found';
@@ -39,6 +41,7 @@ export class PaddockEvaluationController {
   constructor(
     private service: PaddockEvaluationService,
     private access: AgentAccessService,
+    private build: AssistantBuildService,
   ) {}
 
   /**
@@ -65,8 +68,18 @@ export class PaddockEvaluationController {
     summary:
       'Start a paddock evaluation for an agent. Returns the evaluation record immediately; the actual run is asynchronous (poll status).',
   })
-  start(@Body() dto: RunPaddockEvaluationDto) {
-    return this.service.start(dto as IRunPaddockEvaluationData);
+  async start(@Body() dto: RunPaddockEvaluationDto, @Req() req?: Request) {
+    // The scenarios of a template the assistant is built from are the
+    // Owner's (CLEAN-271): for anybody else a run leaves them out, so its
+    // snapshot does not read them back.
+    const user = (req as (Request & { user?: IAuthTokenPayload }) | undefined)
+      ?.user;
+    const kept = AssistantBuildService.isOwner(user)
+      ? []
+      : (await this.build.ingredients()).template;
+    return this.service.start(dto as IRunPaddockEvaluationData, {
+      hidesTemplate: (templateId) => kept.includes(templateId),
+    });
   }
 
   @Get()

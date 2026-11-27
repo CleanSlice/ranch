@@ -601,6 +601,22 @@ until each is filed as one or the other.
 
 #### What the assistant is built from (CLEAN-271)
 
+**Its template's scenarios too.** A paddock scenario is text that is sent to
+an agent when an evaluation runs: its messages are the turns, its `setup`
+writes files and environment variables into the sandbox the agent is started
+in. The scenarios scoped to a template the assistant is built from run
+whenever the Owner evaluates the assistant, so they are the Owner's: for
+anybody else `create_paddock_scenario`, `update_paddock_scenario`,
+`delete_paddock_scenario` and `generate_paddock_scenarios` answer
+`reason: "owner_only"` (`builtFromScenariosRefusal`), the routes 403
+`ASSISTANT_BUILT_FROM` on a write that names the template and 404 by id, and
+the reads leave them out and say so, as the assistant's own scenarios are
+read since CLEAN-268. An evaluation runs the scenarios of its own agent and
+no others: a scenario named by id from another scope is not copied into the
+run's snapshot, and a run started by anybody but the Owner leaves the
+scenarios of the assistant's template out of an ordinary agent that sits on
+it. A template archive never makes a tool server `builtIn`.
+
 Managing the assistant is the Owner's. Its pod, though, is put together at
 every restart from things that are not the agent, and an Admin could write
 each of them: rewrite `SOUL.md` in its template, and the next restart copied

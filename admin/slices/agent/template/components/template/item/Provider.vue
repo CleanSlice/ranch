@@ -16,6 +16,7 @@ import TemplateTile from '../Tile.vue';
 import TemplateItemOverview from './Overview.vue';
 import TemplateItemUnsavedBar from './UnsavedBar.vue';
 import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
+import { BUILT_FROM_SCENARIOS_TEXT } from '#agent/utils/agentAccess';
 
 /**
  * A template's page (CLEAN-130): header with the tile and the actions, a tab
@@ -526,6 +527,14 @@ async function onRemove() {
       </div>
 
       <TemplateFileProvider v-else-if="tab === 'files'" :id="template.id" :read-only="locked" />
+
+      <p
+        v-else-if="tab === 'evaluations' && locked"
+        data-built-from-scenarios
+        class="rounded-md border border-dashed p-6 text-sm text-muted-foreground"
+      >
+        {{ BUILT_FROM_SCENARIOS_TEXT }}
+      </p>
 
       <div v-else-if="tab === 'evaluations'" class="flex flex-col gap-6">
         <p class="text-sm text-muted-foreground">

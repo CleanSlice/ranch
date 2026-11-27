@@ -995,6 +995,34 @@ export function builtFromRefusal(
 }
 
 /**
+ * The scenarios of a template the assistant is built from (CLEAN-271).
+ *
+ * A scenario is text that is SENT to an agent when an evaluation runs: its
+ * messages are the turns, its `setup` writes files and environment
+ * variables into the sandbox the agent is started in. The scenarios of the
+ * assistant's template run whenever the Owner evaluates the assistant, so
+ * whoever writes one speaks to the assistant in the Owner's evaluation.
+ * They are the Owner's to write, and to read, as the scenarios of the
+ * assistant itself are since CLEAN-268: what the Owner tests it with.
+ */
+export const BUILT_FROM_SCENARIOS =
+  'The scenarios of this template are what the Owner tests the Ranch ' +
+  'assistant with. Only the Owner can read or change them.';
+
+/**
+ * The refusal of a read or a write of the scenarios of `templateId`; null
+ * when the template is not one the assistant is built from, or the caller
+ * is the Owner.
+ */
+export function builtFromScenariosRefusal(
+  httpRequest: Request,
+  templateId: string | null | undefined,
+): ToolResult | null {
+  if (!isBuiltIntoAssistant(httpRequest, 'template', templateId)) return null;
+  return ok({ error: BUILT_FROM_SCENARIOS, reason: OWNER_ONLY_REASON });
+}
+
+/**
  * One sentence for the description of a tool that writes to a kind of
  * resource the assistant may be built from, so the attempt is not made.
  */

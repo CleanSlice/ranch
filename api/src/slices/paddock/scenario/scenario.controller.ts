@@ -15,6 +15,8 @@ import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { AgentScoped, accessCallerOf } from '#/user/agentAccess/guards';
+import { AssistantBuildService } from '#/agent/assistantBuild/domain/assistantBuild.service';
+import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import {
   IPaddockScenarioGateway,
   IPaddockScenarioGeneratorGateway,
@@ -38,6 +40,14 @@ const SCENARIO_NOT_FOUND = 'Scenario not found';
  * Paddock scenarios. Admin by the default of the role guard. A scenario is
  * scoped to a template or to one agent; one scoped to an agent the caller's
  * access lists hide is answered as if it did not exist (CLEAN-231).
+ *
+ * The scenarios of a template the Ranch assistant is built from are the
+ * Owner's (CLEAN-271). A scenario is text that is sent to an agent when an
+ * evaluation runs, with files and environment variables for its sandbox:
+ * those of the assistant's template are sent to the assistant when the
+ * Owner evaluates it. So for anybody else they are not in the lists and
+ * answer 404 by id, as the assistant's own scenarios do since CLEAN-268,
+ * and writing one is refused with 403 `ASSISTANT_BUILT_FROM`.
  */
 @ApiTags('paddock-scenarios')
 @Controller('paddock-scenarios')
@@ -46,7 +56,24 @@ export class PaddockScenarioController {
     private gateway: IPaddockScenarioGateway,
     private generator: IPaddockScenarioGeneratorGateway,
     private access: AgentAccessService,
+    private build: AssistantBuildService,
   ) {}
+
+  /**
+   * Whether `templateId` is a template whose scenarios the caller may not
+   * read or write: one the assistant is built from, for anybody but the
+   * Owner.
+   */
+  private async ownersTemplate(
+    req: Request | undefined,
+  ): Promise<(templateId: string | null | undefined) => boolean> {
+    const user = (req as (Request & { user?: IAuthTokenPayload }) | undefined)
+      ?.user;
+    if (AssistantBuildService.isOwner(user)) return () => false;
+    const templates = (await this.build.ingredients()).template;
+    return (templateId) =>
+      typeof templateId === 'string' && templates.includes(templateId);
+  }
 
   /** The scenario, when it exists and the caller reaches its agent. */
   private async requireScenario(
@@ -62,6 +89,13 @@ export class PaddockScenarioController {
       !(await this.access.reachableIds(accessCallerOf(req)))
         .forRecords()
         .has(scenario.agentId)
+    ) {
+      throw new NotFoundException(SCENARIO_NOT_FOUND);
+    }
+    // And one of a template the assistant is built from (CLEAN-271).
+    if (
+      !scenario.agentId &&
+      (await this.ownersTemplate(req))(scenario.templateId)
     ) {
       throw new NotFoundException(SCENARIO_NOT_FOUND);
     }
@@ -84,10 +118,13 @@ export class PaddockScenarioController {
     const reach = (
       await this.access.reachableIds(accessCallerOf(req))
     ).forRecords();
-    return reach.filter(
-      await this.gateway.findAll({ templateId, agentId }),
-      (scenario) => scenario.agentId,
-    );
+    const hidden = await this.ownersTemplate(req);
+    return reach
+      .filter(
+        await this.gateway.findAll({ templateId, agentId }),
+        (scenario) => scenario.agentId,
+      )
+      .filter((scenario) => scenario.agentId || !hidden(scenario.templateId));
   }
 
   @Get(':id')
@@ -102,9 +139,22 @@ export class PaddockScenarioController {
     summary:
       'Create a paddock scenario scoped to either a template or an agent (XOR — exactly one).',
   })
-  create(@Body() dto: CreatePaddockScenarioDto) {
+  async create(@Body() dto: CreatePaddockScenarioDto, @Req() req?: Request) {
     this.assertExactlyOneScope(dto.templateId, dto.agentId);
+    await this.assertMayWriteFor(dto.templateId, req);
     return this.gateway.create(dto as ICreatePaddockScenarioData);
+  }
+
+  /** 403 `ASSISTANT_BUILT_FROM` before anything is written or drafted. */
+  private assertMayWriteFor(
+    templateId: string | null | undefined,
+    req: Request | undefined,
+  ): Promise<void> {
+    return this.build.assertMayChange(
+      (req as (Request & { user?: IAuthTokenPayload }) | undefined)?.user,
+      'template',
+      templateId,
+    );
   }
 
   @Post('generate')
@@ -113,7 +163,11 @@ export class PaddockScenarioController {
     summary:
       'Generate a scenario draft from a natural-language description via LLM. Result is NOT persisted — review + POST / to save.',
   })
-  generate(@Body() dto: GeneratePaddockScenarioDto) {
+  async generate(
+    @Body() dto: GeneratePaddockScenarioDto,
+    @Req() req?: Request,
+  ) {
+    await this.assertMayWriteFor(dto.templateId, req);
     return this.generator.generate({
       description: dto.description,
       templateId: dto.templateId ?? undefined,

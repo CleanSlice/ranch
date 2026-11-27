@@ -20,6 +20,7 @@ import {
   IPaddockJudgeCredential,
 } from './';
 import { IPaddockScenarioData } from '../../scenario/domain';
+import type { IPaddockRunScope } from './evaluation.types';
 import { RanchAgentEnvelope } from '../data/ranchAgentEnvelope';
 import { captureBackgroundError } from '#/setup/sentry';
 
@@ -75,6 +76,7 @@ export class PaddockEvaluationService {
 
   async start(
     input: IRunPaddockEvaluationData,
+    scope: IPaddockRunScope = {},
   ): Promise<IPaddockEvaluationData> {
     const agent = await this.agentGateway.findById(input.agentId);
     if (!agent) throw new NotFoundException('Agent not found');
@@ -97,7 +99,7 @@ export class PaddockEvaluationService {
       ...(input.judgeOverride ?? {}),
     };
 
-    const scenarios = await this.resolveScenarios(input);
+    const scenarios = await this.resolveScenarios(input, agent, scope);
     if (scenarios.length === 0) {
       throw new BadRequestException(
         'No scenarios found for this agent. Add scenarios to its template first.',
@@ -265,9 +267,30 @@ export class PaddockEvaluationService {
     return this.reportGateway.loadTrace(id, scenarioId);
   }
 
+  /**
+   * The scenarios of one run: the agent's own and its template's, or the
+   * ones named among those.
+   *
+   * A named scenario used to be taken by its id alone, whatever it was
+   * scoped to. The run copies its scenarios into a snapshot the person who
+   * started it reads, so naming the id of a scenario of an agent they do
+   * not reach, of the Ranch assistant or of its template, read it to them
+   * past every rule about scenarios (CLEAN-231, CLEAN-268, CLEAN-271). A
+   * scenario runs for the agent it is scoped to and for no other.
+   */
   private async resolveScenarios(
     input: IRunPaddockEvaluationData,
+    agent: { id: string; templateId?: string | null },
+    scope: IPaddockRunScope,
   ): Promise<IPaddockScenarioData[]> {
+    const ofThisAgent = (s: IPaddockScenarioData): boolean =>
+      s.agentId
+        ? s.agentId === agent.id
+        : Boolean(s.templateId) && s.templateId === agent.templateId;
+    const shown = (s: IPaddockScenarioData): boolean =>
+      Boolean(s.agentId) ||
+      !s.templateId ||
+      !scope.hidesTemplate?.(s.templateId);
     let scenarios: IPaddockScenarioData[];
     if (input.scenarioIds && input.scenarioIds.length > 0) {
       scenarios = [];
@@ -278,7 +301,7 @@ export class PaddockEvaluationService {
     } else {
       scenarios = await this.scenarioGateway.findForAgent(input.agentId);
     }
-    return sortScenarios(scenarios);
+    return sortScenarios(scenarios.filter(ofThisAgent).filter(shown));
   }
 
   /**

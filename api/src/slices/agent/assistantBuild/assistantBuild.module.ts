@@ -2,7 +2,12 @@ import { Global, Module, forwardRef } from '@nestjs/common';
 import { ASSISTANT_BUILD_RESOLVER } from '#/mcp/interfaces/assistant-build.interface';
 import { AgentModule } from '#/agent/agent/agent.module';
 import { TemplateModule } from '#/agent/template/template.module';
+import { SettingModule } from '#/setting/setting.module';
+import { UserModule } from '#/user/user/user.module';
 import { AssistantBuildService } from './domain/assistantBuild.service';
+import { AssistantSettingService } from './domain/assistantSetting.service';
+import { AssistantSettingController } from './assistantSetting.controller';
+import { AssistantSettingTool } from './assistantSetting.tool';
 
 /**
  * What the Ranch assistant is built from, in one place for the whole API
@@ -16,11 +21,24 @@ import { AssistantBuildService } from './domain/assistantBuild.service';
  */
 @Global()
 @Module({
-  imports: [forwardRef(() => AgentModule), forwardRef(() => TemplateModule)],
+  imports: [
+    forwardRef(() => AgentModule),
+    forwardRef(() => TemplateModule),
+    SettingModule,
+    UserModule,
+  ],
+  controllers: [AssistantSettingController],
   providers: [
     AssistantBuildService,
+    // The settings the assistant is served: the values the Owner approved.
+    AssistantSettingService,
+    AssistantSettingTool,
     { provide: ASSISTANT_BUILD_RESOLVER, useExisting: AssistantBuildService },
   ],
-  exports: [AssistantBuildService, ASSISTANT_BUILD_RESOLVER],
+  exports: [
+    AssistantBuildService,
+    AssistantSettingService,
+    ASSISTANT_BUILD_RESOLVER,
+  ],
 })
 export class AssistantBuildModule {}

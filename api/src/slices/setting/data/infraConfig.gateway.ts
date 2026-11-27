@@ -5,6 +5,7 @@ import {
   WorkflowProviderTypes,
 } from '../domain/infraConfig.gateway';
 import { ISettingGateway } from '../domain/setting.gateway';
+import { currentSettingOverrides } from '../domain/settingScope';
 
 const GROUP = 'infrastructure';
 const CACHE_TTL_MS = 30_000;
@@ -175,9 +176,13 @@ export class InfraConfigGateway
   private async resolve<K extends KeyName>(
     key: K,
   ): Promise<(typeof KEYS)[K]['default']> {
+    // Work done for the Ranch assistant reads the values the Owner approved
+    // (settingScope.ts). The cache holds live values and is shared by every
+    // caller, so such work neither reads it nor fills it.
+    const scoped = currentSettingOverrides() !== null;
     const cached = this.cache.get(key);
     const now = Date.now();
-    if (cached && cached.expiresAt > now) {
+    if (!scoped && cached && cached.expiresAt > now) {
       return cached.value as (typeof KEYS)[K]['default'];
     }
 
@@ -208,7 +213,7 @@ export class InfraConfigGateway
       value = spec.default;
     }
 
-    this.cache.set(key, { value, expiresAt: now + CACHE_TTL_MS });
+    if (!scoped) this.cache.set(key, { value, expiresAt: now + CACHE_TTL_MS });
     return value as (typeof KEYS)[K]['default'];
   }
 

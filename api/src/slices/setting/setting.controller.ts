@@ -20,6 +20,8 @@ import {
   ISettingGateway,
   OWNER_ONLY_SETTING_CODE,
   ownerOnlySettingRefusal,
+  writeSettingBy,
+  type ISettingWriter,
 } from './domain';
 import { UpsertSettingDto } from './dtos';
 
@@ -33,6 +35,17 @@ import { UpsertSettingDto } from './dtos';
  * group, so the rest of the settings stay behind the guard.
  */
 const PUBLIC_AUTH_SETTINGS = new Set(['registration_enabled']);
+
+/** Who writes: the account behind the request, and whether it is the Owner. */
+function writerOf(
+  req?: Request & { user?: IAuthTokenPayload },
+): ISettingWriter {
+  const sub = typeof req?.user?.sub === 'string' ? req.user.sub : '';
+  return {
+    userId: sub && !sub.startsWith('agent:') ? sub : null,
+    owner: rolesAdmit([UserRoleTypes.Owner], heldRoles(req?.user)),
+  };
+}
 
 @ApiTags('settings')
 @Controller('settings')
@@ -83,7 +96,15 @@ export class SettingController {
     @Req() req?: Request & { user?: IAuthTokenPayload },
   ) {
     this.assertMayWrite(group, name, req);
-    const result = await this.gateway.upsert(group, name, dto);
+    // Through `writeBy`: when it is not the Owner who writes, the Ranch
+    // assistant keeps the value this setting had (CLEAN-271).
+    const result = await writeSettingBy(
+      this.gateway,
+      group,
+      name,
+      dto,
+      writerOf(req),
+    );
     if (group === 'infrastructure') this.infraConfig.invalidate();
     return result;
   }
@@ -96,7 +117,7 @@ export class SettingController {
     @Req() req?: Request & { user?: IAuthTokenPayload },
   ) {
     this.assertMayWrite(group, name, req);
-    await this.gateway.delete(group, name);
+    await writeSettingBy(this.gateway, group, name, null, writerOf(req));
     if (group === 'infrastructure') this.infraConfig.invalidate();
   }
 

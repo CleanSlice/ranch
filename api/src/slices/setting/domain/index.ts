@@ -1,5 +1,11 @@
 export * from './setting.types';
-export { ISettingGateway } from './setting.gateway';
+export {
+  ISettingGateway,
+  writeSettingBy,
+  type ISettingWriteHook,
+  type IStoredSetting,
+} from './setting.gateway';
+export * from './settingScope';
 export * from './settingCatalog';
 export * from './ownerOnlySettings';
 export {

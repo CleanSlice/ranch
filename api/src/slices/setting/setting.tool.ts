@@ -7,6 +7,7 @@ import {
   OWNER_ONLY_REASON,
   callerIsOperator,
   callerIsOwner,
+  callerPerson,
   confirmed,
   ok,
   requireOperator,
@@ -21,6 +22,7 @@ import {
   nearestSettingDefinition,
   ownerOnlySettingRefusal,
   settingKey,
+  writeSettingBy,
   type ISettingData,
 } from './domain';
 
@@ -134,7 +136,12 @@ export class SettingTool implements IConditionallyListedTool {
     );
     if (refusal) return refusal;
 
-    await this.settings.delete(group, name);
+    // When it is not the Owner who deletes, the Ranch assistant keeps the
+    // value this setting had (CLEAN-271).
+    await writeSettingBy(this.settings, group, name, null, {
+      userId: callerPerson(httpRequest)?.userId ?? null,
+      owner: callerIsOwner(httpRequest),
+    });
     // The controller drops the infra cache on this group so the next read
     // sees the env/default value instead of the row that no longer exists.
     if (group === 'infrastructure') this.infraConfig.invalidate();

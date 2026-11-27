@@ -1,0 +1,30 @@
+// The value of a setting the Owner approved for the Ranch assistant, kept
+// ONLY while the live value differs from it (CLEAN-271).
+//
+// The assistant is deployed from the settings the Owner approved, not from
+// the live ones. There is no second copy of the settings: while nobody but
+// the Owner has changed a setting, the live row IS the approved one and no
+// row exists here. When somebody else writes a setting of a group the
+// assistant is served from, the value it had goes here first, in the same
+// transaction; the assistant keeps reading that. The row goes away when the
+// Owner writes the setting, applies the current settings to the assistant,
+// or the live value comes back to the approved one.
+//
+// So a row here is a drift, and the table is the list of them. `value` is
+// stored the way `Setting.value` is, in the same database: nothing is kept
+// here that the settings table did not already hold in the same form.
+model AssistantSettingPin {
+  group       String
+  name        String
+  // False when the approved state is "no such setting": the row was created
+  // by somebody else and the assistant keeps reading the default.
+  present     Boolean
+  valueType   String   @default("string")
+  value       String   @default("")
+  // Who made the live value differ, and when. A bare id, no relation: the
+  // repo convention for User (see session.prisma).
+  changedById String?
+  changedAt   DateTime @default(now())
+
+  @@id([group, name])
+}

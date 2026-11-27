@@ -46,8 +46,10 @@ import {
   ISettingGateway,
   describeSettingCatalog,
   findSettingDefinition,
+  assistantSettingDrift,
   nearestSettingDefinition,
   ownerOnlySettingRefusal,
+  writeSettingBy,
 } from '#/setting/domain';
 import { IUsageGateway } from '#/usage/domain';
 import { IFileGateway } from '#/agent/file/domain';
@@ -190,7 +192,27 @@ export class RancherTool {
           status.admin,
         ));
     }
-    return ok(rancherStatusFor(status, { reaches, manages }));
+    // The Owner is told when the assistant runs on settings that are not
+    // the current ones (CLEAN-271): keys only, never a value.
+    const settingsDrift = callerIsOwner(httpRequest)
+      ? (await assistantSettingDrift()).map((row) => ({
+          setting: `${row.group}.${row.name}`,
+          change: row.change,
+          changedAt: row.changedAt,
+        }))
+      : undefined;
+    return ok({
+      ...rancherStatusFor(status, { reaches, manages }),
+      ...(settingsDrift?.length
+        ? {
+            settingsDrift,
+            settingsDriftNote:
+              'These settings were changed by somebody else. The assistant ' +
+              'keeps the values the Owner approved until ' +
+              'apply_settings_to_assistant.',
+          }
+        : {}),
+    });
   }
 
   // ─── Agents ──────────────────────────────────────────────────────────
@@ -1113,10 +1135,18 @@ export class RancherTool {
     if (ownerOnly && !callerIsOwner(httpRequest)) {
       return ok({ error: ownerOnly, reason: OWNER_ONLY_REASON });
     }
-    const saved = await this.settings.upsert(group, name, {
-      value,
-      valueType: valueType ?? 'string',
-    });
+    // When it is not the Owner who writes, the Ranch assistant keeps the
+    // value this setting had until the Owner applies the change (CLEAN-271).
+    const saved = (await writeSettingBy(
+      this.settings,
+      group,
+      name,
+      { value, valueType: valueType ?? 'string' },
+      {
+        userId: callerPerson(httpRequest)?.userId ?? null,
+        owner: callerIsOwner(httpRequest),
+      },
+    ))!;
     if (findSettingDefinition(group, name)) return ok(saved);
     // Saved anyway (the console allows any key), but say what it probably
     // should have been, so a typo does not silently become a dead row.

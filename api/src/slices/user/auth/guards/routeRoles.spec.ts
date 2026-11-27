@@ -158,6 +158,10 @@ describe('every route asks for a role', () => {
         // an existing ingredient keep their Admin role and are refused per
         // resource (`@ChangesAssistantIngredient`, assistantBuildRoutes.spec).
         'POST /rancher/template',
+        // Which settings the assistant is deployed from: what is kept back
+        // from it, and applying the current ones (CLEAN-271).
+        'GET /rancher/settings',
+        'POST /rancher/settings/apply',
       ].sort(),
     );
   });

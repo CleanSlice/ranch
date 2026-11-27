@@ -105,7 +105,17 @@ interface ISourceRow {
   reindexed: number;
 }
 
-export function ranchWorld() {
+export interface IRanchWorldOptions {
+  /**
+   * The settings gateway to deploy through, for a spec about settings: the
+   * real `SettingGateway` over a store of its own. Default: a plain map.
+   */
+  settings?: ISettingGateway;
+  /** The infra config to deploy through; default: a fixed Argo address. */
+  infraConfig?: { getArgoUrl(): Promise<string> };
+}
+
+export function ranchWorld(options: IRanchWorldOptions = {}) {
   const agent = (
     id: string,
     name: string,
@@ -739,7 +749,7 @@ export function ranchWorld() {
     },
   };
 
-  const settings = {
+  const settings = (options.settings ?? {
     findAll: () => Promise.resolve([...state.settings.values()]),
     findByGroup: (group: string) =>
       Promise.resolve(
@@ -756,7 +766,10 @@ export function ranchWorld() {
       state.settings.delete(`${group}/${name}`);
       return Promise.resolve();
     },
-  } as unknown as ISettingGateway;
+  }) as unknown as ISettingGateway;
+  const infraConfig = options.infraConfig ?? {
+    getArgoUrl: () => Promise.resolve('http://argo'),
+  };
 
   const build = new AssistantBuildService(agents, templates);
 
@@ -785,11 +798,13 @@ export function ranchWorld() {
   );
 
   class CapturingWorkflowGateway extends ArgoWorkflowGateway {
-    submitted: { image: string; env: unknown }[] = [];
+    submitted: { image: string; submittedTo: string; env: unknown }[] = [];
 
     async submit(data: ISubmitWorkflowData): Promise<string> {
       this.submitted.push({
         image: data.image,
+        // Where the manifest, which holds the agent's token, is posted.
+        submittedTo: await infraConfig.getArgoUrl(),
         env: await this.previewEnv(data),
       });
       return 'workflow-1';
@@ -802,7 +817,7 @@ export function ranchWorld() {
 
   const workflowGateway = () =>
     new CapturingWorkflowGateway(
-      { getArgoUrl: () => Promise.resolve('http://argo') } as never,
+      infraConfig as never,
       settings,
       llms,
       mcpResolver,
@@ -827,10 +842,17 @@ export function ranchWorld() {
   async function assembled(agentId: string = RANCH): Promise<string> {
     const workspace = new Map<string, string>();
     const files = {
-      resyncFromTemplate: (_agentId: string, templateId: string) => {
+      resyncFromTemplate: async (_agentId: string, templateId: string) => {
         const source = state.templateFiles.get(templateId) ?? new Map();
         for (const [path, content] of source) workspace.set(path, content);
-        return Promise.resolve(source.size);
+        // The API's own S3 client reads the bucket when it copies, the way
+        // `FileGateway.getIntegration` does: through the settings gateway.
+        const bucket = await settings.findByKey('integrations', 's3_bucket');
+        workspace.set(
+          '(copied by the API from bucket)',
+          typeof bucket?.value === 'string' ? bucket.value : '',
+        );
+        return source.size;
       },
       syncSkills: (
         _agentId: string,

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 
 // Setup slices
@@ -13,6 +13,7 @@ import { AgentPermissionModule } from './slices/agent/agent/agentPermission.modu
 import { AgentManageGuard } from './slices/agent/agent/guards';
 import { AssistantBuildModule } from './slices/agent/assistantBuild/assistantBuild.module';
 import { AssistantBuildGuard } from './slices/agent/assistantBuild/guards';
+import { AssistantSettingInterceptor } from './slices/agent/assistantBuild/assistantSetting.interceptor';
 import { AgentPinModule } from './slices/agent/pin/agentPin.module';
 import { AgentAccessModule } from './slices/user/agentAccess/agentAccess.module';
 import { AssistantAccessModule } from './slices/user/assistantAccess/assistantAccess.module';
@@ -187,6 +188,10 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     // every writing route of those slices carries the marker, asks the rule
     // in its method, or is exempt with a reason.
     { provide: APP_GUARD, useClass: AssistantBuildGuard },
+    // A request made for the Ranch assistant (it names the assistant, or
+    // carries its runtime's token) reads the settings the Owner approved,
+    // not the live ones (CLEAN-271). Costs nothing for any other request.
+    { provide: APP_INTERCEPTOR, useClass: AssistantSettingInterceptor },
   ],
 })
 export class AppModule {}

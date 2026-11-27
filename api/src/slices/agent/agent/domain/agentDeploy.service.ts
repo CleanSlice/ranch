@@ -13,6 +13,7 @@ import { ISkillGateway } from '#/skill/domain';
 import { IPodGateway } from '#/agent/pod/domain';
 import { DeployTracker } from './deployTracker';
 import { captureBackgroundError } from '#/setup/sentry';
+import { servingAssistant } from '#/setting/domain';
 
 @Injectable()
 export class AgentDeployService {
@@ -33,10 +34,24 @@ export class AgentDeployService {
   // previous workflow, redeploy. Each step is best-effort — failures are
   // logged but don't abort the next step (the deploy must always run so a
   // partial earlier failure doesn't leave the agent stuck).
+  //
+  // The Ranch assistant is restarted on the settings the Owner approved,
+  // not on the live ones (CLEAN-271): `servingAssistant` makes every
+  // settings read below it (the template resync's bucket, the manifest's
+  // addresses and keys, where the manifest is submitted) answer with the
+  // approved value. For any other agent it is a plain call.
   async restartAgent(agentId: string): Promise<void> {
     const agent = await this.agentGateway.findById(agentId);
     if (!agent) return;
+    return servingAssistant(agent.isAdmin, () =>
+      this.restartServed(agentId, agent),
+    );
+  }
 
+  private async restartServed(
+    agentId: string,
+    agent: IAgentData,
+  ): Promise<void> {
     // Mark BEFORE cancel so the old pod's MODIFIED phase=Failed event (emitted
     // by Argo's cancellation) is recognised as stale by the reconciler.
     this.deployTracker.mark(agentId);
@@ -76,22 +91,26 @@ export class AgentDeployService {
     opts: { isAdmin?: boolean } = {},
   ): Promise<IAgentData | null> {
     const agent = await this.agentGateway.create(input);
-    try {
-      const copied = await this.fileGateway.seedFromTemplate(
-        agent.id,
-        agent.templateId,
-      );
-      if (copied > 0) {
-        this.logger.log(
-          `Seeded ${copied} files into agent ${agent.id} from template ${agent.templateId}`,
+    // An agent created AS the assistant is seeded where the assistant will
+    // be deployed from: the approved settings, not the live ones.
+    await servingAssistant(opts.isAdmin === true, async () => {
+      try {
+        const copied = await this.fileGateway.seedFromTemplate(
+          agent.id,
+          agent.templateId,
+        );
+        if (copied > 0) {
+          this.logger.log(
+            `Seeded ${copied} files into agent ${agent.id} from template ${agent.templateId}`,
+          );
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Template seed skipped for agent ${agent.id}: ${(err as Error).message}`,
         );
       }
-    } catch (err) {
-      this.logger.warn(
-        `Template seed skipped for agent ${agent.id}: ${(err as Error).message}`,
-      );
-    }
-    await this.syncSkillsFromTemplate(agent.id, agent.templateId);
+      await this.syncSkillsFromTemplate(agent.id, agent.templateId);
+    });
     if (opts.isAdmin === true) {
       const previous = await this.agentGateway.findAdmin();
       if (previous && previous.id !== agent.id) {
@@ -134,7 +153,12 @@ export class AgentDeployService {
   async stopAgent(agentId: string): Promise<void> {
     const agent = await this.agentGateway.findById(agentId);
     if (!agent) return;
+    return servingAssistant(agent.isAdmin, () =>
+      this.stopServed(agentId, agent),
+    );
+  }
 
+  private async stopServed(agentId: string, agent: IAgentData): Promise<void> {
     // Mark BEFORE cancel so the dying pod's MODIFIED phase=Failed event
     // (emitted by Argo's cancellation) is recognised as stale by the
     // reconciler and doesn't flip the row from 'stopped' to 'failed'.
@@ -165,6 +189,15 @@ export class AgentDeployService {
   async deploy(agentId: string): Promise<void> {
     const agent = await this.agentGateway.findById(agentId);
     if (!agent) return;
+    return servingAssistant(agent.isAdmin, () =>
+      this.deployServed(agentId, agent),
+    );
+  }
+
+  private async deployServed(
+    agentId: string,
+    agent: IAgentData,
+  ): Promise<void> {
     const template = await this.templateGateway.findById(agent.templateId);
     if (!template) {
       this.logger.error(

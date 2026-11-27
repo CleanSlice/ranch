@@ -4,6 +4,8 @@ import type { Request } from 'express';
 import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
+import { heldRoles, rolesAdmit } from '#/user/auth/guards/roles.guard';
+import { assistantSettingDrift } from '#/setting/domain';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { accessCallerOf } from '#/user/agentAccess/guards';
 import { UserRoleTypes } from '#/user/user/domain';
@@ -49,7 +51,11 @@ export class RancherController {
           agent,
         ));
     }
-    return rancherStatusFor(status, { reaches, manages });
+    const view = rancherStatusFor(status, { reaches, manages });
+    // For the Owner only: the settings whose live value is not the one the
+    // assistant is deployed from (CLEAN-271). Keys, never values.
+    if (!rolesAdmit([UserRoleTypes.Owner], heldRoles(req?.user))) return view;
+    return { ...view, settingsDrift: await assistantSettingDrift() };
   }
 
   // Owner only since CLEAN-271: this creates the template the Ranch

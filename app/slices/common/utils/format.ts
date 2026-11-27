@@ -45,6 +45,13 @@ const DATE_KINDS = {
   stampTitle: { dateStyle: 'long', timeStyle: 'medium' },
   longDate: { dateStyle: 'long' },
   fullDate: { dateStyle: 'full' },
+  dayMonth: { day: 'numeric', month: 'short' },
+  // The three below format a calendar day or a name, not an instant. They are
+  // read in UTC because they are built in UTC: the browser's zone must not
+  // get a say in which day or which month it is.
+  calendarDayMonth: { day: 'numeric', month: 'short', timeZone: 'UTC' },
+  weekdayShort: { weekday: 'short', timeZone: 'UTC' },
+  monthShort: { month: 'short', timeZone: 'UTC' },
 } as const satisfies Record<string, Intl.DateTimeFormatOptions>;
 
 type DateKind = keyof typeof DATE_KINDS;
@@ -122,6 +129,77 @@ export const formatLongDate = (locale: string, value: Instant): string =>
 export const formatFullDate = (locale: string, value: Instant): string =>
   format(locale, 'fullDate', value);
 
+// ----------------------------------------------------------- calendar days
+
+const DAY_MS = 86_400_000;
+const CALENDAR_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Any Monday will do; 1 January 2024 was one. */
+const A_MONDAY = Date.UTC(2024, 0, 1);
+
+/**
+ * A `YYYY-MM-DD` day as the UTC midnight that carries it; null for a string
+ * of another shape and for a day that does not exist (`2026-02-30`), which an
+ * engine would otherwise roll over into March.
+ */
+function calendarDay(value: string): Date | null {
+  const match = CALENDAR_DAY.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month, day));
+  return date.getUTCMonth() === month && date.getUTCDate() === day ? date : null;
+}
+
+/**
+ * `Nov 26` · `26 нояб.` — a day where the year is plain from what surrounds it.
+ *
+ * A `YYYY-MM-DD` string is a calendar day and is shown as that day whatever
+ * the browser's zone: the statistics API has already decided which day a
+ * conversation belongs to. Anything else is an instant and is shown in the
+ * browser's zone, like every other date here.
+ */
+export function formatDayMonth(locale: string, value: Instant): string {
+  if (typeof value === 'string' && CALENDAR_DAY.test(value)) {
+    return format(locale, 'calendarDayMonth', calendarDay(value));
+  }
+  return format(locale, 'dayMonth', value);
+}
+
+/**
+ * `Mon` · `пн` — a weekday by its place in a week that starts on Monday:
+ * 0 = Monday … 6 = Sunday. Not `Date#getDay()`, where 0 is Sunday.
+ */
+export function formatWeekdayShort(locale: string, weekday: number): string {
+  if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) return '';
+  return format(locale, 'weekdayShort', A_MONDAY + weekday * DAY_MS);
+}
+
+/**
+ * `Nov` · `нояб.` — a month by its number, 0–11, standing on its own (Russian
+ * `май`; next to a day `formatDayMonth` writes `3 мая`).
+ */
+export function formatMonthShort(locale: string, month: number): string {
+  if (!Number.isInteger(month) || month < 0 || month > 11) return '';
+  return format(locale, 'monthShort', Date.UTC(2024, month, 1));
+}
+
+/**
+ * The browser's IANA time zone, `Europe/Kyiv`: what the statistics page sends
+ * so that the API can put a conversation on the viewer's day. `UTC` when the
+ * browser will not say, which is also what the API assumes without it.
+ *
+ * Asked on every call and not kept: a laptop changes zones without a reload.
+ */
+export function browserTimeZone(): string {
+  try {
+    return new Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
 // ----------------------------------------------------------------- numbers
 
 /** `12,345` · `12 345` */
@@ -135,6 +213,51 @@ export const formatPercent = (locale: string, ratio: number | null | undefined):
         ratio,
       )
     : '';
+
+/**
+ * `1.2M` · `1,2 млн`, `340K` · `340 тыс.` — a count where the size matters
+ * and the last digits do not: a chart axis, a token total. Whole below a
+ * thousand, at most one decimal above.
+ */
+export const formatCompact = (locale: string, value: number | null | undefined): string =>
+  isNumber(value)
+    ? numberFormat(locale, 'compact', {
+        notation: 'compact',
+        maximumFractionDigits: 1,
+      }).format(value)
+    : '';
+
+/** From this many units up, cents are noise next to the amount. */
+const WHOLE_MONEY_FROM = 100;
+
+/**
+ * `$12.50` · `12,50 $` below a hundred, `$1,235` · `1 235 $` from a hundred up.
+ *
+ * `currency` is an ISO 4217 code. One the platform does not know is shown as
+ * it came, after the amount, instead of failing the page that renders it.
+ */
+export function formatMoney(
+  locale: string,
+  value: number | null | undefined,
+  currency = 'USD',
+): string {
+  if (!isNumber(value)) return '';
+  // Decided on the amount as it will be printed, so 99.996 is `$100` and not
+  // `$100.00`.
+  const whole = Math.abs(Math.round(value * 100) / 100) >= WHOLE_MONEY_FROM;
+  const digits = { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 };
+  const kind = whole ? 'whole' : 'cents';
+  try {
+    return numberFormat(locale, `money|${currency}|${kind}`, {
+      style: 'currency',
+      currency,
+      ...digits,
+    }).format(value);
+  } catch {
+    // `Intl.NumberFormat` throws on text that is not shaped like a currency code.
+    return `${numberFormat(locale, `amount|${kind}`, digits).format(value)} ${currency}`;
+  }
+}
 
 /**
  * A byte count as a number in the language's own notation plus the unit to

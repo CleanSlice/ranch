@@ -351,6 +351,8 @@ import type {
   UsageControllerReportResponse,
   UsageControllerFindForCredentialData,
   UsageControllerFindOverviewData,
+  GetMyStatsData,
+  GetMyStatsResponse,
   RancherControllerStatusData,
   RancherControllerEnsureTemplateData,
   UpgradeControllerStatusData,
@@ -4298,6 +4300,24 @@ export class UsageService {
       ThrowOnError
     >({
       url: "/usage/overview",
+      ...options,
+    });
+  }
+}
+
+export class StatsService {
+  /**
+   * The current user's own statistics for the last 7, 30 or 90 days, with the period before it for comparison: conversations they wrote in, their messages, the agents that answered, activity by day for the last 13 weeks and by weekday, the agents they talked to, how agents helped (cited sources, hand-overs to peers, their ratings) and which models answered. Counts, names and times only: nothing that was written. Only conversations with agents the caller reaches now are counted. Days are cut in the zone sent as `tz`.
+   */
+  public static getMyStats<ThrowOnError extends boolean = false>(
+    options?: Options<GetMyStatsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetMyStatsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/me/stats",
       ...options,
     });
   }

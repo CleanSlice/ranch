@@ -148,7 +148,8 @@ second from being shown anything of the first (CLEAN-231).
    `logout()` returns to its caller and before anything is drawn for a new
    account. The same account signing in again in that dialog changes no id
    and keeps its page. In `app` the plugin names the stores (`bridle`,
-   `agent`, `chat`, `share`): a new store with account data is added there.
+   `agent`, `chat`, `share`, `assistantAccess`, `profileStats`): a new store
+   with account data is added there.
    In `admin` every store is covered as it is created: one with a
    `resetForAccount()` through it, any other by going back to the state it
    was created with, except the few listed in `#auth/utils/accountReset`

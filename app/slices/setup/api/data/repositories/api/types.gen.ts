@@ -3035,6 +3035,224 @@ export type ReportUsageDto = {
   };
 };
 
+export type StatsRangeDto = {
+  /**
+   * Start of the period's first day in the viewer's zone.
+   */
+  from: string;
+  /**
+   * The moment the view was computed: the period includes today so far.
+   */
+  to: string;
+  /**
+   * Start of the period before this one, which has the same number of days and ends where this one starts.
+   */
+  previousFrom: string;
+};
+
+export type StatsNoteDto = {
+  /**
+   * Which figure is not complete over the whole of the requested and the previous period.
+   */
+  figure: "activity" | "ratings" | "citations" | "handovers";
+  /**
+   * Since when it is counted. Later than `range.previousFrom`; the page says "counted since …" once for the block.
+   */
+  completeSince: string;
+};
+
+export type StatsComparedCountDto = {
+  /**
+   * In the period.
+   */
+  value: number;
+  /**
+   * In the period before it.
+   */
+  previous: number;
+};
+
+export type MyStatsBoardAgentsDto = {
+  /**
+   * Agents that answered in the person's conversations in the period.
+   */
+  value: number;
+  /**
+   * Agents the person reaches now.
+   */
+  reachable: number;
+};
+
+export type MyStatsBoardDto = {
+  /**
+   * Conversations the person wrote in. A conversation that went on from the previous period is counted in both.
+   */
+  conversations: StatsComparedCountDto;
+  /**
+   * The person's own messages.
+   */
+  messages: StatsComparedCountDto;
+  agents: MyStatsBoardAgentsDto;
+};
+
+export type MyStatsDayDto = {
+  /**
+   * The day, in the viewer's zone.
+   */
+  date: string;
+  /**
+   * Conversations the person wrote in on that day.
+   */
+  conversations: number;
+};
+
+export type MyStatsActivityDto = {
+  /**
+   * The last 91 days, oldest first, ending today, whatever the period: 13 whole weeks for the calendar. A conversation written in on three days is on each of them, so the days of a period can add up to more than `board.conversations.value`.
+   */
+  days: Array<MyStatsDayDto>;
+  /**
+   * Conversations by weekday within the period, Monday first: the same counts as `days`, added up per weekday.
+   */
+  weekdays: [number, number, number, number, number, number, number];
+  /**
+   * Days of the period with at least one conversation.
+   */
+  activeDays: number;
+};
+
+export type MyStatsAgentDto = {
+  agentId: string;
+  name: string;
+  /**
+   * The person's own messages to this agent in the period.
+   */
+  messages: number;
+  /**
+   * Conversations with this agent the person wrote in during the period.
+   */
+  conversations: number;
+  /**
+   * The model the agent runs now, shown as received. Null when it has none.
+   */
+  model: string | null;
+  /**
+   * The last message in those conversations, whoever wrote it. Null only when they were removed while the view was being computed.
+   */
+  lastMessageAt: string | null;
+};
+
+export type MyStatsSourceDto = {
+  /**
+   * A knowledge base's name as it was last cited, or `web` for every web page together.
+   */
+  name: string;
+  /**
+   * Times it was cited.
+   */
+  citations: number;
+};
+
+export type MyStatsCitedDto = {
+  /**
+   * How many of the period's conversations got at least one answer with sources. Out of `board.conversations.value`, and never more.
+   */
+  conversations: number;
+  /**
+   * The two most cited sources, most cited first.
+   */
+  sources: Array<MyStatsSourceDto>;
+};
+
+export type MyStatsTopPeerDto = {
+  /**
+   * The peer's name. `A colleague` for an agent the person does not reach, as the chat called it.
+   */
+  name: string;
+  /**
+   * Times it was asked.
+   */
+  count: number;
+};
+
+export type MyStatsHandoversDto = {
+  /**
+   * Questions an agent handed over to a peer while answering the person, whatever came of them.
+   */
+  total: number;
+  /**
+   * The ones the peer answered.
+   */
+  answered: number;
+  /**
+   * The peer asked most. Null when nothing was handed over.
+   */
+  topPeer: MyStatsTopPeerDto | null;
+};
+
+export type MyStatsRatingsDto = {
+  /**
+   * Answers rated up.
+   */
+  up: number;
+  /**
+   * Answers rated down.
+   */
+  down: number;
+};
+
+export type MyStatsHelpDto = {
+  cited: MyStatsCitedDto;
+  handovers: MyStatsHandoversDto;
+  /**
+   * The ratings the person gave in the period.
+   */
+  ratings: MyStatsRatingsDto;
+};
+
+export type MyStatsModelDto = {
+  /**
+   * The model, shown as received. `unknown` for messages to an agent that has no usage record for the day and no model now.
+   */
+  model: string;
+  /**
+   * The person's messages attributed to it. Whole messages: the items add up to `board.messages.value`.
+   */
+  messages: number;
+};
+
+export type MyStatsModelsDto = {
+  /**
+   * By messages, most first.
+   */
+  items: Array<MyStatsModelDto>;
+  /**
+   * True when at least one day had no usage record, so its messages were given to the agent's current model. Today is usually such a day: an agent posts its usage at the end of the UTC day or when it shuts down.
+   */
+  fallback: boolean;
+};
+
+export type MyStatsDto = {
+  period: 7 | 30 | 90;
+  /**
+   * The zone the days were cut in: the `tz` that was sent, or `UTC` when it named no zone this server knows.
+   */
+  timeZone: string;
+  range: StatsRangeDto;
+  /**
+   * One entry for each figure whose history starts inside the requested or the previous period. Empty when every figure covers both.
+   */
+  notes: Array<StatsNoteDto>;
+  board: MyStatsBoardDto;
+  activity: MyStatsActivityDto;
+  /**
+   * The agents the person wrote to in the period, by their messages, most first.
+   */
+  agents: Array<MyStatsAgentDto>;
+  help: MyStatsHelpDto;
+  models: MyStatsModelsDto;
+};
+
 export type StartMcpOauthDto = {
   /**
    * Agent whose secret store receives the token. The stored refresh token is scoped to this agent.
@@ -7499,6 +7717,39 @@ export type UsageControllerFindOverviewData = {
 export type UsageControllerFindOverviewResponses = {
   200: unknown;
 };
+
+export type GetMyStatsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Days in the period. Anything else is a 400.
+     */
+    period?: 7 | 30 | 90;
+    /**
+     * The viewer's IANA time zone: a person's days are cut on their own clock. A name this server does not know, or anything that is not a name, is read as `UTC` and never refused; `timeZone` in the answer says which zone was used.
+     */
+    tz?: string;
+  };
+  url: "/me/stats";
+};
+
+export type GetMyStatsErrors = {
+  /**
+   * `period` is not 7, 30 or 90.
+   */
+  400: unknown;
+  /**
+   * No valid token.
+   */
+  401: unknown;
+};
+
+export type GetMyStatsResponses = {
+  200: MyStatsDto;
+};
+
+export type GetMyStatsResponse = GetMyStatsResponses[keyof GetMyStatsResponses];
 
 export type RancherControllerStatusData = {
   body?: never;

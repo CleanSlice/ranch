@@ -1,0 +1,730 @@
+/* The profile's Statistics tab (CLEAN-258).
+
+   Everything here is scoped to `[data-profile-stats]`, the profile's right
+   column, so no rule can reach another page. The one exception is the detail
+   pop-up: it is drawn at the end of <body>, outside that column, and carries
+   `[data-profile-stats-tip]` instead.
+
+   The values are the prototype's
+   (specs/038-profile-stats-dashboard/reference/profile-stats-prototype.html).
+   Where the prototype has a token of its own for something the console's
+   theme already names, the theme's name is used: copper is `--primary`, text
+   is `--foreground` and `--muted-foreground`. The card chrome (border,
+   radius, background, side padding, caption) is the one the Account cards
+   beside it already have.
+
+   This sheet is not in a cascade layer, so a Tailwind utility cannot override
+   a property it sets. A property that a component needs to vary is left to
+   the component. */
+
+[data-profile-stats],
+[data-profile-stats-tip] {
+  /* Categorical, for parts of a whole. Validated on the card colour #16111c
+     (the prototype's scripts/validate_palette.js). --c0 is the neutral part. */
+  --c1: #de8040;
+  --c2: #a87bd8;
+  --c3: #2a9f96;
+  --c4: #4f86e0;
+  --c0: #6e6478;
+  /* Outcome status: resolved, open, none. */
+  --good: #3fb67b;
+  --warn: #d4a24c;
+  --none: #5b5262;
+  /* Sequential copper, the five steps of the activity calendar. */
+  --s0: rgba(255, 255, 255, 0.06);
+  --s1: #4a2f22;
+  --s2: #7a4a2e;
+  --s3: #b5683a;
+  --s4: #f5a16b;
+  /* The prototype's lavender, lines and dimmest text. */
+  --stats-lv: #c9a1e4;
+  --stats-dim: #7e7488;
+  --stats-ln: rgba(255, 255, 255, 0.1);
+  --stats-ln2: rgba(255, 255, 255, 0.16);
+  --stats-hair: rgba(255, 255, 255, 0.07);
+}
+
+/* A visible focus ring on everything of the tab that takes focus. Limited to
+   the tab's own classes: the Account cards live in the same column and bring
+   their own ring. */
+[data-profile-stats] [class*='stats-']:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ── the bar: tabs and period ── */
+[data-profile-stats] .stats-seg {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--stats-ln);
+  border-radius: 999px;
+  background: #16111c;
+}
+[data-profile-stats] .stats-seg__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+[data-profile-stats] .stats-seg__item:hover {
+  color: var(--foreground);
+}
+[data-profile-stats] .stats-seg__item[aria-pressed='true'],
+[data-profile-stats] .stats-seg__item[aria-selected='true'] {
+  background: #2a2032;
+  color: var(--foreground);
+}
+[data-profile-stats] .stats-seg--sm .stats-seg__item {
+  min-height: 28px;
+  padding: 0 11px;
+  font-size: 12.5px;
+}
+
+/* ── card ── */
+[data-profile-stats] .stats-card {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--stats-ln);
+  border-radius: 18px;
+  background: rgba(22, 17, 28, 0.72);
+  padding: 8px 26px 20px;
+}
+[data-profile-stats] .stats-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 16px 0 14px;
+}
+[data-profile-stats] .stats-card__aside {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+[data-profile-stats] .stats-card__caption {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+[data-profile-stats] .stats-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--stats-dim);
+}
+@media (max-width: 479px) {
+  [data-profile-stats] .stats-card {
+    padding-inline: 18px;
+  }
+}
+
+/* ── scoreboard ── */
+[data-profile-stats] .stats-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--stats-ln);
+  border-radius: 18px;
+  background: linear-gradient(160deg, rgba(33, 24, 41, 0.85), rgba(20, 15, 27, 0.85));
+}
+[data-profile-stats] .stats-board__tile {
+  position: relative;
+  min-width: 0;
+  padding: 16px 18px 15px;
+}
+[data-profile-stats] .stats-board__tile + .stats-board__tile::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  border-left: 1px dashed var(--stats-ln2);
+}
+[data-profile-stats] .stats-board__value {
+  font-family: DotGothic16, 'Geist Mono', monospace;
+  font-size: clamp(28px, 3.2vw, 36px);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+[data-profile-stats] .stats-board__value--none {
+  color: var(--stats-dim);
+}
+[data-profile-stats] .stats-board__label {
+  margin-top: 7px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+[data-profile-stats] .stats-board__delta {
+  margin-top: 6px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--stats-dim);
+}
+[data-profile-stats] .stats-board__delta--up {
+  color: #7fd6a6;
+}
+[data-profile-stats] .stats-board__delta--down {
+  color: #e8a08a;
+}
+/* Two by two: the divider of the third tile would stand at the left edge,
+   and the second row gets a line above instead. */
+@media (max-width: 700px) {
+  [data-profile-stats] .stats-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  [data-profile-stats] .stats-board__tile:nth-child(3)::before {
+    display: none;
+  }
+  [data-profile-stats] .stats-board__tile:nth-child(n + 3) {
+    border-top: 1px dashed var(--stats-ln2);
+  }
+}
+
+/* ── activity ── */
+/* The calendar scrolls inside its own block, never the page. The padding
+   leaves room for today's outline and a focus ring, which the scroll box
+   would otherwise cut. */
+[data-profile-stats] .stats-cal-wrap {
+  overflow-x: auto;
+  padding: 4px;
+  margin: -4px;
+}
+[data-profile-stats] .stats-cal {
+  display: grid;
+  grid-template-rows: 14px repeat(7, 13px);
+  grid-template-columns: repeat(13, 13px);
+  gap: 4px;
+  width: max-content;
+}
+[data-profile-stats] .stats-cal__month {
+  grid-row: 1;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--stats-dim);
+  white-space: nowrap;
+}
+[data-profile-stats] .stats-cal__cell {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: var(--s0);
+}
+[data-profile-stats] .stats-cal__cell--out {
+  opacity: 0.32;
+}
+[data-profile-stats] .stats-cal__cell--today {
+  box-shadow: 0 0 0 1.5px var(--foreground);
+}
+[data-profile-stats] .stats-cal-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px 28px;
+  margin-top: 14px;
+}
+[data-profile-stats] .stats-days {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 58px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+[data-profile-stats] .stats-days__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--stats-dim);
+}
+[data-profile-stats] .stats-days__bar {
+  display: block;
+  width: 16px;
+  border-radius: 4px 4px 0 0;
+  background: var(--c2);
+}
+[data-profile-stats] .stats-days__day--top .stats-days__bar {
+  background: var(--primary);
+}
+[data-profile-stats] .stats-scale {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--stats-dim);
+}
+[data-profile-stats] .stats-scale i {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+[data-profile-stats] .stats-kv {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+[data-profile-stats] .stats-kv b {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+/* ── table view ── */
+[data-profile-stats] .stats-tblbtn {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--stats-ln);
+  border-radius: 999px;
+  background: none;
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+}
+[data-profile-stats] .stats-tblbtn[aria-pressed='true'] {
+  color: var(--foreground);
+  border-color: var(--stats-ln2);
+}
+[data-profile-stats] .stats-tblwrap {
+  max-height: 280px;
+  overflow: auto;
+}
+[data-profile-stats] .stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+[data-profile-stats] .stats-table th {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--stats-ln);
+  color: var(--stats-dim);
+  font-weight: 500;
+  text-align: left;
+}
+[data-profile-stats] .stats-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--stats-hair);
+  font-variant-numeric: tabular-nums;
+}
+[data-profile-stats] .stats-table .stats-table__num {
+  text-align: right;
+}
+
+/* ── who you talk to ── */
+[data-profile-stats] .stats-ag {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+/* The orbit is a square the width of its column. It is a size container so
+   that the initials in the nodes scale with the drawing, as text inside the
+   SVG does. A node on the outer ring can reach a unit past the 240 box
+   (utils/orbitLayout.ts), so nothing here may cut what leaves the square. */
+[data-profile-stats] .stats-orbit {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  container-type: inline-size;
+}
+[data-profile-stats] .stats-orbit__drawing {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+[data-profile-stats] .stats-orbit__ring {
+  fill: none;
+  stroke: rgba(201, 161, 228, 0.22);
+  stroke-dasharray: 2 5;
+}
+[data-profile-stats] .stats-orbit__me {
+  fill: rgba(201, 161, 228, 0.08);
+  stroke-width: 1.5;
+}
+[data-profile-stats] .stats-orbit__text {
+  fill: var(--foreground);
+  font-family: Geist, Inter, system-ui, sans-serif;
+  font-weight: 600;
+}
+[data-profile-stats] .stats-orbit__link {
+  stroke: rgba(201, 161, 228, 0.18);
+  stroke-width: 1;
+}
+[data-profile-stats] .stats-orbit__link--sel {
+  stroke: var(--primary);
+  stroke-width: 1.4;
+}
+/* The prototype sets the initials at 10 units of the 240 box, and at 8.5 in
+   a small node: the same shares of the container's width here. */
+[data-profile-stats] .stats-orbit__node {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 30%;
+  background: #2a1f31;
+  color: var(--foreground);
+  font-size: calc(100cqw * 10 / 240);
+  font-weight: 600;
+  line-height: 1;
+}
+[data-profile-stats] .stats-orbit__node--small {
+  font-size: calc(100cqw * 8.5 / 240);
+}
+[data-profile-stats] .stats-orbit__node--sel {
+  border-width: 2px;
+  border-color: var(--primary);
+}
+[data-profile-stats] .stats-alist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+[data-profile-stats] .stats-arow {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: none;
+  text-align: left;
+}
+[data-profile-stats] .stats-arow:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+[data-profile-stats] .stats-arow--sel {
+  border-color: rgba(245, 161, 107, 0.45);
+  background: rgba(245, 161, 107, 0.06);
+}
+[data-profile-stats] .stats-av {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--stats-ln2);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #4a3356, #251b2b);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+[data-profile-stats] .stats-arow__name {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-profile-stats] .stats-arow__meta {
+  display: block;
+  overflow: hidden;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--stats-dim);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-profile-stats] .stats-arow__count {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  text-align: right;
+  white-space: nowrap;
+}
+[data-profile-stats] .stats-arow__count b {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+[data-profile-stats] .stats-meter {
+  display: block;
+  height: 4px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--stats-hair);
+}
+[data-profile-stats] .stats-meter i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--c2);
+}
+[data-profile-stats] .stats-arow--sel .stats-meter i {
+  background: var(--primary);
+}
+@media (max-width: 640px) {
+  [data-profile-stats] .stats-ag {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-profile-stats] .stats-orbit {
+    max-width: 260px;
+    margin: 0 auto;
+  }
+}
+
+/* ── segmented bars ── */
+[data-profile-stats] .stats-tall {
+  display: flex;
+  gap: 2px;
+  height: 28px;
+  margin: 4px 0 10px;
+}
+[data-profile-stats] .stats-tall .stats-bar__seg {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: #14101a;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* On the neutral part the dark label does not read: light text there. */
+[data-profile-stats] .stats-tall .stats-bar__seg--light {
+  color: #f5f1f6;
+}
+[data-profile-stats] .stats-thin {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin: 4px 0 10px;
+}
+[data-profile-stats] .stats-thin .stats-bar__seg {
+  border-radius: 999px;
+}
+[data-profile-stats] .stats-lg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+[data-profile-stats] .stats-lg li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-profile-stats] .stats-lg i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+[data-profile-stats] .stats-lg b {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+/* ── how agents helped ── */
+[data-profile-stats] .stats-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+[data-profile-stats] .stats-tile {
+  min-width: 0;
+  padding: 14px 14px 13px;
+  border: 1px solid var(--stats-hair);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+[data-profile-stats] .stats-tile__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+[data-profile-stats] .stats-tile__head svg {
+  color: var(--stats-lv);
+}
+[data-profile-stats] .stats-tile__value {
+  margin: 8px 0 0;
+  font-family: DotGothic16, 'Geist Mono', monospace;
+  font-size: 28px;
+  line-height: 1;
+}
+[data-profile-stats] .stats-tile__value small {
+  font-family: Geist, Inter, system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+[data-profile-stats] .stats-tile__value svg {
+  margin: 0 6px 0 2px;
+  color: var(--muted-foreground);
+  vertical-align: -1px;
+}
+[data-profile-stats] .stats-tile__text {
+  margin: 7px 0 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+[data-profile-stats] .stats-tile__text b {
+  color: var(--foreground);
+  font-weight: 500;
+}
+@media (max-width: 700px) {
+  [data-profile-stats] .stats-tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── empty and failed ── */
+[data-profile-stats] .stats-empty {
+  padding: 22px 0 10px;
+  text-align: center;
+}
+[data-profile-stats] .stats-empty__icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 12px;
+  border-radius: 14px;
+  background: rgba(245, 161, 107, 0.1);
+  color: var(--primary);
+}
+[data-profile-stats] .stats-empty__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+[data-profile-stats] .stats-empty__text {
+  max-width: 420px;
+  margin: 6px auto 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+[data-profile-stats] .stats-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin-top: 14px;
+  padding: 0 13px;
+  border: 1px solid rgba(245, 161, 107, 0.45);
+  border-radius: 999px;
+  background: rgba(245, 161, 107, 0.08);
+  color: var(--primary);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+[data-profile-stats] .stats-go:hover {
+  background: rgba(245, 161, 107, 0.16);
+}
+
+/* ── loading ── */
+/* The held view while another period is on its way: still there, so nothing
+   jumps, and plainly not the answer yet. */
+[data-profile-stats] .stats-held {
+  transition: opacity 0.15s;
+}
+[data-profile-stats] .stats-held--dimmed {
+  opacity: 0.45;
+}
+[data-profile-stats] .stats-skel {
+  border-radius: 6px;
+  background: var(--s0);
+}
+
+/* ── detail pop-up ── */
+[data-profile-stats-tip] {
+  z-index: 60;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid var(--stats-ln2);
+  border-radius: 10px;
+  background: #1b1422;
+  box-shadow: 0 14px 30px -10px #000;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+[data-profile-stats-tip] b {
+  font-weight: 600;
+}
+[data-profile-stats-tip] .stats-tip__dim {
+  color: var(--stats-dim);
+}
+
+/* Entrance: blocks rise once, lit days pop in, placeholders breathe. Someone
+   who asked for reduced motion gets everything at once and at rest. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-profile-stats] .stats-rise {
+    animation: stats-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+  }
+  @keyframes stats-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+  [data-profile-stats] .stats-cal__cell--lit {
+    animation: stats-lit 0.5s ease-out both;
+    animation-delay: calc(var(--k, 0) * 5ms);
+  }
+  @keyframes stats-lit {
+    from {
+      opacity: 0;
+      transform: scale(0.4);
+    }
+  }
+  [data-profile-stats] .stats-skel {
+    animation: stats-breathe 1.4s ease-in-out infinite alternate;
+  }
+  @keyframes stats-breathe {
+    from {
+      opacity: 0.55;
+    }
+  }
+}
+
+/* A forced palette would paint every mark the same colour: these carry
+   meaning by their fill, so they keep it. */
+@media (forced-colors: active) {
+  [data-profile-stats] .stats-cal__cell,
+  [data-profile-stats] .stats-bar__seg,
+  [data-profile-stats] .stats-meter i,
+  [data-profile-stats] .stats-days__bar,
+  [data-profile-stats] .stats-scale i,
+  [data-profile-stats] .stats-lg i {
+    forced-color-adjust: none;
+  }
+}

@@ -1,16 +1,22 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  browserTimeZone,
   formatClock,
+  formatCompact,
   formatDate,
   formatDateTime,
+  formatDayMonth,
   formatFullDate,
   formatLongDate,
+  formatMoney,
+  formatMonthShort,
   formatNumber,
   formatPercent,
   formatSize,
   formatStamp,
   formatStampTitle,
+  formatWeekdayShort,
   languageName,
 } from './format';
 
@@ -26,6 +32,23 @@ const NOW_LATER = new Date(2026, 10, 2, 9, 0, 0);
 // the engine's data, and neither can be told from a space on screen, so the
 // expectations are written with a plain one.
 const plain = (text: string) => text.replace(/[  ]/g, ' ');
+
+const week = (locale: string) =>
+  [0, 1, 2, 3, 4, 5, 6].map((weekday) => formatWeekdayShort(locale, weekday));
+const year = (locale: string) =>
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((month) => formatMonthShort(locale, month));
+
+/** Runs `check` with the process in another time zone, then puts it back. */
+function inZone(zone: string, check: () => void) {
+  const before = process.env.TZ;
+  process.env.TZ = zone;
+  try {
+    check();
+  } finally {
+    if (before === undefined) delete process.env.TZ;
+    else process.env.TZ = before;
+  }
+}
 
 describe('English stays exactly as it was', () => {
   test('date', () => {
@@ -77,6 +100,59 @@ describe('English stays exactly as it was', () => {
     expect(languageName('en', 'uk')).toBe('Ukrainian');
     expect(languageName('en', 'en')).toBe('English');
   });
+
+  test('compact count: whole below a thousand, one decimal above', () => {
+    expect(formatCompact('en', 0)).toBe('0');
+    expect(formatCompact('en', 999)).toBe('999');
+    expect(formatCompact('en', 1234)).toBe('1.2K');
+    expect(formatCompact('en', 340_000)).toBe('340K');
+    expect(formatCompact('en', 1_234_567)).toBe('1.2M');
+    expect(formatCompact('en', 2_500_000_000)).toBe('2.5B');
+  });
+
+  test('money: cents below a hundred, whole units from a hundred', () => {
+    expect(formatMoney('en', 0)).toBe('$0.00');
+    expect(formatMoney('en', 0.5)).toBe('$0.50');
+    expect(formatMoney('en', 12.5)).toBe('$12.50');
+    expect(formatMoney('en', 99.99)).toBe('$99.99');
+    expect(formatMoney('en', 100)).toBe('$100');
+    expect(formatMoney('en', 1234.56)).toBe('$1,235');
+  });
+
+  test('money: an amount that rounds to a hundred is a whole hundred', () => {
+    // Never "$100.00": the cents are decided after rounding, not before.
+    expect(formatMoney('en', 99.996)).toBe('$100');
+    expect(formatMoney('en', 99.994)).toBe('$99.99');
+  });
+
+  test('money in another currency', () => {
+    expect(formatMoney('en', 12.5, 'EUR')).toBe('€12.50');
+    expect(formatMoney('en', 250, 'EUR')).toBe('€250');
+  });
+
+  test('weekday and month names, short, Monday first', () => {
+    expect(week('en')).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+    expect(year('en')).toEqual([
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ]);
+  });
+
+  test('day and month', () => {
+    expect(formatDayMonth('en', '2026-11-26')).toBe('Nov 26');
+    expect(formatDayMonth('en', '2026-05-03')).toBe('May 3');
+    expect(formatDayMonth('en', AT)).toBe('Aug 21');
+  });
 });
 
 describe('Russian follows Russian conventions', () => {
@@ -123,6 +199,112 @@ describe('Russian follows Russian conventions', () => {
     // Engines disagree on whether a standalone name starts with a capital.
     expect(languageName('ru', 'uk').toLowerCase()).toBe('украинский');
   });
+
+  test('compact count: Russian words, a comma for the decimal', () => {
+    expect(formatCompact('ru', 0)).toBe('0');
+    expect(formatCompact('ru', 999)).toBe('999');
+    expect(plain(formatCompact('ru', 1234))).toBe('1,2 тыс.');
+    expect(plain(formatCompact('ru', 340_000))).toBe('340 тыс.');
+    expect(plain(formatCompact('ru', 1_234_567))).toBe('1,2 млн');
+    expect(plain(formatCompact('ru', 2_500_000_000))).toBe('2,5 млрд');
+  });
+
+  test('money: the sign after the amount', () => {
+    expect(plain(formatMoney('ru', 0))).toBe('0,00 $');
+    expect(plain(formatMoney('ru', 12.5))).toBe('12,50 $');
+    expect(plain(formatMoney('ru', 99.99))).toBe('99,99 $');
+    expect(plain(formatMoney('ru', 100))).toBe('100 $');
+    expect(plain(formatMoney('ru', 1234.56))).toBe('1 235 $');
+    expect(plain(formatMoney('ru', 12.5, 'EUR'))).toBe('12,50 €');
+  });
+
+  test('weekday and month names, short, Monday first', () => {
+    expect(week('ru')).toEqual(['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']);
+    // On its own a month stands in the nominative: "май", not "мая".
+    expect(year('ru')).toEqual([
+      'янв.',
+      'февр.',
+      'март',
+      'апр.',
+      'май',
+      'июнь',
+      'июль',
+      'авг.',
+      'сент.',
+      'окт.',
+      'нояб.',
+      'дек.',
+    ]);
+  });
+
+  test('day and month: next to a day the month is in the genitive', () => {
+    expect(plain(formatDayMonth('ru', '2026-11-26'))).toBe('26 нояб.');
+    expect(plain(formatDayMonth('ru', '2026-05-03'))).toBe('3 мая');
+    expect(plain(formatDayMonth('ru', AT))).toBe('21 авг.');
+  });
+});
+
+describe('a calendar day is not an instant', () => {
+  // The API counts a conversation into a day in the viewer's zone and sends
+  // the day as `YYYY-MM-DD`. Read as an instant, that string is midnight UTC,
+  // which is still the evening before anywhere west of Greenwich.
+  const ZONES = ['Pacific/Honolulu', 'America/New_York', 'UTC', 'Pacific/Kiritimati'];
+
+  test('a day string is that day in every time zone', () => {
+    for (let i = 0; i < ZONES.length; i++) {
+      inZone(ZONES[i] ?? 'UTC', () => {
+        expect(formatDayMonth('en', '2026-11-26')).toBe('Nov 26');
+        expect(formatDayMonth('en', '2026-01-01')).toBe('Jan 1');
+        expect(formatDayMonth('en', '2026-12-31')).toBe('Dec 31');
+        expect(plain(formatDayMonth('ru', '2026-03-01'))).toBe('1 мар.');
+      });
+    }
+  });
+
+  test('weekday and month names do not move with the time zone either', () => {
+    for (let i = 0; i < ZONES.length; i++) {
+      inZone(ZONES[i] ?? 'UTC', () => {
+        expect(formatWeekdayShort('en', 0)).toBe('Mon');
+        expect(formatWeekdayShort('en', 6)).toBe('Sun');
+        expect(formatMonthShort('en', 0)).toBe('Jan');
+        expect(formatMonthShort('en', 11)).toBe('Dec');
+      });
+    }
+  });
+
+  test('a day that does not exist is nothing, not the day it rolls over to', () => {
+    expect(formatDayMonth('en', '2026-02-30')).toBe('');
+    expect(formatDayMonth('en', '2026-13-01')).toBe('');
+    expect(formatDayMonth('en', '2026-00-10')).toBe('');
+  });
+});
+
+describe('the time zone of the browser', () => {
+  test('is the IANA name the page sends to the API', () => {
+    inZone('America/New_York', () => {
+      expect(browserTimeZone()).toBe('America/New_York');
+    });
+    inZone('Asia/Tokyo', () => {
+      expect(browserTimeZone()).toBe('Asia/Tokyo');
+    });
+  });
+
+  test('is UTC when the browser will not say', () => {
+    const real = Intl.DateTimeFormat;
+    try {
+      Intl.DateTimeFormat = (() => {
+        throw new Error('no Intl here');
+      }) as unknown as typeof Intl.DateTimeFormat;
+      expect(browserTimeZone()).toBe('UTC');
+
+      Intl.DateTimeFormat = (() => ({
+        resolvedOptions: () => ({}),
+      })) as unknown as typeof Intl.DateTimeFormat;
+      expect(browserTimeZone()).toBe('UTC');
+    } finally {
+      Intl.DateTimeFormat = real;
+    }
+  });
 });
 
 describe('what a value can arrive as', () => {
@@ -141,6 +323,7 @@ describe('what a value can arrive as', () => {
       formatStampTitle,
       formatLongDate,
       formatFullDate,
+      formatDayMonth,
     ];
     for (const format of dates) {
       for (const locale of ['en', 'ru']) {
@@ -156,6 +339,30 @@ describe('what a value can arrive as', () => {
     expect(formatPercent('ru', Number.NaN)).toBe('');
     expect(formatSize('ru', Number.NaN)).toEqual({ value: '0', unit: 'b' });
     expect(formatSize('ru', -5)).toEqual({ value: '0', unit: 'b' });
+    expect(formatCompact('ru', Number.NaN)).toBe('');
+    expect(formatCompact('en', null)).toBe('');
+    expect(formatCompact('en', undefined)).toBe('');
+    expect(formatMoney('ru', Number.NaN)).toBe('');
+    expect(formatMoney('en', null)).toBe('');
+    expect(formatMoney('en', undefined)).toBe('');
+  });
+
+  test('a weekday or a month outside the calendar has no name', () => {
+    for (const locale of ['en', 'ru']) {
+      expect(formatWeekdayShort(locale, -1)).toBe('');
+      expect(formatWeekdayShort(locale, 7)).toBe('');
+      expect(formatWeekdayShort(locale, 1.5)).toBe('');
+      expect(formatWeekdayShort(locale, Number.NaN)).toBe('');
+      expect(formatMonthShort(locale, -1)).toBe('');
+      expect(formatMonthShort(locale, 12)).toBe('');
+      expect(formatMonthShort(locale, 0.5)).toBe('');
+      expect(formatMonthShort(locale, Number.NaN)).toBe('');
+    }
+  });
+
+  test('a currency code nobody knows is shown as it came, after the amount', () => {
+    expect(formatMoney('en', 12.5, 'credits')).toBe('12.50 credits');
+    expect(plain(formatMoney('ru', 1234.56, 'credits'))).toBe('1 235 credits');
   });
 
   test('a language code nobody knows is shown as it came', () => {

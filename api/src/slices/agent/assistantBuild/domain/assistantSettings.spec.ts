@@ -42,8 +42,10 @@ import { SettingGateway } from '#/setting/data/setting.gateway';
 import { SettingMapper } from '#/setting/data/setting.mapper';
 import {
   SETTING_CATALOG,
+  onUndeclaredSettingRead,
   servingAgentId,
   servingAssistant,
+  withLiveSettings,
   type ISettingData,
 } from '#/setting/domain';
 import { SettingController } from '#/setting/setting.controller';
@@ -102,6 +104,9 @@ interface IPin {
 }
 const keyOf = (w: { group: string; name: string }) => `${w.group}.${w.name}`;
 const AT = new Date('2026-11-27T10:00:00.000Z');
+/** Each write is a second later than the one before it. */
+let ticks = 0;
+const now = () => new Date(AT.getTime() + (ticks += 1) * 1000);
 
 const db = {
   settings: new Map<string, IRow>(),
@@ -144,8 +149,8 @@ const prisma = {
       const key = keyOf(args.where.group_name);
       const existing = db.settings.get(key);
       const row: IRow = existing
-        ? { ...existing, ...args.update, updatedAt: AT }
-        : { ...args.create, createdAt: AT, updatedAt: AT };
+        ? { ...existing, ...args.update, updatedAt: now() }
+        : { ...args.create, createdAt: AT, updatedAt: now() };
       db.settings.set(key, row);
       return Promise.resolve(row);
     },
@@ -169,14 +174,22 @@ const prisma = {
       where: { group_name: { group: string; name: string } };
     }) => Promise.resolve(db.pins.get(keyOf(args.where.group_name)) ?? null),
     create: (args: { data: Omit<IPin, 'changedAt'> }) => {
-      const pin = { ...args.data, changedAt: AT };
+      const pin = { ...args.data, changedAt: now() };
       db.pins.set(keyOf(pin), pin);
       return Promise.resolve(pin);
     },
-    deleteMany: (args?: { where?: { group: string; name: string } }) => {
+    deleteMany: (args?: {
+      where?: { group: string; name: string; changedAt?: Date };
+    }) => {
       const before = db.pins.size;
-      if (args?.where) db.pins.delete(keyOf(args.where));
-      else db.pins.clear();
+      const where = args?.where;
+      if (!where) db.pins.clear();
+      else {
+        const pin = db.pins.get(keyOf(where));
+        if (pin && (!where.changedAt || +where.changedAt === +pin.changedAt)) {
+          db.pins.delete(keyOf(where));
+        }
+      }
       return Promise.resolve({ count: before - db.pins.size });
     },
   },
@@ -303,6 +316,7 @@ beforeEach(() => {
   approvedState();
   infraConfig.invalidate();
   db.reads.length = 0;
+  onUndeclaredSettingRead(null);
 });
 
 /** Every catalogued setting of the groups the assistant is served. */
@@ -326,10 +340,23 @@ const IN_EVERY_POD = new Set([
   'infrastructure.argo_url',
 ]);
 
-const live = async (group: string, name: string) =>
+const read = async (group: string, name: string) =>
   (await gateway.findByKey(group, name))?.value ?? null;
+/** As work that said it is not for the assistant reads it. */
+const live = (group: string, name: string) =>
+  withLiveSettings(() => read(group, name));
+/** As work done for the assistant reads it. */
 const approved = (group: string, name: string) =>
-  servingAssistant(true, () => live(group, name));
+  servingAssistant(true, () => read(group, name));
+/** What the Owner is shown, and sends back with the apply. */
+const shown = async () => ({ shown: (await driftController.read()).drift });
+const applyShown = async () => driftController.apply(await shown());
+const tokenOf = async () =>
+  (
+    JSON.parse(
+      text(await driftTool.getAssistantSettings({}, null, viaAssistant(OWNER))),
+    ) as { applyToken?: string }
+  ).applyToken;
 
 // ── What the deploy reads ────────────────────────────────────
 
@@ -531,9 +558,11 @@ describe('an Admin’s other ways to move a setting', () => {
       rows.find(
         (row) => row.group === 'integrations' && row.name === 's3_bucket',
       )?.value;
-    expect(bucketOf(await gateway.findByGroup('integrations'))).toBe(
-      'attacker-bucket',
-    );
+    expect(
+      bucketOf(
+        await withLiveSettings(() => gateway.findByGroup('integrations')),
+      ),
+    ).toBe('attacker-bucket');
     expect(
       bucketOf(
         await servingAssistant(true, () => gateway.findByGroup('integrations')),
@@ -556,9 +585,8 @@ describe('an Admin’s other ways to move a setting', () => {
   });
 
   it('the infra config’s cache of live values is neither read nor filled for the assistant', async () => {
-    expect(await infraConfig.getArgoUrl()).toBe(
-      'approved-infrastructure-argo_url',
-    );
+    const liveArgo = () => withLiveSettings(() => infraConfig.getArgoUrl());
+    expect(await liveArgo()).toBe('approved-infrastructure-argo_url');
     await settingsController.upsert(
       'infrastructure',
       'argo_url',
@@ -567,12 +595,16 @@ describe('an Admin’s other ways to move a setting', () => {
     );
     // The controller drops the cache on this group; were it still warm with
     // the Admin's value, the assistant must not be answered from it.
-    expect(await infraConfig.getArgoUrl()).toBe('https://attacker.example');
+    expect(await liveArgo()).toBe('https://attacker.example');
     expect(await servingAssistant(true, () => infraConfig.getArgoUrl())).toBe(
       'approved-infrastructure-argo_url',
     );
-    // And the assistant's read did not put the approved value in the cache.
-    expect(await infraConfig.getArgoUrl()).toBe('https://attacker.example');
+    // Work that declared nothing is not answered from the cache either.
+    expect(await infraConfig.getArgoUrl()).toBe(
+      'approved-infrastructure-argo_url',
+    );
+    // And neither read put the approved value in the cache.
+    expect(await liveArgo()).toBe('https://attacker.example');
   });
 });
 
@@ -659,7 +691,7 @@ describe('apply current settings to the assistant', () => {
     await change();
     expect(await world.assembled()).toBe(pod);
 
-    expect(await driftController.apply()).toEqual({
+    expect(await applyShown()).toEqual({
       applied: ['integrations.s3_bucket'],
     });
     expect(await service.drift()).toEqual([]);
@@ -672,21 +704,26 @@ describe('apply current settings to the assistant', () => {
     expect(
       text(
         await driftTool.applySettingsToAssistant(
-          { confirm: true },
+          { applyToken: 'none', confirm: true },
           null,
           viaAssistant(OWNER),
         ),
       ),
     ).toContain('Nothing to apply');
     await change();
+    const applyToken = await tokenOf();
     const asked = text(
-      await driftTool.applySettingsToAssistant({}, null, viaAssistant(OWNER)),
+      await driftTool.applySettingsToAssistant(
+        { applyToken },
+        null,
+        viaAssistant(OWNER),
+      ),
     );
     expect(asked).toContain('integrations.s3_bucket');
     expect(db.pins.size).toBe(1);
     const done = text(
       await driftTool.applySettingsToAssistant(
-        { confirm: true },
+        { applyToken, confirm: true },
         null,
         viaAssistant(OWNER),
       ),
@@ -701,7 +738,7 @@ describe('apply current settings to the assistant', () => {
     await change();
     await expect(
       driftTool.applySettingsToAssistant(
-        { confirm: true },
+        { applyToken: await tokenOf(), confirm: true },
         null,
         viaAssistant(ADMIN),
       ),
@@ -766,7 +803,8 @@ describe('the drift is told to the Owner without a value', () => {
         change: 'changed',
         changedById: ADMIN.id,
         changedByName: 'Ada Admin',
-        changedAt: AT,
+        changedAt: expect.any(Date) as unknown,
+        version: expect.any(String) as unknown,
       },
       {
         group: 'integrations',
@@ -774,7 +812,8 @@ describe('the drift is told to the Owner without a value', () => {
         change: 'removed',
         changedById: ADMIN.id,
         changedByName: 'Ada Admin',
-        changedAt: AT,
+        changedAt: expect.any(Date) as unknown,
+        version: expect.any(String) as unknown,
       },
     ]);
     without(body);
@@ -809,7 +848,7 @@ describe('the drift is told to the Owner without a value', () => {
   });
 
   it('nothing differs: an empty list, and no field in the tool’s status', async () => {
-    await driftController.apply();
+    await applyShown();
     expect(await driftController.read()).toEqual({ drift: [] });
     expect(
       text(await rancherTool.getRancherStatus({}, null, viaAssistant(OWNER))),
@@ -828,7 +867,7 @@ describe('a request made for the assistant reads the approved settings', () => {
           getType: () => 'http',
           switchToHttp: () => ({ getRequest: () => req }),
         } as unknown as ExecutionContext,
-        { handle: () => defer(() => live('integrations', 's3_bucket')) },
+        { handle: () => defer(() => read('integrations', 's3_bucket')) },
       ),
     );
 
@@ -853,6 +892,35 @@ describe('a request made for the assistant reads the approved settings', () => {
     ).toBe('approved-integrations-s3_bucket');
   });
 
+  it('the assistant named anywhere else: another parameter, the query, the body of a tool call', async () => {
+    const owners = http(OWNER).user;
+    for (const req of [
+      { user: owners, params: { targetAgentId: RANCH } },
+      { user: owners, params: {}, query: { agentId: RANCH } },
+      { user: owners, params: {}, query: { filter: `agent:${RANCH}` } },
+      { user: owners, params: {}, body: { agentId: RANCH } },
+      {
+        user: owners,
+        params: {},
+        body: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { name: 'restart_agent', arguments: { id: RANCH } },
+        },
+      },
+      {
+        user: owners,
+        params: {},
+        body: { agents: [{ id: ALPHA }, { id: RANCH }] },
+      },
+    ]) {
+      expect([JSON.stringify(req).slice(0, 60), await through(req)]).toEqual([
+        JSON.stringify(req).slice(0, 60),
+        'approved-integrations-s3_bucket',
+      ]);
+    }
+  });
+
   it('any other agent, and a request that names none: the live value', async () => {
     expect(
       await through({ user: http(ADMIN).user, params: { id: ALPHA } }),
@@ -865,8 +933,8 @@ describe('a request made for the assistant reads the approved settings', () => {
     );
   });
 
-  it('with nothing kept back it adds nothing to the request', async () => {
-    await driftController.apply();
+  it('with nothing kept back the request is declared live at once', async () => {
+    await applyShown();
     expect(
       await lastValueFrom(
         interceptor.intercept(
@@ -883,6 +951,183 @@ describe('a request made for the assistant reads the approved settings', () => {
         ),
       ),
     ).toBe('handled');
+  });
+});
+
+// ── Work that does not say whom it is for ────────────────────
+
+describe('work that declares nothing reads the approved settings', () => {
+  beforeEach(() =>
+    settingsController.upsert(
+      'integrations',
+      's3_bucket',
+      { value: 'admins-bucket', valueType: 'string' },
+      http(ADMIN),
+    ),
+  );
+
+  it('a hub handler, a scheduled job, a path nobody thought about: approved, never the Admin’s value', async () => {
+    // No scope at all, as a socket handler or a timer runs.
+    expect(await read('integrations', 's3_bucket')).toBe(
+      'approved-integrations-s3_bucket',
+    );
+    expect(
+      (await gateway.findByGroup('integrations')).find(
+        (row) => row.name === 's3_bucket',
+      )?.value,
+    ).toBe('approved-integrations-s3_bucket');
+    expect(await infraConfig.getArgoUrl()).toBe(
+      'approved-infrastructure-argo_url',
+    );
+    // Declared for another agent, it is live.
+    expect(
+      await servingAgentId(ALPHA, () => read('integrations', 's3_bucket')),
+    ).toBe('admins-bucket');
+  });
+
+  it('the deploy path declares every read it makes, for the assistant and for an ordinary agent', async () => {
+    const undeclared: string[] = [];
+    onUndeclaredSettingRead((key) => undeclared.push(key));
+    await world.assembled();
+    await world.assembled(ALPHA);
+    const ranch = (await world.agents.findAdmin())!;
+    await world.workflows.previewAgentEnv(ranch);
+    await world.workflows.previewAgentEnv(
+      (await world.agents.findById(ALPHA))!,
+    );
+    // A read that reached the gateway with nothing declared would be listed
+    // here: a new step of the deploy that forgot to say whom it serves.
+    expect(undeclared).toEqual([]);
+    // And the listener does hear an undeclared read.
+    await read('integrations', 's3_bucket');
+    expect(undeclared).toEqual(['integrations.s3_bucket']);
+  });
+});
+
+// ── The Owner applies what they were shown ───────────────────
+
+describe('an apply is bound to the list the Owner was shown', () => {
+  const adminSets = (name: string, value: string) =>
+    settingsController.upsert(
+      'integrations',
+      name,
+      { value, valueType: 'string' },
+      http(ADMIN),
+    );
+  const REFUSED = {
+    status: 409,
+    response: { code: 'SETTINGS_CHANGED' },
+  };
+
+  it('an Admin changes the same setting again between the look and the apply: refused, nothing moves', async () => {
+    await adminSets('ranch_api_url', 'https://looked-at.example');
+    const looked = await shown();
+    const pod = await world.assembled();
+
+    await adminSets('ranch_api_url', 'https://swapped-in.example');
+
+    await expect(driftController.apply(looked)).rejects.toMatchObject(REFUSED);
+    expect(await approved('integrations', 'ranch_api_url')).toBe(
+      'approved-integrations-ranch_api_url',
+    );
+    expect(await world.assembled()).toBe(pod);
+    expect(db.pins.size).toBe(1);
+    // Looked at again, it applies.
+    expect(await applyShown()).toEqual({
+      applied: ['integrations.ranch_api_url'],
+    });
+    expect(await approved('integrations', 'ranch_api_url')).toBe(
+      'https://swapped-in.example',
+    );
+  });
+
+  it('an Admin changes ANOTHER setting in between: refused whole, the one that was shown included', async () => {
+    await adminSets('s3_bucket', 'looked-at-bucket');
+    const looked = await shown();
+    await adminSets('ranch_api_url', 'https://not-looked-at.example');
+
+    await expect(driftController.apply(looked)).rejects.toMatchObject(REFUSED);
+    expect(db.pins.size).toBe(2);
+    expect(await approved('integrations', 's3_bucket')).toBe(
+      'approved-integrations-s3_bucket',
+    );
+  });
+
+  it('a list that names less, more, or nothing is not the list: refused', async () => {
+    await adminSets('s3_bucket', 'one');
+    await adminSets('ranch_api_url', 'https://two.example');
+    const looked = await shown();
+    await expect(
+      driftController.apply({ shown: [looked.shown[0]] }),
+    ).rejects.toMatchObject(REFUSED);
+    await expect(driftController.apply({ shown: [] })).rejects.toMatchObject(
+      REFUSED,
+    );
+    await expect(
+      driftController.apply({
+        shown: looked.shown.map((row) => ({ ...row, version: 'made-up' })),
+      }),
+    ).rejects.toMatchObject(REFUSED);
+    expect(db.pins.size).toBe(2);
+  });
+
+  it('the tool’s confirmation is for the list it listed: a change in between is refused with the new list', async () => {
+    await adminSets('ranch_api_url', 'https://looked-at.example');
+    const applyToken = await tokenOf();
+    await adminSets('ranch_api_url', 'https://swapped-in.example');
+
+    const said = JSON.parse(
+      text(
+        await driftTool.applySettingsToAssistant(
+          { applyToken, confirm: true },
+          null,
+          viaAssistant(OWNER),
+        ),
+      ),
+    ) as { reason?: string; applyToken?: string; error?: string };
+    expect(said.reason).toBe('settings_changed');
+    expect(said.error).toContain('changed since you looked');
+    expect(said.applyToken).not.toBe(applyToken);
+    expect(db.pins.size).toBe(1);
+    expect(await approved('integrations', 'ranch_api_url')).toBe(
+      'approved-integrations-ranch_api_url',
+    );
+    // Without a token at all it is refused the same way.
+    expect(
+      text(
+        await driftTool.applySettingsToAssistant(
+          { confirm: true } as never,
+          null,
+          viaAssistant(OWNER),
+        ),
+      ),
+    ).toContain('settings_changed');
+    expect(db.pins.size).toBe(1);
+  });
+
+  it('a change that lands between the comparison and the delete is refused by the delete', async () => {
+    await adminSets('ranch_api_url', 'https://looked-at.example');
+    const looked = await shown();
+    // The row is rewritten after `drift()` was compared and before the
+    // transaction deletes: the conditional delete finds another row.
+    const original = prisma.$transaction;
+    prisma.$transaction = (async (run: (tx: unknown) => Promise<unknown>) => {
+      // Once: the Admin's own write runs in a transaction of its own.
+      prisma.$transaction = original;
+      await adminSets('ranch_api_url', 'https://raced-in.example');
+      return run(prisma);
+    }) as never;
+    try {
+      await expect(driftController.apply(looked)).rejects.toMatchObject(
+        REFUSED,
+      );
+    } finally {
+      prisma.$transaction = original;
+    }
+    expect(db.pins.size).toBe(1);
+    expect(await approved('integrations', 'ranch_api_url')).toBe(
+      'approved-integrations-ranch_api_url',
+    );
   });
 });
 

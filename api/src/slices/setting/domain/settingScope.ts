@@ -12,16 +12,29 @@ import type { ISettingData } from './setting.types';
  * setting an Admin changed keeps its approved value for the assistant until
  * the Owner applies the change.
  *
- * This file is the mechanism and knows nothing of the assistant. Work done
- * on an agent's behalf runs inside `withSettingOverrides(map, fn)`; inside
- * it `ISettingGateway` answers a key the map holds with the map's value
- * (`null` for "there is no such row") and every other key live. It is
- * carried by `AsyncLocalStorage`, so every reader below the call (the
- * workflow gateway, the S3 clients, the infra config, the knowledge config)
- * reads through it without being told: there is ONE reader of settings, the
- * gateway, and it cannot be bypassed by a consumer that forgot.
+ * This file is the mechanism and knows nothing of the assistant. There is
+ * ONE reader of settings, `ISettingGateway`, and every read it answers is
+ * made in one of three states, carried by `AsyncLocalStorage` so that every
+ * consumer below a call (the workflow gateway, the S3 clients, the infra
+ * config, the knowledge config) reads in it without being told:
  *
- * Who decides what the map holds is the assistantBuild slice, which
+ *   approved    `withApprovedSettings(overrides, fn)`: work done for the
+ *               assistant. A key the overrides hold is answered with the
+ *               approved value (`null`: there is no such row).
+ *   live        `withLiveSettings(fn)`: work that SAID it is not for the
+ *               assistant: another agent's deploy, a request that names
+ *               another agent or none, the Settings pages themselves.
+ *   undeclared  neither was said: a hub handler, a scheduled job, a path
+ *               nobody thought about. Answered as APPROVED. That is the
+ *               direction this fails in on purpose: code that forgot to say
+ *               whom it works for cannot hand the assistant, or anybody, a
+ *               value the Owner has not seen. The cost is that such work
+ *               follows an Admin's change only once the Owner applied it.
+ *
+ * While nothing differs from what the Owner approved the three are the same
+ * and cost one read of an empty table.
+ *
+ * Who decides what the overrides hold is the assistantBuild slice, which
  * registers itself here at start (`registerAssistantSettings`), the way the
  * access lists are introduced to the assistant's switch.
  */
@@ -31,42 +44,66 @@ export type SettingOverrides = ReadonlyMap<string, ISettingData | null>;
 export const settingKeyOf = (group: string, name: string): string =>
   `${group}.${name}`;
 
-const scope = new AsyncLocalStorage<SettingOverrides>();
+const LIVE = Symbol('live settings');
+type Scope = typeof LIVE | SettingOverrides;
 
-/** Run `fn` with `overrides` answering for the keys they hold. */
-export function withSettingOverrides<T>(
+const scope = new AsyncLocalStorage<Scope>();
+
+/** Run `fn` as work done for the assistant: `overrides` answer for their keys. */
+export function withApprovedSettings<T>(
   overrides: SettingOverrides,
   fn: () => T,
 ): T {
   return scope.run(overrides, fn);
 }
 
-/** The overrides of the work this call belongs to; null outside any. */
-export function currentSettingOverrides(): SettingOverrides | null {
-  const overrides = scope.getStore();
-  return overrides && overrides.size > 0 ? overrides : null;
+/** Run `fn` as work that is not for the assistant: every read is live. */
+export function withLiveSettings<T>(fn: () => T): T {
+  return scope.run(LIVE, fn);
+}
+
+/** How the current work reads settings. */
+export function settingScopeState(): 'approved' | 'live' | 'undeclared' {
+  const current = scope.getStore();
+  if (current === undefined) return 'undeclared';
+  return current === LIVE ? 'live' : 'approved';
+}
+
+let undeclaredListener: ((key: string) => void) | null = null;
+
+/**
+ * Told of every read made with nothing declared. For the spec that holds
+ * the deploy path, and whatever else it walks, to declaring whom it works
+ * for; nothing in production listens.
+ */
+export function onUndeclaredSettingRead(
+  listener: ((key: string) => void) | null,
+): void {
+  undeclaredListener = listener;
 }
 
 /**
- * `undefined`: not overridden, read it live. `null`: overridden as absent.
- * A row: the value to answer with.
+ * The overrides the current work reads through; null when it reads live.
+ * `key` names the read, for the listener above.
  */
-export function overriddenSetting(
-  group: string,
-  name: string,
-): ISettingData | null | undefined {
-  const overrides = currentSettingOverrides();
-  if (!overrides) return undefined;
-  const key = settingKeyOf(group, name);
-  return overrides.has(key) ? (overrides.get(key) ?? null) : undefined;
+export async function settingOverridesFor(
+  key: string,
+): Promise<SettingOverrides | null> {
+  const current = scope.getStore();
+  if (current === LIVE) return null;
+  if (current !== undefined) return current.size > 0 ? current : null;
+  undeclaredListener?.(key);
+  if (!source) return null;
+  const approved = await source.overrides();
+  return approved.size > 0 ? approved : null;
 }
 
-/** `rows` of a group, or of every group, as the current scope reads them. */
+/** `rows` of a group, or of every group, read through `overrides`. */
 export function applySettingOverrides(
   rows: readonly ISettingData[],
+  overrides: SettingOverrides | null,
   group?: string,
 ): ISettingData[] {
-  const overrides = currentSettingOverrides();
   if (!overrides) return [...rows];
   const byKey = new Map(
     rows.map((row) => [settingKeyOf(row.group, row.name), row]),
@@ -91,6 +128,13 @@ export interface ISettingDrift {
   change: 'changed' | 'added' | 'removed';
   changedById: string | null;
   changedAt: Date;
+  /**
+   * Names this exact state of the setting: who changed it last and when,
+   * and when the live row was last written. Opaque, and holds no value. The
+   * Owner applies what they were SHOWN: an apply that carries another
+   * version is refused.
+   */
+  version: string;
 }
 
 /** Who writes a setting: the Owner moves the approved value, nobody else. */
@@ -116,18 +160,19 @@ export function registerAssistantSettings(
 }
 
 /**
- * Run `fn` as work done for the Ranch assistant when `isAssistant` is true:
- * its settings are the approved ones. For any other agent, and when nothing
- * differs from the live values, `fn` runs as it is.
+ * Run `fn` as work done for an agent, having said which kind: the Ranch
+ * assistant reads the approved settings, any other agent the live ones.
+ * The caller knows the agent it acts for; this is where it says so.
  */
 export async function servingAssistant<T>(
   isAssistant: boolean,
   fn: () => Promise<T>,
 ): Promise<T> {
-  if (!isAssistant || !source) return fn();
-  const overrides = await source.overrides();
-  if (overrides.size === 0) return fn();
-  return withSettingOverrides(overrides, fn);
+  if (!isAssistant) return withLiveSettings(fn);
+  return withApprovedSettings(
+    source ? await source.overrides() : new Map(),
+    fn,
+  );
 }
 
 /** `servingAssistant`, for a caller that holds an agent id and not the row. */
@@ -135,12 +180,8 @@ export async function servingAgentId<T>(
   agentId: string | null | undefined,
   fn: () => Promise<T>,
 ): Promise<T> {
-  if (!agentId || !source) return fn();
-  const overrides = await source.overrides();
-  if (overrides.size === 0) return fn();
-  return (await source.assistantId()) === agentId
-    ? withSettingOverrides(overrides, fn)
-    : fn();
+  if (!source || !agentId) return servingAssistant(false, fn);
+  return servingAssistant((await source.assistantId()) === agentId, fn);
 }
 
 /** What the Owner is told differs; empty for an installation with no source. */

@@ -1,4 +1,6 @@
-import { Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Type } from 'class-transformer';
+import { IsArray, IsString, ValidateNested } from 'class-validator';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -27,6 +29,39 @@ export class AssistantSettingDriftDto {
   })
   changedByName: string | null;
   @ApiProperty() changedAt: Date;
+  @ApiProperty({
+    description:
+      'Names this exact state of the setting. Opaque; holds no value. Sent back with the apply.',
+  })
+  version: string;
+}
+
+export class AssistantSettingShownDto {
+  @ApiProperty({ example: 'integrations' })
+  @IsString()
+  group: string;
+
+  @ApiProperty({ example: 's3_bucket' })
+  @IsString()
+  name: string;
+
+  @ApiProperty({
+    description: 'The `version` the list carried for this setting.',
+  })
+  @IsString()
+  version: string;
+}
+
+export class ApplyAssistantSettingsDto {
+  @ApiProperty({
+    type: [AssistantSettingShownDto],
+    description:
+      'The settings to apply, exactly as `GET /rancher/settings` listed them. The apply is refused with 409 SETTINGS_CHANGED when the list is no longer this one.',
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AssistantSettingShownDto)
+  shown: AssistantSettingShownDto[];
 }
 
 export class AssistantSettingsDto {
@@ -92,11 +127,13 @@ export class AssistantSettingController {
   @ApiOperation({
     operationId: 'applySettingsToAssistant',
     summary:
-      'Make the live settings the approved ones: the Ranch assistant is served them from its next restart. Answers the keys that moved. Owner only.',
+      'Make the live values of the settings the Owner was shown the approved ones: the Ranch assistant is served them from its next restart. The body carries the list as it was read; when it differs from the list now (a setting changed again, another was changed), nothing is applied and the answer is 409 SETTINGS_CHANGED. Answers the keys that moved. Owner only.',
   })
   @ApiOkResponse({ type: AssistantSettingsAppliedDto })
-  async apply(): Promise<AssistantSettingsAppliedDto> {
-    const moved = await this.service.applyCurrent();
+  async apply(
+    @Body() dto: ApplyAssistantSettingsDto,
+  ): Promise<AssistantSettingsAppliedDto> {
+    const moved = await this.service.applyExact(dto?.shown ?? []);
     return { applied: moved.map((row) => `${row.group}.${row.name}`) };
   }
 }

@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import {
@@ -124,18 +130,21 @@ function asSetting(pin: IPinRow): ISettingData | null {
  *    HAD into `AssistantSettingPin`, unless one is kept already. A write by
  *    the Owner removes the pin: the approved value follows the Owner. A
  *    value that comes back to the approved one removes it too.
- *  - Work done for the assistant runs inside `servingAssistant(...)`
+ *  - Work done for the assistant runs inside `servingAssistant(true, ...)`
  *    (`#/setting/domain`): the deploy path, the env preview, and every
- *    request that names the assistant or carries its token
+ *    request that carries its token or names its id anywhere
  *    (`AssistantSettingInterceptor`). Inside it the one reader of settings,
- *    `ISettingGateway`, answers a pinned key with the pinned value.
+ *    `ISettingGateway`, answers a pinned key with the pinned value. Work
+ *    for another agent says so and reads live.
  *  - No pin means approved = live, which is the state of every installation
  *    at the migration and of every setting nobody but the Owner touched.
  *    There is no copy of the settings to initialise and none to keep in
  *    step; promoting another agent to be the assistant needs nothing.
  *  - A pin is a drift. `drift()` lists them for the Owner, by key, with who
- *    and when, and never a value. `applyCurrent()` drops them: the live
- *    values become the approved ones.
+ *    and when, and never a value. `applyExact(shown)` drops the ones the
+ *    Owner was shown: their live values become the approved ones.
+ *  - Work that does not say whom it is for reads the approved values too
+ *    (`settingScope.ts`): forgetting to declare fails towards the Owner.
  *
  * The platform's own writes (`upsert` / `delete` on the gateway: seeded
  * defaults, a migration flag) are not a person's and move nothing.
@@ -184,22 +193,21 @@ export class AssistantSettingService
       this.table.assistantSettingPin.findMany({
         orderBy: [{ group: 'asc' }, { name: 'asc' }],
       }),
-      this.table.setting.findMany(),
+      // Live on purpose, whatever the caller's scope: this is the comparison
+      // of the live settings with the approved ones.
+      this.settings.liveVersions(),
     ]);
-    const liveKeys = new Set(
-      live.map((row) => settingKeyOf(row.group, row.name)),
-    );
-    return pins.map((pin) => ({
-      group: pin.group,
-      name: pin.name,
-      change: !pin.present
-        ? 'added'
-        : liveKeys.has(settingKeyOf(pin.group, pin.name))
-          ? 'changed'
-          : 'removed',
-      changedById: pin.changedById,
-      changedAt: pin.changedAt,
-    }));
+    return pins.map((pin) => {
+      const written = live.get(settingKeyOf(pin.group, pin.name));
+      return {
+        group: pin.group,
+        name: pin.name,
+        change: !pin.present ? 'added' : written ? 'changed' : 'removed',
+        changedById: pin.changedById,
+        changedAt: pin.changedAt,
+        version: `${pin.changedAt.toISOString()}/${written ? written.toISOString() : '-'}`,
+      };
+    });
   }
 
   // ── writing ──
@@ -230,7 +238,22 @@ export class AssistantSettingService
       if (pin) await table.deleteMany({ where });
       return;
     }
-    if (pin) return;
+    if (pin) {
+      // Changed again: the approved value stays, and the row says who
+      // changed the setting LAST and when, so that an apply made from an
+      // older look at the list is refused (`applyExact`).
+      await table.deleteMany({ where });
+      await table.create({
+        data: {
+          ...where,
+          present: pin.present,
+          valueType: pin.valueType,
+          value: pin.value,
+          changedById: change.by.userId,
+        },
+      });
+      return;
+    }
     await table.create({
       data: {
         ...where,
@@ -247,13 +270,62 @@ export class AssistantSettingService
 
   /**
    * The Owner's "apply current settings to the assistant": the live values
-   * become the approved ones. Answers the keys that moved.
+   * of exactly the settings the Owner was SHOWN become the approved ones.
+   *
+   * `shown` is the list as the Owner read it, each with its `version`. A
+   * setting changed, added to or gone from the list since then means the
+   * Owner would approve something they did not look at: the whole apply is
+   * refused and nothing moves. Each row is deleted on the condition that it
+   * is still the row that was shown, inside one transaction, so a change
+   * that lands between the comparison and the delete is refused as well.
    */
-  async applyCurrent(): Promise<{ group: string; name: string }[]> {
-    const pins = await this.table.assistantSettingPin.findMany({
-      orderBy: [{ group: 'asc' }, { name: 'asc' }],
+  async applyExact(
+    shown: readonly { group: string; name: string; version: string }[],
+  ): Promise<{ group: string; name: string }[]> {
+    const current = await this.drift();
+    if (driftToken(current) !== driftToken(shown)) throw settingsChanged();
+    await this.prisma.$transaction(async (tx) => {
+      const table = (tx as unknown as IPinClient).assistantSettingPin;
+      for (const row of current) {
+        const { count } = await table.deleteMany({
+          where: { group: row.group, name: row.name, changedAt: row.changedAt },
+        });
+        if (count !== 1) throw settingsChanged();
+      }
     });
-    await this.table.assistantSettingPin.deleteMany();
-    return pins.map((pin) => ({ group: pin.group, name: pin.name }));
+    // The live rows themselves may have been written again without the pin
+    // moving only by the Owner, whose write removes the pin: nothing left to
+    // compare.
+    return current.map((row) => ({ group: row.group, name: row.name }));
   }
+}
+
+/** What the apply answers when the list is not the one the Owner was shown. */
+export const SETTINGS_CHANGED_CODE = 'SETTINGS_CHANGED';
+export const SETTINGS_CHANGED_TEXT =
+  'The settings changed since you looked. Read the list again and apply ' +
+  'what it shows now. Nothing was applied.';
+
+function settingsChanged(): ConflictException {
+  return new ConflictException({
+    statusCode: 409,
+    error: 'Conflict',
+    code: SETTINGS_CHANGED_CODE,
+    message: SETTINGS_CHANGED_TEXT,
+  });
+}
+
+/**
+ * One short string for a whole list of drift, as the tool hands it to the
+ * model with the list and takes it back with the confirmation: the same
+ * list gives the same token, any other list another.
+ */
+export function driftToken(
+  rows: readonly { group: string; name: string; version: string }[],
+): string {
+  const text = rows
+    .map((row) => `${row.group}.${row.name}@${row.version}`)
+    .sort()
+    .join('|');
+  return createHash('sha256').update(text).digest('hex').slice(0, 16);
 }

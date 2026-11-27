@@ -57,6 +57,15 @@ export abstract class ISettingGateway {
     return this.upsert(group, name, data);
   }
 
+  /**
+   * The stored row as it is now, live, with when it was last written; null
+   * for no row. For the listener of writes, which compares the live state
+   * with the approved one and must not be answered through a scope.
+   */
+  liveVersions(): Promise<Map<string, Date>> {
+    return Promise.resolve(new Map());
+  }
+
   /** Register the listener of person-made writes; one, set at start. */
   attachWriteHook(_hook: ISettingWriteHook): void {}
 }

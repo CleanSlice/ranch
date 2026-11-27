@@ -6,77 +6,98 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { Observable, from, switchMap } from 'rxjs';
-import { assistantSettingSource, withSettingOverrides } from '#/setting/domain';
+import {
+  assistantSettingSource,
+  withApprovedSettings,
+  withLiveSettings,
+  type SettingOverrides,
+} from '#/setting/domain';
 import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 
-/** The route parameters an agent id travels in. */
-const AGENT_PARAMS = ['id', 'agentId'] as const;
 const AGENT_SUB = 'agent:';
 
 /**
- * A request made for the Ranch assistant reads the settings the Owner
- * approved (CLEAN-271).
+ * Every HTTP request says how it reads settings (CLEAN-271): APPROVED when
+ * it is made for the Ranch assistant, LIVE otherwise. A request that got
+ * past this without saying reads approved (`settingScope.ts`), so the
+ * question here is only which requests may read live.
  *
- * The deploy path scopes itself (`servingAssistant` in
- * `AgentDeployService`). This covers what the API does for the assistant
- * between deploys, where a live setting would redirect its data: its
- * workspace and secrets read and written through the console
- * (`/agents/:id/...`), and everything its own runtime asks the API for with
- * its token (its tools over MCP, a knowledge query, an attachment).
+ * "Made for the assistant" is not read off a parameter's name. The
+ * assistant is named by its id wherever a request can carry one: as the
+ * bearer of its runtime's token (its tools over MCP, a knowledge query, an
+ * attachment), in any route parameter, in the query, or anywhere in the
+ * body (a tool call made with a person's own token names it in the
+ * arguments; a route may take `agentId` in its JSON). So the request is the
+ * assistant's when the id is its bearer's or appears in any of those. A
+ * request is the assistant's too when it MIGHT be and cannot be read: a
+ * body that is not parsed JSON is not searched, and its route parameters
+ * are what names the agent there.
  *
- * Two cheap questions first, so that a request that cannot concern the
- * assistant costs nothing: does the bearer belong to an agent runtime, or
- * does the route name an agent? Then one read of a table that is empty
- * unless somebody changed a setting the Owner has not applied, and only
- * then which agent the assistant is.
+ * Cheap on purpose: while nothing differs from what the Owner approved
+ * (the table is empty) the request is declared live at once, and which
+ * agent the assistant is is not even asked.
+ *
+ * Work outside an HTTP request (the hub's socket handlers, scheduled jobs)
+ * does not pass here. It either says whom it serves (`servingAgentId`, as
+ * the deploy path does) or reads approved.
  */
 @Injectable()
 export class AssistantSettingInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    if (context.getType() !== 'http') return next.handle();
+    const source = assistantSettingSource();
+    if (context.getType() !== 'http' || !source) return next.handle();
     const req = context
       .switchToHttp()
       .getRequest<Request & { user?: IAuthTokenPayload }>();
-    const candidates = candidateAgentIds(req);
-    const source = assistantSettingSource();
-    if (candidates.length === 0 || !source) return next.handle();
 
     return from(
-      (async () => {
+      (async (): Promise<SettingOverrides | null> => {
         const overrides = await source.overrides();
         if (overrides.size === 0) return null;
         const assistantId = await source.assistantId();
-        return assistantId && candidates.includes(assistantId)
-          ? overrides
-          : null;
+        return assistantId && namesAgent(req, assistantId) ? overrides : null;
       })(),
     ).pipe(
-      switchMap((overrides) =>
-        overrides
-          ? // The handler runs when it is subscribed to, so the subscription
-            // is what has to happen inside the scope.
-            new Observable<unknown>((subscriber) =>
-              withSettingOverrides(overrides, () =>
-                next.handle().subscribe(subscriber),
-              ),
-            )
-          : next.handle(),
+      switchMap(
+        (overrides) =>
+          // The handler runs when it is subscribed to, so the subscription
+          // is what has to happen inside the scope.
+          new Observable<unknown>((subscriber) => {
+            const run = () => next.handle().subscribe(subscriber);
+            return overrides
+              ? withApprovedSettings(overrides, run)
+              : withLiveSettings(run);
+          }),
       ),
     );
   }
 }
 
-/** The agents a request may be made for: its bearer's, and the route's. */
-export function candidateAgentIds(
+/**
+ * Whether `req` is made for the agent `agentId`: it carries that agent's
+ * runtime token, or names the id in a route parameter, the query or the
+ * body, under any name.
+ */
+export function namesAgent(
   req: (Request & { user?: IAuthTokenPayload }) | undefined,
-): string[] {
-  const ids: string[] = [];
-  const sub = typeof req?.user?.sub === 'string' ? req.user.sub : '';
-  if (sub.startsWith(AGENT_SUB)) ids.push(sub.slice(AGENT_SUB.length));
-  const params = (req?.params ?? {}) as Record<string, unknown>;
-  for (const name of AGENT_PARAMS) {
-    const value = params[name];
-    if (typeof value === 'string' && value !== '') ids.push(value);
+  agentId: string,
+): boolean {
+  if (!req || !agentId) return false;
+  const sub = typeof req.user?.sub === 'string' ? req.user.sub : '';
+  if (sub === `${AGENT_SUB}${agentId}`) return true;
+  return [req.params, req.query, req.body].some((part) =>
+    mentions(part, agentId),
+  );
+}
+
+function mentions(part: unknown, agentId: string): boolean {
+  if (part === null || part === undefined) return false;
+  if (typeof part === 'string') return part.includes(agentId);
+  if (typeof part !== 'object') return false;
+  try {
+    return JSON.stringify(part).includes(agentId);
+  } catch {
+    // Something that cannot be read cannot be ruled out.
+    return true;
   }
-  return ids;
 }

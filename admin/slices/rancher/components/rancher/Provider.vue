@@ -18,7 +18,7 @@ import {
   IconExternalLink,
   IconCloud,
 } from '@tabler/icons-vue';
-import { isOwnerRole } from '#agent/utils/agentAccess';
+import { isOwnerRole, ownerOnlyLeftOutText } from '#agent/utils/agentAccess';
 
 const rancherStore = useRancherStore();
 const agentStore = useAgentStore();
@@ -89,6 +89,16 @@ const hasLlm = computed(() => !!status.value?.hasLlm);
 const hasS3 = computed(() => !!status.value?.hasS3);
 const hasTemplate = computed(() => !!status.value?.template);
 const admin = computed(() => status.value?.admin ?? null);
+
+// The assistant's usage is the Owner's to read (CLEAN-268). Anybody else has
+// the workspace totals beside the chat, without the assistant in them: its
+// own figures are not asked for, and the panel says whose they are
+// (CLEAN-269).
+const usageLeftOut = computed(() =>
+  admin.value && !isOwner.value
+    ? ownerOnlyLeftOutText('usage figures', admin.value.name)
+    : '',
+);
 
 // The hub refused this page's chat as "not found" (CLEAN-231): access to the
 // Ranch admin agent was taken away while the page was open, or after the
@@ -430,8 +440,9 @@ async function onDeploy() {
       </div>
       <UsagePanel
         ref="usagePanel"
-        :agent-id="admin.id"
-        title="Rancher usage · 30d"
+        :agent-id="isOwner ? admin.id : null"
+        :title="isOwner ? 'Rancher usage · 30d' : 'Usage · 30d'"
+        :left-out="usageLeftOut"
         class="w-full lg:w-96 lg:shrink-0 lg:self-start"
       />
     </div>

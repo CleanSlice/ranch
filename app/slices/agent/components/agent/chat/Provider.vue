@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { IBridleConversation } from '#bridle/domain';
-import { canManageAgent } from '#agent/utils/agentAccess';
+import { canManageAgent, canShareAgent } from '#agent/utils/agentAccess';
 import { useAgentToolState } from '#agent/composables/useAgentToolState';
 
 const props = defineProps<{
@@ -65,6 +65,11 @@ const conversation = computed<IBridleConversation | null>(() =>
 // (CLEAN-232).
 const canManage = computed(() =>
   agent.value ? canManageAgent(authStore.role, agent.value) : false,
+);
+// Share is for whoever opens the agent, the Ranch assistant apart: its link
+// is the Owner's (CLEAN-269).
+const canShare = computed(() =>
+  agent.value ? canShareAgent(authStore.role, agent.value) : false,
 );
 
 // ── Tool servers (CLEAN-245) ──────────────────────────────────
@@ -271,8 +276,9 @@ const initials = computed(() => {
         <BridleChatNewChat v-if="conversation" :conversation="conversation" />
 
         <!-- No `canManage` gate: any logged-in user who can open the agent may
-             share it (spec clarification, 2026-09-07). -->
-        <SharePanelProvider v-if="agent" :agent-id="agent.id" />
+             share it (spec clarification, 2026-09-07). The Ranch assistant
+             apart, whose link is the Owner's (`canShareAgent`, CLEAN-269). -->
+        <SharePanelProvider v-if="agent && canShare" :agent-id="agent.id" />
 
         <button
           v-if="agent && canManage"

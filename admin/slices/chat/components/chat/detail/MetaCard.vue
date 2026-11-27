@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import type { IChatSession } from '#chat/stores/chat';
 
-defineProps<{ session: IChatSession }>();
+defineProps<{
+  session: IChatSession;
+  /** False for the viewer's own conversation: its route gives no tool events. */
+  toolEvents?: boolean;
+}>();
 const showTools = defineModel<boolean>('showTools', { required: true });
 const showThinking = defineModel<boolean>('showThinking', { required: true });
 </script>
@@ -29,7 +33,10 @@ const showThinking = defineModel<boolean>('showThinking', { required: true });
 
     <div class="h-px bg-border/50" />
 
-    <label class="flex cursor-pointer items-center gap-2 text-[12.5px] text-foreground/80">
+    <label
+      v-if="toolEvents !== false"
+      class="flex cursor-pointer items-center gap-2 text-[12.5px] text-foreground/80"
+    >
       <button
         type="button"
         role="switch"

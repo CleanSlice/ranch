@@ -340,10 +340,14 @@ describe('AgentController — the caller’s own pins and reach (CLEAN-231)', ()
     });
 
     expect(pinnedIds(await controller.findAll(user))).toEqual(['ag-plain']);
-    expect(pinnedIds(await controller.findAll(admin))).toEqual([
-      'ag-ranch',
-      'ag-mine',
-    ]);
+    // The Admin pinned the Ranch assistant too, before CLEAN-269. It is
+    // first in every list as it is, so the pin is not shown: the row stays
+    // in the table and no answer carries it.
+    expect(pinnedIds(await controller.findAll(admin))).toEqual(['ag-mine']);
+    expect((await controller.findById('ag-ranch', admin))?.pinned).toBe(false);
+    expect(
+      pinnedIds((await controller.status(admin)).map((s) => s.agent)),
+    ).toEqual(['ag-mine']);
     expect(pinnedIds(await controller.findAll(otherUser))).toEqual([]);
     expect(
       pinnedIds((await controller.status(user)).map((s) => s.agent)),

@@ -76,6 +76,7 @@ import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { AgentScoped, accessCallerOf } from '#/user/agentAccess/guards';
 import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
+import { isPinnedFor } from '#/agent/pin/domain/pinRule';
 
 // Workflow ends as soon as the pod hits phase=Running, but pod=Running does
 // not mean the agent inside is ready (channels connected, S3 pulled, HTTP up).
@@ -179,7 +180,9 @@ export class AgentController {
   /**
    * Each agent with `pinned` as this caller set it (CLEAN-231). A pin is
    * personal: one read of the caller's pins, and false for everybody who is
-   * not a person (an agent runtime, an anonymous reader).
+   * not a person (an agent runtime, an anonymous reader). And false for the
+   * Ranch assistant, for everybody: it is first in every list as it is, so
+   * a pin on it is neither shown nor counted (`pinRule`, CLEAN-269).
    */
   private async withPins(
     agents: IAgentData[],
@@ -190,7 +193,10 @@ export class AgentController {
       caller.kind === 'person' && agents.length > 0
         ? await this.pins.pinnedIds(caller.userId)
         : new Set<string>();
-    return agents.map((agent) => ({ ...agent, pinned: pinned.has(agent.id) }));
+    return agents.map((agent) => ({
+      ...agent,
+      pinned: isPinnedFor(agent, pinned),
+    }));
   }
 
   private deploy(agentId: string): Promise<void> {

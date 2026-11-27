@@ -347,6 +347,37 @@ describe('AgentAdminTool — pin_agent', () => {
     );
   });
 
+  // CLEAN-269: the Ranch assistant is first in every list as it is.
+  it('says the Ranch assistant is always first, and writes nothing, for the Owner too', async () => {
+    const owner = () =>
+      asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Owner, 'user-o');
+    for (const [who, pinned] of [
+      [user, true],
+      [user, false],
+      [owner, true],
+    ] as const) {
+      const { tool, agents, pins } = harness();
+      const found = await agents.findById('agent-a');
+      agents.findById.mockResolvedValue({
+        ...found,
+        name: 'Rancher',
+        isAdmin: true,
+      });
+      const result = await tool.pinAgent({ id: 'agent-a', pinned }, null, who());
+      const text = textOf(result);
+      expect(text).toContain(
+        'Rancher is the Ranch assistant: it is always first in every agent list, so it is not pinned. Nothing was changed.',
+      );
+      expect(text).toContain('"pinned": false');
+      // Not an error and not an owner-only refusal.
+      expect((result as { isError?: boolean }).isError).not.toBe(true);
+      expect(text).not.toContain('owner_only');
+      expect(text).not.toContain('not found');
+      expect(pins.pin).not.toHaveBeenCalled();
+      expect(pins.unpin).not.toHaveBeenCalled();
+    }
+  });
+
   it('names the next move when the agent does not exist', async () => {
     const { tool, agents, pins } = harness();
     agents.findById.mockResolvedValue(null);

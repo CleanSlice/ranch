@@ -18,6 +18,7 @@ import type { IChatSession } from '../domain/chat.types';
  * both are `person`, by name.
  */
 export type ChatUserKind =
+  | 'own'
   | 'person'
   | 'peer'
   | 'admin'
@@ -59,6 +60,9 @@ export function shownId(fullId: string): string {
 export function chatUser(s: IChatSession): ChatUser {
   const fullId = s.externalUserId;
   const base = { fullId, id: shownId(fullId) };
+  // The viewer's own conversation (CLEAN-269): read through `/me/chats`,
+  // which names nobody, because there is nobody else it could be.
+  if (s.own) return { fullId: '', id: '', kind: 'own', label: 'You' };
   if (s.channel === 'internal') return { ...base, kind: 'internal', label: 'Internal' };
   if (s.channel === 'telegram') return { ...base, kind: 'telegram', label: s.title || 'Telegram' };
   if (s.channel === 'slack') return { ...base, kind: 'slack', label: s.title || 'Slack' };

@@ -25,6 +25,7 @@ import {
 } from '#/mcp/tooling';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
+import { isPinnedFor } from '#/agent/pin/domain/pinRule';
 import {
   toGrantedView,
   toReaderView,
@@ -139,7 +140,8 @@ export class RancherTool {
           ...(agent.isAdmin && !manages
             ? { managedBy: OWNER_MANAGED_MARK }
             : {}),
-          pinned: pinned.has(agent.id),
+          // Never the Ranch assistant: it is first as it is (CLEAN-269).
+          pinned: isPinnedFor(agent, pinned),
           createdByMe:
             !!person && !!createdById && createdById === person.userId,
           ...(operator ? { createdById } : {}),

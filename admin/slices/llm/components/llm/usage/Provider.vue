@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { formatNumber } from '#common/utils/format';
 
-const { rows, totals, loading, failed, load } = useLlmUsageOverview();
+const { rows, totals, loading, failed, load, leftOutText } = useLlmUsageOverview();
 
 function formatCost(n: number): string {
   if (n === 0) return '$0.00';
@@ -23,6 +23,11 @@ function formatCost(n: number): string {
         Refresh
       </Button>
     </div>
+
+    <!-- The totals and the rows below are without the Ranch assistant for
+         anybody but the Owner (CLEAN-269). Said before the figures: on a
+         phone the four cards stack, and a line under them is a screen away. -->
+    <AccessNote v-if="leftOutText" data-usage-left-out>{{ leftOutText }}</AccessNote>
 
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <LlmUsageStatCard

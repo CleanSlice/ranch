@@ -15,11 +15,14 @@ import type {
   IPaddockJudgeScore,
 } from '#paddock/stores/paddockEvaluation';
 import type { IPaddockScenario } from '#paddock/stores/paddockScenario';
+import { notAvailableText } from '#agent/utils/agentAccess';
 import { compareText } from '#common/utils/format';
 
 const props = defineProps<{ evaluationId: string }>();
 
 const store = usePaddockEvaluationStore();
+const authStore = useAuthStore();
+const notAvailableHint = computed(() => notAvailableText(authStore.user?.role));
 
 // Live-progress: which scenario rows the user has expanded, plus a cache
 // of the fetched full data (messages, expectedBehavior, successCriteria).
@@ -215,6 +218,10 @@ function notifyCompletion(status: 'done' | 'failed') {
 watch(
   () => evaluation.value?.status,
   (status, prevStatus) => {
+    // The API answered "not found" (an id that names nothing, or an
+    // evaluation of an agent that is not this viewer's to read): nothing more
+    // is asked about it (CLEAN-269).
+    if (!evaluation.value) return;
     if (status === 'running' && !polling.value) {
       polling.value = setInterval(refresh, 2000);
     }
@@ -436,7 +443,13 @@ const elapsedLabel = computed(() => {
 </script>
 
 <template>
-  <div v-if="!evaluation" class="text-sm text-muted-foreground">Evaluation not found.</div>
+  <PageNotAvailable
+    v-if="!evaluation"
+    what="evaluation"
+    :hint="notAvailableHint"
+    back-to="/paddock"
+    back-label="Evaluations"
+  />
 
   <div v-else class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,420px)]">
     <div class="flex min-w-0 flex-col gap-6">

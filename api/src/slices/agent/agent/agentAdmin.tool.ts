@@ -19,6 +19,7 @@ import {
 } from '#/mcp/tooling';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
+import { assistantIsAlwaysFirst } from '#/agent/pin/domain/pinRule';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { IAgentGateway } from './domain';
 import type { IAgentData } from './domain/agent.types';
@@ -209,7 +210,9 @@ export class AgentAdminTool implements IConditionallyListedTool {
       'personal: nobody else\u2019s lists change, and nobody can pin for ' +
       'somebody else. It changes nothing about the agent, its pod, its ' +
       'status or who may use it, and is undone by the same call. Needs a ' +
-      'signed-in person and an agent that person can use. Takes the agent ' +
+      'signed-in person and an agent that person can use. The Ranch ' +
+      'assistant itself is always first in every list and is not pinned: ' +
+      'asked for it, this says so and changes nothing. Takes the agent ' +
       'id — resolve a name with list_agents first.',
     parameters: z.object({
       id: z.string().describe('Agent id — pick from list_agents'),
@@ -231,6 +234,16 @@ export class AgentAdminTool implements IConditionallyListedTool {
       !(await this.access.reaches(callerParty(httpRequest), agent.id))
     ) {
       return agentNotFound(httpRequest, id);
+    }
+    // The Ranch assistant is first in every list already (CLEAN-269): one
+    // plain sentence, for the Owner as for anybody, and nothing written. Not
+    // a refusal: nothing was denied, there is nothing a pin would do.
+    if (agent.isAdmin) {
+      return ok({
+        ok: true,
+        agent: { id: agent.id, name: agent.name, pinned: false },
+        message: assistantIsAlwaysFirst(agent.name),
+      });
     }
     // Not destructive, so no confirm (docs/agent-tools.md): reversible with
     // the same call and the pod never notices.

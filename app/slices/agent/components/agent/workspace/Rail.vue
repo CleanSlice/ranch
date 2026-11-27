@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { IAgentData, IClusterCapacityData } from '#agent/domain';
+import { canPinAgent } from '#agent/utils/agentAccess';
 import { railOrder } from '#agent/utils/railOrder';
 import {
   effectiveOwnerFilter,
@@ -119,8 +120,10 @@ const hasAgents = computed(() => (props.agents?.length ?? 0) > 0);
           />
           <!-- Pin without opening the agent (owner review): shown on hover
                and on keyboard focus, for everyone who sees the row. A
-               sibling of the row button, not a child. -->
+               sibling of the row button, not a child. Not on the Ranch
+               assistant: it is the first row as it is (CLEAN-269). -->
           <button
+            v-if="canPinAgent(agent)"
             type="button"
             class="agent-rail__pin absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-transparent text-muted-foreground opacity-0 transition hover:border-primary/40 hover:bg-background/70 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 group-hover:opacity-100 disabled:opacity-40"
             :aria-pressed="agent.pinned"

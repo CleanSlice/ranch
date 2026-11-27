@@ -4,6 +4,7 @@ import type { IBridleConversation } from '#bridle/domain';
 import { agentInitials, agentStatusMeta } from '#agent/utils/agentStatus';
 import { relativeTime } from '#agent/utils/relativeTime';
 import { counterLabel, type PanelView } from '#agent/utils/panelView';
+import { canPinAgent } from '#agent/utils/agentAccess';
 import { agentCreator, ownerMark, ownershipNote } from '#agent/utils/agentOwnership';
 import { agentAbilitiesThroughAssistant } from '#assistantAccess/utils/assistantAccess';
 
@@ -16,6 +17,8 @@ const props = defineProps<{
   agent: IAgentData | null | undefined;
   pending: boolean;
   canManage: boolean;
+  /** Whether Share is offered: not on the Ranch assistant, unless to the Owner (CLEAN-269). */
+  canShare: boolean;
   /** What stands under the sheet (CLEAN-248); the switch shows and sets it. */
   view: PanelView['kind'];
 }>();
@@ -360,8 +363,11 @@ const failedKey = computed(() => {
         <!-- Pin / unpin (CLEAN-216): optimistic, the lists reorder on the
              click; a failure rolls back and lands in the line below. Outside
              the `canManage` block: the pin is the viewer's own, so whoever
-             can open the agent may set it, a User included (CLEAN-231). -->
+             can open the agent may set it, a User included (CLEAN-231). Not
+             on the Ranch assistant, for anybody: it is first in every list
+             as it is (`canPinAgent`, CLEAN-269). -->
         <button
+          v-if="canPinAgent(agent)"
           type="button"
           class="agent-sheet__btn"
           :title="$t(agent.pinned ? 'sheet.unpin' : 'sheet.pin')"
@@ -379,11 +385,22 @@ const failedKey = computed(() => {
         </button>
 
         <!-- No role gate: whoever can open the agent may share it (spec
-             clarification, 2026-09-07). -->
+             clarification, 2026-09-07). The Ranch assistant apart: its link
+             is the Owner's, and for anybody else the button would only ask
+             the API for a "not found" (`canShareAgent`, CLEAN-269). -->
         <!-- The popover is `absolute right-4 top-full` and anchors to the nearest
              positioned ancestor; without this wrapper that was the whole sheet,
-             so the panel opened at the sheet's far right instead of under its button. -->
-        <span class="agent-sheet__tool relative inline-flex" :title="$t('share.panel.share')">
+             so the panel opened at the sheet's far right instead of under its button.
+             In a narrow column the tools row is a line of its own, starting at
+             the left: under its button the panel ran off the left edge of a
+             phone, so there it anchors to the row, which is as wide as the
+             sheet (CLEAN-269). -->
+        <span
+          v-if="canShare"
+          class="agent-sheet__tool relative inline-flex @max-[520px]:static"
+          :title="$t('share.panel.share')"
+          data-sheet-share
+        >
           <SharePanelProvider :agent-id="agent.id" />
         </span>
       </div>

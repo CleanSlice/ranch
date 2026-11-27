@@ -88,7 +88,9 @@ export class AgentMapper {
       knowledgeIds: strList(o.knowledgeIds),
       isAdmin: o.isAdmin === true,
       debugEnabled: o.debugEnabled === true,
-      pinned: o.pinned === true,
+      // Never the Ranch assistant: it is first in every list as it is, so a
+      // pin on it is not shown, ordered by or counted (CLEAN-269).
+      pinned: o.pinned === true && o.isAdmin !== true,
       // Absent is not the same as null: a status-stream frame does not carry
       // the field at all, and decoding that as "nobody" would wipe what
       // GET /agents said. The store keeps the known creator for `undefined`.

@@ -1,4 +1,5 @@
 import { permissionOver } from '#/agent/agent/domain/__fixtures__/agentPermission';
+import type { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import {
   BadGatewayException,
   BadRequestException,
@@ -81,7 +82,12 @@ const RANCH_AGENT = 'agent-ranch';
 const agentRows = {
   findAdmin: () => Promise.resolve({ id: RANCH_AGENT, isAdmin: true }),
   findById: (id: string) =>
-    Promise.resolve({ id, isAdmin: id === RANCH_AGENT, createdById: null }),
+    Promise.resolve({
+      id,
+      name: `name-of-${id}`,
+      isAdmin: id === RANCH_AGENT,
+      createdById: null,
+    }),
 };
 
 function harness(access: AgentAccessService = openAccess()): Harness {
@@ -122,6 +128,7 @@ function harness(access: AgentAccessService = openAccess()): Harness {
     insight as unknown as ChatInsightService,
     access,
     permissionOver(agentRows),
+    agentRows as unknown as IAgentGateway,
   );
   return { tool, chats, reader, sync, insight };
 }
@@ -219,6 +226,8 @@ describe('get_chat', () => {
     const body = parse(result);
     expect(body.id).toBe('chat-1');
     expect(body.agentId).toBe('agent-a');
+    // The agent by name too, so the chat is not read as another agent's.
+    expect(body.agentName).toBe('name-of-agent-a');
     expect(body.userMessageCount).toBe(3);
   });
 
@@ -374,6 +383,8 @@ describe('get_chat_messages', () => {
       operator(),
     );
     const body = parse(result);
+    expect(body.agentId).toBe('agent-a');
+    expect(body.agentName).toBe('name-of-agent-a');
     expect(body.messages[0]).toEqual({
       id: 'evt-1',
       role: 'user',

@@ -541,12 +541,21 @@ export function agentNotFoundText(httpRequest: Request, ref: string): string {
  * `agentNotFoundText` as the result a tool hands back.
  *
  * One exception, decided here so that every tool has it (CLEAN-263): the
- * Ranch assistant, named to a `manage-agent` tool by a person who is talking
- * to it and is not the Owner. See `ownerOnlyRefusal`.
+ * Ranch assistant, named by a person who is talking to it and is not the
+ * Owner. See `ownerOnlyRefusal`.
+ *
+ * `kind` is what the tool was asked to do with the agent, and so what the
+ * refusal says only the Owner can do. A `manage-agent` tool leaves it out;
+ * a tool that reads the conversations people had with an agent passes
+ * `'conversations'` (CLEAN-267).
  */
-export function agentNotFound(httpRequest: Request, ref: string): ToolResult {
+export function agentNotFound(
+  httpRequest: Request,
+  ref: string,
+  kind: OwnerOnlyKindTypes = 'manage',
+): ToolResult {
   return (
-    ownerOnlyRefusal(httpRequest, ref) ??
+    ownerOnlyRefusal(httpRequest, ref, kind) ??
     ok({ error: agentNotFoundText(httpRequest, ref) })
   );
 }
@@ -563,13 +572,38 @@ export function agentNotFound(httpRequest: Request, ref: string): ToolResult {
 // names nothing.
 //
 // Whether the caller is such a person is a fact about roles and reach, which
-// the agent slice knows. The MCP handler asks it once per `manage-agent`
-// call (`AGENT_MANAGER_RESOLVER.ownerOnlyAgentFor`) and notes the answer on
-// the call's view, like the party. Nothing is noted for the Owner, for a
-// trusted party, for a guest, or for a person who does not reach the
-// assistant, so for them there is nothing to tell apart.
+// the agent slice knows. The MCP handler asks it once per call
+// (`AGENT_MANAGER_RESOLVER.ownerOnlyAgentFor`) and notes the answer on the
+// call's view, like the party. Nothing is noted for the Owner, for a trusted
+// party, for a guest, or for a person who does not reach the assistant, so
+// for them there is nothing to tell apart.
+//
+// The same is true of its conversations (CLEAN-267). They are the Owner's
+// alone to read, and the chat tools left the assistant out as an agent that
+// does not exist. Asked by an Admin for "the assistant's conversations", the
+// model got "not found", went looking another way, found a chat of another
+// agent under the same participant id and presented it as the assistant's;
+// then said the assistant had none. So a refusal has a kind: what the tool
+// was asked to do, which is what the sentence says only the Owner can do.
+// One sentence per kind of thing, never one per tool.
 
 const OWNER_ONLY_PROPERTY = 'ranchOwnerOnlyAgent';
+
+/**
+ * What a tool was asked to do with the Ranch assistant:
+ *
+ *  - `manage`: restart, stop or change it. What a `manage-agent` tool does,
+ *    and the kind `agentNotFound` assumes.
+ *  - `conversations`: read, replay, summarise, export or reindex what people
+ *    said to it.
+ */
+export type OwnerOnlyKindTypes = 'manage' | 'conversations';
+
+/** The half of the sentence after "Only the Owner can". */
+const OWNER_ONLY_CAN: Record<OwnerOnlyKindTypes, string> = {
+  manage: 'restart, stop or change it',
+  conversations: 'read its conversations',
+};
 
 /** The Ranch assistant, as much of it as a refusal may say. */
 export interface IOwnerOnlyAgent {
@@ -594,17 +628,31 @@ export const OWNER_MANAGED_NOTE =
 
 /**
  * Note the agent this caller reaches and may not manage because it is the
- * Owner's alone. The handler does this on tools/call of a `manage-agent`
- * tool, on the per-call view. Not enumerable, like the party.
+ * Owner's alone. The handler does this on every tools/call, on the per-call
+ * view. Not enumerable, like the party.
+ *
+ * `managing` says whether the tool being called manages an agent, which is
+ * the handler's to know (the audience `manage-agent`). Only then does a
+ * refusal of the kind `manage` name the Owner: an `admin` tool that reads an
+ * agent by id and was handed the assistant's name where an id belongs must
+ * keep saying "not found, call list_agents", because the Admin may read it
+ * and "only the Owner can restart, stop or change it" would answer a
+ * question nobody asked. A tool that names its own kind is answered whatever
+ * its audience.
  */
 export function setCallerOwnerOnlyAgent(
   httpRequest: Request,
   agent: IOwnerOnlyAgent | null,
+  managing = true,
 ): void {
   Object.defineProperty(httpRequest, OWNER_ONLY_PROPERTY, {
     value:
       agent && typeof agent.id === 'string' && agent.id
-        ? { id: agent.id, name: String(agent.name ?? '') }
+        ? {
+            id: agent.id,
+            name: String(agent.name ?? ''),
+            managing: managing === true,
+          }
         : null,
     enumerable: false,
     configurable: true,
@@ -612,14 +660,24 @@ export function setCallerOwnerOnlyAgent(
   });
 }
 
-function ownerOnlyAgent(httpRequest: Request): IOwnerOnlyAgent | null {
+function ownerOnlyAgent(
+  httpRequest: Request,
+): (IOwnerOnlyAgent & { managing: boolean }) | null {
   const noted = (httpRequest as unknown as Record<string, unknown> | null)?.[
     OWNER_ONLY_PROPERTY
   ];
   if (typeof noted !== 'object' || noted === null) return null;
-  const { id, name } = noted as { id?: unknown; name?: unknown };
+  const { id, name, managing } = noted as {
+    id?: unknown;
+    name?: unknown;
+    managing?: unknown;
+  };
   return typeof id === 'string' && id
-    ? { id, name: typeof name === 'string' ? name : '' }
+    ? {
+        id,
+        name: typeof name === 'string' ? name : '',
+        managing: managing === true,
+      }
     : null;
 }
 
@@ -627,10 +685,13 @@ function ownerOnlyAgent(httpRequest: Request): IOwnerOnlyAgent | null {
  * The whole refusal. Nothing follows it on purpose: no next move, no other
  * id, no "later". There is none for this person.
  */
-export function ownerOnlyText(name: string): string {
+export function ownerOnlyText(
+  name: string,
+  kind: OwnerOnlyKindTypes = 'manage',
+): string {
   return (
     `${name.trim() || 'This agent'} is the Ranch assistant. ` +
-    'Only the Owner can restart, stop or change it.'
+    `Only the Owner can ${OWNER_ONLY_CAN[kind]}.`
   );
 }
 
@@ -640,21 +701,55 @@ export function ownerOnlyText(name: string): string {
  * a name read one); null for anything else, which is then not found.
  *
  * `agentNotFound` asks here, so a tool that answers with it needs nothing
- * more. A tool with a "not found" of its own (the connection tools) asks
- * here first.
+ * more. A tool with a "not found" of its own (the connection tools, a chat
+ * tool handed the id of a chat) asks here first.
+ *
+ * `kind` as in `agentNotFound`. The kind `manage` is answered on a call of
+ * a `manage-agent` tool only (see `setCallerOwnerOnlyAgent`).
  */
 export function ownerOnlyRefusal(
   httpRequest: Request,
   ref: string,
+  kind: OwnerOnlyKindTypes = 'manage',
 ): ToolResult | null {
   const agent = ownerOnlyAgent(httpRequest);
   if (!agent || typeof ref !== 'string') return null;
+  if (kind === 'manage' && !agent.managing) return null;
   const wanted = ref.trim().toLowerCase();
   const named =
     ref === agent.id ||
     (wanted !== '' && wanted === agent.name.trim().toLowerCase());
   if (!named) return null;
-  return ok({ error: ownerOnlyText(agent.name), reason: OWNER_ONLY_REASON });
+  return ok({
+    error: ownerOnlyText(agent.name, kind),
+    reason: OWNER_ONLY_REASON,
+  });
+}
+
+/** The field a result carries `ownerOnlyConversationsLeftOut` under. */
+export const OWNER_ONLY_LEFT_OUT_FIELD = 'notIncluded';
+
+/**
+ * What a list of conversations says when it left the assistant's out
+ * (CLEAN-267): a list over every agent the caller may read, asked by a
+ * person who has the assistant and is not the Owner. Null for everybody
+ * else, for whom nothing was left out that they could know of.
+ *
+ * A list that is silent about it reads as "there are none", and that is
+ * what the model told an Admin. The sentence goes beside the rows, under
+ * `OWNER_ONLY_LEFT_OUT_FIELD`.
+ */
+export function ownerOnlyConversationsLeftOut(
+  httpRequest: Request,
+): string | null {
+  const agent = ownerOnlyAgent(httpRequest);
+  if (!agent) return null;
+  const name = agent.name.trim();
+  const whose = name ? `${name}, the Ranch assistant,` : 'the Ranch assistant';
+  return (
+    `The conversations of ${whose} are not included: only the Owner can ` +
+    'read them. That is an access limit, not an empty list.'
+  );
 }
 
 /** A person, or an agent acting for itself, who lacks the role. */

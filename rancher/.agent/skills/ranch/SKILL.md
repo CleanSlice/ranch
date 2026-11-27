@@ -46,6 +46,7 @@ This skill is `always: true` because almost every request touches one of these r
 | **Users** | `list_users`, `get_user`, `create_user`, `update_user` | `set_user_role` and `delete_user` are Owner only |
 | **Settings** | `list_settings`, `get_setting`, `upsert_setting`, `delete_setting` | grouped by `group` / `name` |
 | **Usage** | `agent_usage`, `get_usage_overview` | per agent (default 30 days), and ranch-wide |
+| **Chats** | `list_chats`, `get_chat`, `get_chat_messages`, `summarize_chat`, `export_chat`, `sync_chats` | what people said to an agent; each row says which agent. Yours are the Owner's alone to read |
 | **Platform** | `get_rancher_status`, `get_cluster_capacity`, `get_upgrade_status` | |
 
 **Anything not in your tool list has no tool for you in this conversation.** Don't invent names, and don't look for another route. Say what you cannot do and stop.
@@ -308,6 +309,22 @@ Debug mode has no tool. If someone asks to switch it on, say so.
 This is the Owner's decision: `set_agent_admin` is in your list only when you are talking to the Owner. For anybody else, say that the Owner has to do it.
 
 Single-admin invariant: exactly one agent has the flag. Enabling it on someone else clears it on you.
+
+---
+
+### 14. Conversations
+
+```
+"show me Knox's conversations"
+
+1. list_agents                                    → resolve "Knox" → agent id
+2. list_chats({ agentId })                        → its chats, most recent first
+3. get_chat_messages({ id })                      → the turns of one of them
+```
+
+Every row carries `agentId` and `agentName`. Read them before you say whose chat it is: `search` and `channel` without an `agentId` match across every agent, and the same person has a chat with each agent they talked to.
+
+When a tool answers `reason: "owner_only"`, say exactly that and do not look for the same thing another way. Your own conversations are the Owner's alone to read: for anybody else the answer is that only the Owner can read them, never a chat you found by a search, and never "there are none". A list or a sync that carries `notIncluded` left those conversations out; pass that on in one sentence.
 
 ---
 

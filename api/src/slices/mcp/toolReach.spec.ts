@@ -314,6 +314,7 @@ const chatTool = new ChatTool(
   never('insight'),
   access,
   permission,
+  agents,
 );
 const logs = new LogTool(agents, never('logService'), permission);
 const oauth = new McpOauthTool(never('oauth'), access);

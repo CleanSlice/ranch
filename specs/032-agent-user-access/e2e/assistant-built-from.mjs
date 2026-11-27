@@ -206,6 +206,33 @@ section('API, as an Admin: the lists say which resources the assistant is built 
   check(one?.assistantDependency === false, 'GET /templates/<an ordinary one>: not marked');
 }
 
+section('API: the secrets of the assistant’s ingredients are the Owner’s to read');
+{
+  const WITHHELD = '(withheld: only the Owner can read it)';
+  // The fixture values are markers written by seed.mjs, not keys.
+  const RANCH_KEY = 'access-e2e-ranch-not-a-real-key';
+  const SERVER_TOKEN = 'access-e2e-not-a-real-token';
+  const llms = await api('/llms', { as: ADMIN_USER });
+  const llm = await api(`/llms/${R.llm.id}`, { as: ADMIN_USER });
+  check(
+    !JSON.stringify([llms.body, llm.body]).includes(RANCH_KEY) && llm.body?.apiKey === WITHHELD,
+    'GET /llms and /llms/<its credential> as the Admin: a fixed placeholder, the key nowhere in the body',
+  );
+  check((llms.body ?? []).find((x) => x.id === LLM.id)?.apiKey === 'access-e2e-not-a-real-key', 'an ordinary credential is sent to the Admin as before');
+  const servers = await api('/mcp-servers', { as: ADMIN_USER });
+  const mine = (servers.body ?? []).find((x) => x.id === R.server.id);
+  const one = await api(`/mcp-servers/${R.server.id}`, { as: ADMIN_USER });
+  check(mine?.authValue === WITHHELD && one.body?.authValue === WITHHELD, 'GET /mcp-servers and /mcp-servers/<its server> as the Admin: the placeholder');
+  check((servers.body ?? []).find((x) => x.id === O.server.id)?.authValue === SERVER_TOKEN, 'an ordinary server’s credential is sent to the Admin as before');
+  const owners = await api(`/llms/${R.llm.id}`, { as: OWNER });
+  const ownersServer = await api(`/mcp-servers/${R.server.id}`, { as: OWNER });
+  check(owners.body?.apiKey === RANCH_KEY && ownersServer.body?.authValue === SERVER_TOKEN, 'the Owner reads both');
+  for (const path of [`/agents/${RANCH.id}/env`, `/agents/${RANCH.id}/mcps`]) {
+    const res = await api(path, { as: ADMIN_USER });
+    check(res.status === 404, `GET ${path.replace(RANCH.id, '<assistant>')} as the Admin: 404 (${res.status})`);
+  }
+}
+
 section('API, as an Admin: every write to an ingredient of the assistant is refused, and nothing changes');
 {
   const before = await fingerprint();
@@ -233,6 +260,7 @@ section('API, as an Admin: every write to an ingredient of the assistant is refu
     ['POST', `/knowledges/${R.knowledge.id}/sources/${R.source.id}/reindex`],
     ['DELETE', `/knowledges/${R.knowledge.id}/sources/${R.source.id}`],
     ['PUT', '/settings/rancher/seeded_hash', { value: 'stale', valueType: 'string' }],
+    ['PUT', '/settings/agent_defaults/image', { value: 'attacker/runtime:latest', valueType: 'string' }],
     ['DELETE', '/settings/rancher/seeded_hash'],
   ];
   for (const [method, path, body] of WRITES) {

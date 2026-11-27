@@ -1,6 +1,7 @@
 import type { IChatGateway } from './chat.gateway';
 import type {
   ChatExportFormat,
+  ChatScope,
   IChatExportFile,
   IChatFeedback,
   IChatListQuery,
@@ -9,6 +10,7 @@ import type {
   IChatMessagesResult,
   IChatSession,
   IChatSyncResult,
+  IOwnChatListQuery,
 } from './chat.types';
 
 /**
@@ -24,15 +26,23 @@ export class ChatService {
     return this.gateway.list(query);
   }
 
-  getById(id: string): Promise<IChatSession | null> {
-    return this.gateway.getById(id);
+  listOwn(query: IOwnChatListQuery = {}): Promise<IChatListResult> {
+    return this.gateway.listOwn(query);
+  }
+
+  getById(
+    id: string,
+    scope: ChatScope = 'supervised',
+  ): Promise<IChatSession | null> {
+    return this.gateway.getById(id, scope);
   }
 
   messages(
     id: string,
     query: IChatMessagesQuery = {},
+    scope: ChatScope = 'supervised',
   ): Promise<IChatMessagesResult> {
-    return this.gateway.messages(id, query);
+    return this.gateway.messages(id, query, scope);
   }
 
   sync(agentId?: string): Promise<IChatSyncResult | null> {
@@ -43,19 +53,32 @@ export class ChatService {
     return this.gateway.summarize(id);
   }
 
-  feedback(id: string): Promise<IChatFeedback[]> {
-    return this.gateway.feedback(id);
+  feedback(id: string, scope: ChatScope = 'supervised'): Promise<IChatFeedback[]> {
+    return this.gateway.feedback(id, scope);
   }
 
-  rate(id: string, messageId: string, rating: 1 | -1): Promise<void> {
-    return this.gateway.rate(id, messageId, rating);
+  rate(
+    id: string,
+    messageId: string,
+    rating: 1 | -1,
+    scope: ChatScope = 'supervised',
+  ): Promise<void> {
+    return this.gateway.rate(id, messageId, rating, scope);
   }
 
-  unrate(id: string, messageId: string): Promise<void> {
-    return this.gateway.unrate(id, messageId);
+  unrate(
+    id: string,
+    messageId: string,
+    scope: ChatScope = 'supervised',
+  ): Promise<void> {
+    return this.gateway.unrate(id, messageId, scope);
   }
 
-  exportChat(id: string, format: ChatExportFormat): Promise<IChatExportFile> {
-    return this.gateway.exportChat(id, format);
+  exportChat(
+    id: string,
+    format: ChatExportFormat,
+    scope: ChatScope = 'supervised',
+  ): Promise<IChatExportFile> {
+    return this.gateway.exportChat(id, format, scope);
   }
 }

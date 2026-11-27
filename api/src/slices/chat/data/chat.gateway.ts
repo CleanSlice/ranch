@@ -125,6 +125,23 @@ export class ChatGateway extends IChatGateway {
    * not wait (the agent socket handler). The settle pass repairs the hour
    * from the transcript once the conversation has gone quiet.
    */
+  async deleteSession(agentId: string, sessionKey: string): Promise<boolean> {
+    // deleteMany, not delete: no row is the ordinary case and must not throw.
+    // Ratings go with the row (ChatFeedback cascades).
+    const { count } = await this.prisma.chatSession.deleteMany({
+      where: { agentId, sessionKey },
+    });
+    return count > 0;
+  }
+
+  async deleteSessions(ids: string[]): Promise<number> {
+    if (!ids.length) return 0;
+    const { count } = await this.prisma.chatSession.deleteMany({
+      where: { id: { in: ids } },
+    });
+    return count;
+  }
+
   async recordActivity(agentId: string, a: IChatActivity): Promise<void> {
     try {
       await this.recordActivityOnce(agentId, a);

@@ -98,7 +98,8 @@ export class UsageController {
   }
 
   @Get('agents/:agentId/usage')
-  @AgentScoped('agentId')
+  // The usage of the Ranch assistant is the Owner's to read (CLEAN-268).
+  @AgentScoped('agentId', { records: true })
   @ApiOperation({
     summary:
       'Get 30-day usage for an agent with cost. 404 when there is no such agent among the ones the caller reaches.',
@@ -257,12 +258,15 @@ export class UsageController {
     @Req() req?: Request,
   ): Promise<ICredentialUsageResponse> {
     // Rows of agents the caller does not reach are dropped before anything
-    // is summed, so no total carries them either (CLEAN-231).
+    // is summed, so no total carries them either (CLEAN-231). Nor the
+    // assistant's, for anybody but the Owner (CLEAN-268).
     const reach = await this.access.reachableIds(accessCallerOf(req));
-    const rows = reach.filter(
-      await this.gateway.findRecentForCredential(credentialId, 30),
-      (row) => row.agentId,
-    );
+    const rows = reach
+      .forRecords()
+      .filter(
+        await this.gateway.findRecentForCredential(credentialId, 30),
+        (row) => row.agentId,
+      );
     const { last30days, totals, topModel, agentTotals } =
       rollUpAcrossAgents(rows);
     const byAgent = await resolveAgentNames(agentTotals, (id) =>
@@ -281,11 +285,13 @@ export class UsageController {
     // until agents POST their daily report. The per-agent endpoint keeps
     // the live usage.json merge; doing that here would cost one S3 read
     // per agent per page view.
+    //
+    // The assistant's spend stays in the installation's totals for the
+    // Owner alone (CLEAN-268).
     const reach = await this.access.reachableIds(accessCallerOf(req));
-    const rows = reach.filter(
-      await this.gateway.findRecentAll(30),
-      (row) => row.agentId,
-    );
+    const rows = reach
+      .forRecords()
+      .filter(await this.gateway.findRecentAll(30), (row) => row.agentId);
     const { last30days, totals, topModel, agentTotals } =
       rollUpAcrossAgents(rows);
     const byAgent = await resolveAgentNames(agentTotals, (id) =>

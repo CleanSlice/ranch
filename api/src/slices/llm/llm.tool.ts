@@ -4,11 +4,14 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  ACCESS_SCOPE_NOTE,
   CONFIRM_SENTENCE,
+  accessScope,
   callerIsOperator,
   confirmed,
   err,
   ok,
+  ownerOnlyLeftOutField,
   requireOperator,
   stripSecrets,
   type ToolResult,
@@ -167,7 +170,11 @@ export class LlmTool implements IConditionallyListedTool {
       'days, across every agent that used it: a daily breakdown per model, ' +
       'totals, the model that consumed most, and a per-agent split sorted by ' +
       'cost. Only usage the agents have reported (daily); today may be ' +
-      'incomplete. Takes the id — list_llms turns a name into one.',
+      'incomplete. Takes the id — list_llms turns a name into one. The ' +
+      'totals are of the agents in the result, never more: when it carries ' +
+      '`notIncluded`, the Ranch assistant’s usage is the Owner’s to read ' +
+      'and is in no figure here. ' +
+      ACCESS_SCOPE_NOTE,
     parameters: z.object({
       id: z.string().describe('Credential id, from list_llms'),
     }),
@@ -181,12 +188,15 @@ export class LlmTool implements IConditionallyListedTool {
     const credential = await this.llms.findById(id);
     if (!credential) return ok({ error: NOT_FOUND });
     // Rows of agents the caller does not reach are dropped before anything
-    // is summed (CLEAN-231), as GET /llms/:id/usage does.
+    // is summed (CLEAN-231), as GET /llms/:id/usage does; so are the
+    // assistant's, for anybody but the Owner (CLEAN-268).
     const reach = await this.access.reachableIds(callerParty(httpRequest));
-    const rows = reach.filter(
-      await this.usage.findRecentForCredential(id, USAGE_DAYS),
-      (row) => row.agentId,
-    );
+    const rows = reach
+      .forRecords()
+      .filter(
+        await this.usage.findRecentForCredential(id, USAGE_DAYS),
+        (row) => row.agentId,
+      );
     const { last30days, totals, topModel, agentTotals } =
       rollUpAcrossAgents(rows);
     // The functions GET /llms/:id/usage uses, not a copy of them: this tool
@@ -202,6 +212,8 @@ export class LlmTool implements IConditionallyListedTool {
       totals,
       topModel,
       byAgent,
+      ...ownerOnlyLeftOutField(httpRequest, 'usage figures'),
+      ...accessScope(reach),
     });
   }
 
@@ -417,11 +429,19 @@ export class LlmTool implements IConditionallyListedTool {
       throw e;
     }
     this.logger.log(`LLM credential deleted through MCP: ${id}`);
+    // The same rule after the deletion as before it (CLEAN-268): the agents
+    // the caller reaches by name and id, the rest as a number. This line
+    // used to name every one of them, an agent out of reach included.
+    const left = [
+      ...named.map((a) => `«${a.name}» (${a.id})`),
+      ...(unnamed > 0
+        ? [`${unnamed} ${named.length > 0 ? 'more ' : ''}you cannot see`]
+        : []),
+    ].join(', ');
     return ok(
       `LLM credential ${name} (${id}) deleted.` +
         (users.length > 0
-          ? ` ${users.map((a) => `«${a.name}» (${a.id})`).join(', ')} ` +
-            'now ' +
+          ? ` ${left} now ` +
             `${users.length === 1 ? 'has' : 'have'} no credential: assign ` +
             'another with update_agent (llmCredentialId) and restart_agent.'
           : ''),

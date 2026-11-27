@@ -7,6 +7,7 @@
       "copy": "Copy link",
       "copied": "Copied",
       "not_shared": "This agent is not shared.",
+      "not_yours": "The share link of this agent is not yours to manage.",
       "shared_since": "Shared {date}",
       "close": "Close",
       "error": "Could not update the share link",

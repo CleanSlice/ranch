@@ -29,7 +29,7 @@ import { useAgentSectionCounts } from '#agent/composables/useAgentSectionCounts'
 import { useAgentTab } from '#agent/composables/useAgentTab';
 import { useRelativeTime } from '#common/composables/useRelativeTime';
 import { formatDateTime } from '#common/utils/format';
-import { OWNER_MANAGED_TEXT } from '#agent/utils/agentAccess';
+import { OWNER_MANAGED_TEXT, canPinAgent } from '#agent/utils/agentAccess';
 import { agentCreator, creatorText, ownerMark } from '#agent/utils/agentOwnership';
 import {
   DEFAULT_SECTION,
@@ -438,8 +438,11 @@ async function onDeleted() {
             }}
           </Button>
           <!-- Pin / unpin (CLEAN-216): one click, reversible, so it earns a
-               place on the row rather than in the menu. -->
+               place on the row rather than in the menu. Not on the Ranch
+               assistant, for the Owner either: it is first in the list as
+               it is (`canPinAgent`, CLEAN-269). -->
           <Button
+            v-if="canPinAgent(agent)"
             variant="outline"
             size="sm"
             class="size-8 p-0"

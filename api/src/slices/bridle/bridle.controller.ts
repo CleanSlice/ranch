@@ -1175,6 +1175,17 @@ export class BridleController {
       );
       return;
     }
+    // The index row IS the conversation's record, so it goes with the file.
+    // Left behind, both consoles went on listing a conversation with its old
+    // counts that opened empty (CLEAN-272). Not fatal: the reconcile removes
+    // a row without a file, and failing here would leave the reset half done.
+    try {
+      await this.chats.deleteSession(agentId, `bridle:${channel}`);
+    } catch (err) {
+      this.logger.warn(
+        `Transcript reset: index row not removed for ${agentId}/${channel}: ${(err as Error).message}`,
+      );
+    }
     // The agent drops its own local/in-memory copy — S3FileGateway only
     // touched the S3 mirror, and the running pod would otherwise re-upload its
     // still-intact local session file on the next local change — and every

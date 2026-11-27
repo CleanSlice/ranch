@@ -222,7 +222,7 @@
     "installation": {
       "utc_days": "Days here are UTC days, the same for everyone who looks.",
       "limited": "These figures cover no agents: you reach none. | These figures cover the {count} agent you reach, not the whole installation. | These figures cover the {count} agents you reach, not the whole installation.",
-      "owner_only": "No agent's conversations are left out of these figures. | Conversations with {names} are the owner's alone to read: the people, quality and channel figures here are counted without them. Its spend and health are counted in full. | Conversations with {names} are the owner's alone to read: the people, quality and channel figures here are counted without them. Their spend and health are counted in full.",
+      "owner_only": "No agent's conversations are left out of these figures. | The conversations, spend and limit refusals of {names}, the Ranch assistant, are not included: only the Owner can read them. Its incidents are listed. | The conversations, spend and limit refusals of {names} are not included: only the Owner can read them. Their incidents are listed.",
       "activity_since": "People, conversations and channels are counted since {date}",
       "forbidden_title": "These figures are for the owner and administrators",
       "forbidden_text": "Your role does not include the installation's statistics. Your own figures are under My conversations.",

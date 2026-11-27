@@ -138,6 +138,12 @@ export const fake = {
  * provokes on purpose: `{ status, url }` with `url` a substring or RegExp.
  * A request the page itself aborted (navigation away, a closed socket or
  * stream) is not a failure.
+ *
+ * The browser is kept off GitHub (CLEAN-269). The management console asks
+ * GitHub for the newest release on the pages it opens; unauthenticated that
+ * is sixty answers an hour for the whole address, and a few runs of these
+ * scripts use the hour up. The 403 that follows is GitHub's, about nothing
+ * here, and the console is silent about a check that did not answer.
  */
 export async function watchedPage(browser, { width = 1440, height = 900, expected = [] } = {}) {
   const context = await browser.newContext({
@@ -146,6 +152,7 @@ export async function watchedPage(browser, { width = 1440, height = 900, expecte
     locale: 'en-GB',
   });
   await context.addCookies([{ name: 'i18n_redirected', value: 'en', url: APP }]);
+  await context.route('https://api.github.com/**', (route) => route.abort('aborted'));
   const page = await context.newPage();
   const problems = [];
   const allowed = (status, url) =>

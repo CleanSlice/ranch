@@ -1,3 +1,5 @@
+import { ownerOnlyAssistant, ownerOnlyLeftOutText } from '#agent/utils/agentAccess';
+
 export interface IPerAgentUsage {
   agentId: string;
   agentName: string;
@@ -18,6 +20,13 @@ export interface IPerAgentUsage {
 export function useLlmUsageOverview() {
   const agentStore = useAgentStore();
   const usageStore = useUsageStore();
+  const authStore = useAuthStore();
+
+  // The Ranch assistant's usage is the Owner's to read (CLEAN-268): for
+  // anybody else `GET /agents/:id/usage` answers "not found" for it. It is
+  // not asked for (CLEAN-269), and the page says in one line that the totals
+  // are without it, so that they are not read as all the installation spent.
+  const leftOutText = ref('');
 
   const loading = ref(false);
   const rows = ref<IPerAgentUsage[]>([]);
@@ -52,9 +61,14 @@ export function useLlmUsageOverview() {
     failed.value = false;
     try {
       const agents = await agentStore.fetchAll();
+      const assistant = ownerOnlyAssistant(authStore.user?.role, agents);
+      leftOutText.value = assistant
+        ? ownerOnlyLeftOutText('usage figures', assistant.name)
+        : '';
+      const readable = agents.filter((agent) => agent.id !== assistant?.id);
 
       const settled = await Promise.allSettled(
-        agents.map(async (agent) => {
+        readable.map(async (agent) => {
           const usage = await usageStore.fetchForAgent(agent.id);
           if (!usage) return null;
           const todayKey = new Date().toISOString().slice(0, 10);
@@ -93,5 +107,5 @@ export function useLlmUsageOverview() {
 
   onMounted(() => void load());
 
-  return { rows, totals, loading, failed, load };
+  return { rows, totals, loading, failed, load, leftOutText };
 }

@@ -59,7 +59,8 @@ Shared helpers: `api/src/slices/mcp/tooling.ts` — `ok`, `err`,
 `callerIsOperator`, `callerIsOwner`, `callerPerson`, `callerAgentId`,
 `audienceAllows`, `confirmed`, `stripSecrets`, `CONFIRM_SENTENCE`,
 `agentNotFound`, `ownerOnlyRefusal`, `ownerOnlyConversationsLeftOut`,
-`OWNER_MANAGED_NOTE`. For
+`ownerOnlyLeftOut`, `ownerOnlyLeftOutField`, `accessScope`,
+`ACCESS_SCOPE_NOTE`, `OWNER_MANAGED_NOTE`. For
 specs, `api/src/slices/mcp/testing.ts` has `asTrustedAgent`, `asPerson`,
 `asGuest`.
 
@@ -114,7 +115,10 @@ specs, `api/src/slices/mcp/testing.ts` has `asTrustedAgent`, `asPerson`,
   rows the caller may not read is read as "there are none". When what was
   left out is something the caller knows exists, the result carries a field
   that says it was left out and whose it is (`notIncluded`), and the
-  description tells the model what the field means.
+  description tells the model what the field means. When what was left out
+  is what the caller's access lists hide, the result says that it covers
+  this person's agents only (`scope`, CLEAN-268) and names nothing: see
+  "A narrowed result says so".
 
 ## Audiences
 
@@ -472,8 +476,11 @@ words for what they asked:
 
 - One sentence per kind of thing, never one per tool. `agentNotFound` and
   `ownerOnlyRefusal` take the kind as their last argument: `'manage'` (the
-  default: restart, stop or change it) or `'conversations'`. A new kind is
-  a new entry in `OWNER_ONLY_CAN` in `#/mcp/tooling`, and nothing else.
+  default: restart, stop or change it), `'change'` (the same words, said
+  by a tool of another audience that changes the assistant: its public
+  link, an agent-wide tool server), `'conversations'`, `'records'` or
+  `'evaluations'` (CLEAN-268, "The assistant's records" below). A new kind
+  is a new entry in `OWNER_ONLY_CAN` in `#/mcp/tooling`, and nothing else.
 - Every chat tool answers it: `list_chats` and `sync_chats` for the
   assistant's agent id (`agentNotFound(httpRequest, id, 'conversations')`),
   `get_chat`, `get_chat_messages`, `summarize_chat` and `export_chat` for
@@ -517,14 +524,87 @@ words for what they asked:
   they were: `GET /chats?agentId=` answers an empty page for the assistant
   and `GET /chats/:id` a 404.
 
-No other tool takes the assistant out this way. Events, incidents, usage
-and evaluations of the assistant are read by whoever reaches it;
-`AgentPermissionService.ownerOnlyIds` has two callers, `ChatTool` and
-`ChatController`. A tool that starts hiding the assistant's records from
-an Admin gives its kind a sentence here.
+A tool that starts hiding the assistant's records from an Admin gives its
+kind a sentence here, as the next section does.
 `api/src/slices/mcp/assistantConversations.spec.ts` calls every tool of
 `ChatTool` through the real handler, by the assistant's agent id and by a
 chat of it, and fails on a chat tool that takes neither.
+
+#### The assistant's records (CLEAN-268)
+
+Having the assistant means talking to it. What Ranch keeps ABOUT it is the
+Owner's, by the same rule as its conversations: an Admin who reaches it is
+not thereby the one who reads how much everybody used it, how the Owner
+limited it, or what it was tested with.
+
+| About the assistant | For a person who has it and is not the Owner | Why |
+|---|---|---|
+| Usage and cost: `agent_usage`; its rows and its share of the totals in `get_usage_overview`, `llm_usage` and `get_installation_stats` (with its limit refusals there) | `agent_usage` answers `reason: "owner_only"` ("Only the Owner can read its records."). The two sums leave it out of every row and every total and say so in `notIncluded` | What it spent is how much the whole installation leaned on it. It stays in the installation's totals for the Owner alone |
+| Request limits and load: its line in `list_agent_limits` | Left out, with `notIncluded` | `get_agent_limits` is `manage-agent` and already refused it; the fleet view showed the same values |
+| Paddock: every tool of `paddock/evaluation` and `paddock/scenario`, by its agent id, by the id of one of its evaluations or scenarios, and in the two lists | `reason: "owner_only"` ("Only the Owner can evaluate it or read its evaluations and scenarios."), nothing read, started, written or deleted. The lists leave its rows out and say so in `notIncluded` | An evaluation holds what was said to it in a test, what it answered and the tools it called; a scenario is what the Owner expects of it |
+| Its connections, as pairs: `GET /agent-links` | A pair with it at either end is left out | `list_agent_peers` already refused it; the route listed the same pairs |
+| Events and incidents | Open, as for any agent they reach | A row says that it was down, when, and who noticed: the status as reported (`reason`), the sender's name and the monitoring tool. No message, no tool argument, nothing the Owner configured; the same text goes to the team's channel |
+| Its row in `list_agents` / `get_agent` / `list_skill_agents`, `get_rancher_status` | Open: the reader view, marked `managedBy: "owner"` | A person needs its id and whether it is up in order to use it |
+| Files, secrets, env, MCP servers, logs, status and metrics, channels, peers and delegations, limits of one agent | Refused since CLEAN-263 (`manage-agent`) | |
+| Conversations | Refused since CLEAN-267 | |
+
+The seam is the reach, not a list of tools: `AgentReach.forRecords()`
+(`user/agentAccess`) is the caller's reach with the assistant taken out,
+whatever its switch says. Only a person the lists apply to has a switch, so
+the Owner and the assistant acting for itself are untouched, and it costs no
+query. A tool filters or checks with it and answers a single id with
+`agentNotFound(httpRequest, id, 'records' | 'evaluations')`; a tool that was
+handed the id of a record asks `ownerOnlyRefusal` before its own "not
+found" (`PaddockEvaluationTool.reached`, `PaddockScenarioTool.reachedScenario`);
+a list over every agent spreads `ownerOnlyLeftOutField(httpRequest, 'usage
+figures')` into its result. Who is told and who is not is as for the
+conversations: a person the assistant is switched off for gets not-found
+and no field.
+
+The routes agree and keep the console's way of refusing: a route that names
+the agent carries `@AgentScoped(source, { records: true })` and answers the
+404 of an agent that does not exist; a route that names a record answers
+its own 404; a list is filtered. `agentRecordsRoutes.spec.ts` holds each of
+them to it, `mcp/narrowedLists.spec.ts` the tools.
+
+**The consoles say it too (CLEAN-269).** A 404 and a filtered list are the
+API's way of refusing; left as they come, a page shows them as "nothing
+here" or as a fault, which is what the tools were stopped from saying. So a
+console page that touches one of these records, for a viewer who is not the
+Owner, does two things. It does not ask for what it knows is not theirs: the
+viewer's role and `isAdmin` on the agent are on the page already
+(`ownerOnlyAssistant` in `admin/slices/agent/agent/utils/agentAccess.ts`,
+`canShareAgent` in the app's twin). And where a list or a total is without
+the assistant, it says so in one quiet line, in the tools' sentence
+(`ownerOnlyLeftOutText`: "The usage figures of Rancher, the Ranch assistant,
+are not included: only the Owner can read them."; the app's Statistics say
+the same through `stats.installation.owner_only`). The management console's
+Chats page with the assistant picked lists the viewer's own conversations
+with it (`GET /me/chats`), since those are theirs. A record opened by an
+address the API answers "not found" for is one "not available" state
+(`PageNotAvailable`), the same for an id that names nothing and for a
+record of the assistant, with nothing asked about it afterwards. A new page
+over these records does the same;
+`specs/032-agent-user-access/e2e/assistant-pages.mjs` walks them as an Admin
+and fails on a request for a route closed for the assistant.
+
+**What is done TO the assistant outside the manage rule.** A few tools
+change something about an agent and are open for every agent the caller
+reaches, because for an ordinary agent reaching it is all it takes. For the
+assistant each is managing it:
+
+| Tool / route | For a person who has the assistant and is not the Owner |
+|---|---|
+| `get_share_link`, `create_share_link`, `regenerate_share_link`, `revoke_share_link`; the four `agents/:agentId/share-link` routes | `reason: "owner_only"` in the words of `manage`; the routes answer 404 (`@AgentScoped('agentId', { ownerManaged: true })`). The link decides who reaches the assistant from outside, and reading it is holding it. A link the Owner made keeps working: the visitor's side (`POST /share/resolve`, the chat's share headers) asks the token and nobody's account |
+| `start_mcp_oauth` without `subject` | the same refusal, also when no agent is named and the caller is the assistant: that connection is shared by everybody who talks to it. With `subject` it is one person's own account and stays theirs |
+
+Such a tool asks `reach.forChanges()` (the same cut as `forRecords`, named
+for what the caller does) and answers `agentNotFound(httpRequest, id,
+'change')`. What a person does for themselves in relation to an agent is
+not this: their pin, their own conversation, their own account on a tool
+server. `narrowedLists.spec.ts` reads every writing tool that names an
+agent, or asks the reach, without going through `manageable`, and fails
+until each is filed as one or the other.
 
 The `manage-agent` tools:
 
@@ -556,7 +636,7 @@ written once and no tool or route changes it.
 | `agent/peer/peerSelf.tool.ts` | `person` (CLEAN-236; it was `agent`, so a visitor with no account could connect and remove an agent's colleagues) | none: the colleagues of the agent the person is talking to, among the agents that person reaches |
 | `agent/peer/askAgent.tool.ts` | `agent` | none. The colleagues it offers and accepts are decided per call, for the party: see "Whose colleague" below |
 | `agent/secret/secret.tool.ts` | `manage-agent` | `agents/:agentId/secrets`: Admin by default, `@ManagesAgent` |
-| `agent/shareLink/shareLink.tool.ts` | `admin` | `agents/:agentId/share-link`: User. Narrower than the route until "who may manage this agent" exists |
+| `agent/shareLink/shareLink.tool.ts` | `admin` | `agents/:agentId/share-link`: User. Narrower than the route until "who may manage this agent" exists. The Ranch assistant's link is the Owner's on both (CLEAN-268) |
 | `agent/template/templateAdmin.tool.ts`, `agent/templateInstall/templateInstall.tool.ts` | `admin` | `templates`: no role stated |
 | `bridle/attachment.tool.ts` | `everyone` | none: reads an attachment of the calling agent |
 | `browser/browser.tool.ts` | `person` | `browser/sessions`: the caller's own sessions |
@@ -662,21 +742,78 @@ runs every tool that lists agents or takes an agent id as an Admin limited
 to two agents of three and holds each of them to that; a new such tool joins
 its tables.
 
+#### A narrowed result says so (CLEAN-268)
+
+An Admin limited to one agent asked for the incidents of the last month.
+`list_agent_incidents` answered an empty list, correctly: the two incidents
+were on agents that Admin does not reach. The assistant said "there are no
+incidents", which is a statement about the installation and was false.
+Filtering was right; a result that does not say it was filtered is read as
+the whole.
+
+So a tool that lists or sums ACROSS agents and narrows by the caller's lists
+adds one field, when and only when the lists narrowed something:
+
+```json
+{
+  "incidents": [],
+  "more": false,
+  "scope": "Only the agents this person can use are covered. That is an access limit: other agents may have records this result does not show."
+}
+```
+
+- One constant, one helper: `...accessScope(reach, namedAgentId)` from
+  `#/mcp/tooling`, spread into the result, where `reach` is what
+  `reachableIds(callerParty(httpRequest))` returned. It asks
+  `reach.unrestricted`, which the reach already knows: no query.
+- Absent for the Owner, the assistant acting for itself, a person whose
+  lists limit and deny nothing, and a call that named one agent. Present
+  when an allowed list limits, when an agent is denied, and when the
+  assistant is switched off for the person (its records are out of the
+  list as well; the sentence does not say whose).
+- It names no agent, no id and no number. How many agents exist is what an
+  agent out of reach must not tell; how many are covered is what
+  `list_agents` answers, and a count repeated in a dozen tools is a dozen
+  things to keep true and an invitation to subtract.
+- It is not `notIncluded`. That one names an agent the person knows, the
+  assistant, and whose its records are; this one names nothing. A result
+  may carry both, and a tool computes `scope` from the reach before the
+  assistant was taken out of it.
+- The description of each such tool ends with `ACCESS_SCOPE_NOTE`.
+- A result has to be an object to carry it: `list_paddock_evaluations`,
+  `list_paddock_scenarios` and `list_skill_agents` answer
+  `{ evaluations | scenarios | agents: [...] }` since this change.
+  `list_agents` stays a bare array and carries no field: its rows ARE the
+  agents this person can use, and its description says that the list is
+  never every agent of the installation. `delete_llm` answers a sentence,
+  which names the agents the caller reaches and counts the rest ("2 more
+  you cannot see"), before the confirmation and after the deletion.
+
+The tools that carry it: `list_agent_events`, `list_agent_incidents`,
+`list_agent_limits`, `list_chats`, `sync_chats`, `get_usage_overview`,
+`llm_usage`, `list_paddock_evaluations`, `list_paddock_scenarios`,
+`list_skill_agents`, `get_installation_stats` (which asks the reach inside
+its service, and also answers the structured `reach.limited` its page
+reads). `mcp/narrowedLists.spec.ts` reads the source of every
+`*.tool.ts` for the tools whose method asks `reachableIds`, itself or
+through a helper of its class, and fails until each is filed there: as a
+list that carries the field, or with the reason it needs none.
+
 | Tools | How reach is applied |
 |---|---|
-| `list_agents`, `get_agent` (`reader`) | only reached agents; an agent the caller may not manage comes as its reader view (no `config`, credential, knowledge binding or deploy history); `pinned` is the person's own; the Ranch assistant carries `managedBy: "owner"` for anybody but the Owner (CLEAN-263) |
-| `pin_agent` (`person`) | pins for the person the call is made for; an unreached agent is not found; an agent acting for itself is refused |
+| `list_agents`, `get_agent` (`reader`) | only reached agents; an agent the caller may not manage comes as its reader view (no `config`, credential, knowledge binding or deploy history); `pinned` is the person's own, and always false for the Ranch assistant (CLEAN-269); the Ranch assistant carries `managedBy: "owner"` for anybody but the Owner (CLEAN-263) |
+| `pin_agent` (`person`) | pins for the person the call is made for; an unreached agent is not found; an agent acting for itself is refused. Asked to pin or unpin the Ranch assistant it answers one plain sentence and writes nothing, for the Owner too: "Rancher is the Ranch assistant: it is always first in every agent list, so it is not pinned. Nothing was changed." (`agent/pin/domain/pinRule.ts`, CLEAN-269). Not a refusal and not `owner_only`: nothing is denied, a pin there would do nothing. The consoles offer no pin on it and show none, also to a person who pinned it before; that row stays in `AgentPin`, unread |
 | `get_assistant_access`, `set_assistant_role_access` (`owner`); `get_user_assistant_access`, `set_user_assistant_access`, `reset_user_assistant_access` (`admin`); `get_my_assistant_access` (`person`) | no agent id: they are about the one assistant. `AssistantAccessService` asks who may edit whom (an Admin: Users only, and never above the Admin's own grant); a change that takes abilities away answers "who loses what" until `confirm: true` |
 | `get_user_agent_access`, `set_user_agent_access` (`admin`) | `AgentAccessService.view` / `adjust` as the party: an Admin sees and may name only agents they reach, and meets the ceiling |
 | the 35 `manage-agent` tools | through `manageable`; the Ranch assistant, for a person who reaches it, is refused as the Owner's and not as not found |
-| `list_agent_limits`, `list_skill_agents`, `get_usage_overview`, `llm_usage`, `list_paddock_evaluations`, `list_paddock_scenarios` | filtered; usage totals are of the reached agents |
-| `list_chats`, `list_agent_events`, `list_agent_incidents` | `agentScope` in the query; an `agentId` argument is checked. `list_chats` also leaves out the Ranch assistant for anybody but the Owner, says so in `notIncluded`, and names the agent of each row |
+| `list_agent_limits`, `list_skill_agents`, `get_usage_overview`, `llm_usage`, `list_paddock_evaluations`, `list_paddock_scenarios` | filtered; usage totals are of the reached agents; `scope` when the lists narrowed something. All but `list_skill_agents` also leave out the Ranch assistant for anybody but the Owner and say so in `notIncluded` (CLEAN-268) |
+| `list_chats`, `list_agent_events`, `list_agent_incidents` | `agentScope` in the query; an `agentId` argument is checked; `scope` when the lists narrowed something and no agent was named. `list_chats` also leaves out the Ranch assistant for anybody but the Owner, says so in `notIncluded`, and names the agent of each row |
 | `list_chat_topics`, `merge_chat_topics` (`admin`) | no agent id: the topics of the conversation summaries. Conversations are counted with `agentScope` in the query, the scope `list_chats` uses; for a caller that scope narrows, a topic with no conversation in it is not listed and cannot be merged ("Topic … not found"), and the keys folded into a topic (`merged`) are left out of the list: only a caller who reads every conversation is given them. The merge has no console screen and no tool that takes it back, so it is `destructive` and waits for `confirm: true` |
 | `get_my_stats` (`person`) | the statistics of the person the call is made for, over the agents that person reaches now: a conversation with an agent taken away is in no figure, and a colleague the person does not reach is counted but not named. What the conversation summaries say (CLEAN-270: `summaries`, `board.resolved`, `topics`, `outcome`, `openQuestions`) is read for that person's conversations of the period by id, with `agentScope` in the query, so a summary of a conversation with an agent taken away is in no count, no topic and no question. The main questions it carries are that person's own and nobody else's, whatever the agent's token is: it is the one statistics answer with a person's words in it. Topics are named in English, a tool call having no `Accept-Language`. With `summaries.enabled` false those parts are empty, and the description tells the agent to say "not produced", not "none" |
-| `get_installation_stats` (`admin`) | the installation's statistics over the agents the party reaches: usage rows are filtered as in `get_usage_overview`, conversations, people, ratings and incidents take `agentScope` in the query, refusals are asked for the reached agents only. Every total is summed after that, `reach.limited` says the answer is a part, and an agent outside the reach is in no list. A deleted agent's spend is shown to a caller with no allowed list and to nobody else. The share left open (CLEAN-270: `open` out of `summarised` in each `quality` row) is counted with the scope the conversations beside it have, so it leaves out the Ranch assistant for anybody but the Owner; it is two numbers per agent, and no question, topic or name comes back for any caller. `summaries.enabled` false means the two are 0 because nothing was counted, and the description tells the agent to say so |
-| `agent_usage`, the four share-link tools, `sync_chats`, `start_mcp_oauth`, `run_paddock_evaluation`, `list_agent_paddock_scenarios`, `create_paddock_scenario`, `generate_paddock_scenarios` | the agent id is checked |
-| `get_chat`, `get_chat_messages`, `summarize_chat`, `export_chat`, the paddock evaluation tools by id, `get` / `update` / `delete_paddock_scenario` | the record's agent is checked. A chat of the Ranch assistant is the Owner's to read: the four chat tools, and `list_chats` / `sync_chats` by its agent id, answer `reason: "owner_only"` to a person who has the assistant |
-| `delete_llm` | names the agents that would lose their model only when the caller reaches them; the rest are counted |
+| `get_installation_stats` (`admin`) | the installation's statistics over the agents the party reaches: usage rows are filtered as in `get_usage_overview`, conversations, people, ratings and incidents take `agentScope` in the query, refusals are asked for the reached agents only. Every total is summed after that, `reach.limited` says the answer is a part (and the tool adds `scope`), and an agent outside the reach is in no list. The Ranch assistant, for anybody but the Owner, is in no conversation figure and, since CLEAN-268, in no token, call, cost, projection or refusal figure either: `reach.ownerOnly` names it and the tool adds `notIncluded`. Its incidents are listed. A deleted agent's spend is shown to a caller with no allowed list and to nobody else. The share left open (CLEAN-270: `open` out of `summarised` in each `quality` row) is counted with the scope the conversations beside it have, so it leaves out the Ranch assistant for anybody but the Owner; it is two numbers per agent, and no question, topic or name comes back for any caller. `summaries.enabled` false means the two are 0 because nothing was counted, and the description tells the agent to say so |
+| `agent_usage`, the four share-link tools, `sync_chats`, `start_mcp_oauth`, `run_paddock_evaluation`, `list_agent_paddock_scenarios`, `create_paddock_scenario`, `generate_paddock_scenarios` | the agent id is checked. `agent_usage` and the four paddock tools answer `reason: "owner_only"` for the Ranch assistant to a person who has it (CLEAN-268) |
+| `get_chat`, `get_chat_messages`, `summarize_chat`, `export_chat`, the paddock evaluation tools by id, `get` / `update` / `delete_paddock_scenario` | the record's agent is checked. A chat of the Ranch assistant is the Owner's to read: the four chat tools, and `list_chats` / `sync_chats` by its agent id, answer `reason: "owner_only"` to a person who has the assistant. So do the paddock tools for an evaluation or a scenario of it (CLEAN-268) |
+| `delete_llm` | names the agents that would lose their model, or lost it, only when the caller reaches them; the rest are counted |
 | `restart_template_agents`, `redeploy_skill_agents` | an agent the caller may not manage is skipped and counted, never named |
 
 One class, one audience, with a method-level exception where one route of a
@@ -869,6 +1006,21 @@ puts the block back (it is idempotent and `make init` runs it).
   what the tool does, a list over every agent says what it left out
   (`notIncluded`), each row names its agent, and the tool is walked by
   `assistantConversations.spec.ts`.
+- Does the tool list or sum across agents? Then its result is an object, it
+  spreads `accessScope(reach, namedAgentId)` into it, its description ends
+  with `ACCESS_SCOPE_NOTE`, and it is filed in `narrowedLists.spec.ts`,
+  which fails on a tool that asks `reachableIds` and is not.
+- Does the tool return records about an agent (what it spent, how it is
+  limited, how it was tested), as opposed to the agent? Then it reads
+  through `reach.forRecords()`, answers the Ranch assistant with the kind
+  `'records'` or `'evaluations'`, a list says what it left out
+  (`ownerOnlyLeftOutField`), and the route beside it carries
+  `@AgentScoped(source, { records: true })`.
+- Does the tool change something about an agent without going through
+  `manageable`? Then either it is the person's own (a pin, their own
+  account) or it asks `reach.forChanges()` and answers the assistant with
+  the kind `'change'`; either way it is filed in the last table of
+  `narrowedLists.spec.ts`.
 - Does the tool list, name or use an agent's colleagues? Then it takes the
   caller's view from `PeerAccessService` (see "Whose colleague"), answers a
   hidden connection as one that does not exist, and a masked one without its

@@ -58,6 +58,31 @@ export interface IChatSession {
    * agent's, when the viewer has access to it; null otherwise.
    */
   peer?: { name: string | null } | null;
+  /**
+   * Read as the viewer's OWN conversation (`ChatScope` `own`, CLEAN-269):
+   * the row says "You", and its address asks for it the same way.
+   */
+  own?: boolean;
+}
+
+/**
+ * Which of the two readings of a conversation is asked for (CLEAN-269).
+ *
+ *  - `supervised`: `/chats`, what other people said to an agent whose
+ *    conversations the viewer may read. Every tool event, any channel.
+ *  - `own`: `/me/chats`, the viewer's own conversation with an agent they
+ *    have. The only reading there is of the Ranch assistant for anybody but
+ *    the Owner, whose other conversations are the Owner's to read.
+ */
+export type ChatScope = 'supervised' | 'own';
+
+/** What the viewer's own conversations can be narrowed by. */
+export interface IOwnChatListQuery {
+  agentId?: string;
+  search?: string;
+  archived?: boolean;
+  page?: number;
+  perPage?: number;
 }
 
 // Admins can inspect tool/system events; end users only see the first three.

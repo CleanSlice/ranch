@@ -66,8 +66,9 @@ export class McpOauthTool implements IConditionallyListedTool {
       'their browser; they log in at the provider, and the callback stores ' +
       'the token for the agent named by `agentId` (the calling agent when ' +
       'omitted) and wakes it. Without `subject` this is the agent-wide ' +
-      'connection everyone who talks to that agent shares; a person who ' +
-      'wants their own account connects from that agent\'s chat instead, ' +
+      'connection everyone who talks to that agent shares, which for the ' +
+      'Ranch assistant only the Owner can make; a person who ' +
+      "wants their own account connects from that agent's chat instead, " +
       'where its «server»__connect tool keys the token to them. The link is ' +
       'single-use and expires in ten minutes. Find the server id with ' +
       'list_mcp_servers.',
@@ -119,8 +120,15 @@ export class McpOauthTool implements IConditionallyListedTool {
     }
     // The token is stored for one agent; a person connects it only for an
     // agent their access lists reach (CLEAN-231).
-    if (!(await this.access.reaches(callerParty(httpRequest), owner))) {
-      return agentNotFound(httpRequest, owner);
+    //
+    // Without `subject` it is the connection everybody who talks to that
+    // agent shares: a tool server bound to the agent. For the Ranch
+    // assistant that is managing it, and only the Owner does (CLEAN-268).
+    // With `subject` it is one person's own account, keyed to them, and
+    // changes nothing about the agent: reaching it is enough, as before.
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    if (!(subject ? reach : reach.forChanges()).has(owner)) {
+      return agentNotFound(httpRequest, owner, 'change');
     }
     try {
       const { authorizeUrl } = await this.oauth.start({

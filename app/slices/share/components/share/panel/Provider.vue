@@ -60,6 +60,14 @@ const linkUnknown = computed(
   () => !loadingLink.value && !link.value && Boolean(shareStore.error),
 );
 
+/**
+ * The API said this agent's link is not this person's (CLEAN-269): one quiet
+ * line, no error colour, and neither Share nor a retry, which would only be
+ * refused again. The console does not offer the panel where it knows this
+ * beforehand (`canShareAgent`); this is for what it learns from the answer.
+ */
+const linkRefused = computed(() => shareStore.isRefused(props.agentId));
+
 const sharedSince = computed(() => format.date(link.value?.createdAt));
 
 // Copy computed in script travels as a key, never as text (docs/i18n.md).
@@ -232,7 +240,15 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div v-if="loadingLink" class="mt-3 flex justify-center py-3">
+      <p
+        v-if="linkRefused"
+        class="mt-3 text-[11px] leading-snug text-muted-foreground"
+        data-share-refused
+      >
+        {{ $t('share.panel.not_yours') }}
+      </p>
+
+      <div v-else-if="loadingLink" class="mt-3 flex justify-center py-3">
         <Icon
           name="loader-2"
           :size="16"
@@ -365,7 +381,7 @@ onBeforeUnmount(() => {
 
       <!-- `linkUnknown` renders its own copy of this line above, with a retry. -->
       <p
-        v-if="shareStore.error && !linkUnknown"
+        v-if="shareStore.error && !linkUnknown && !linkRefused"
         class="mt-3 rounded-md bg-rose-500/10 px-2 py-1.5 text-[11px] leading-snug text-rose-700 dark:text-rose-400"
       >
         {{ $t('share.panel.error') }}

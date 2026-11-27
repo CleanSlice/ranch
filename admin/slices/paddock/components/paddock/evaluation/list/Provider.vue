@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ownerOnlyAssistant, ownerOnlyLeftOutText } from '#agent/utils/agentAccess';
 import { formatDateTime } from '#common/utils/format';
 
 const props = defineProps<{
@@ -15,6 +16,7 @@ const props = defineProps<{
 const store = usePaddockEvaluationStore();
 const agentStore = useAgentStore();
 const templateStore = useTemplateStore();
+const authStore = useAuthStore();
 
 const cacheKey = `paddock-evaluations-${props.agentId ?? 'all'}-${props.templateId ?? 'all'}`;
 
@@ -38,6 +40,16 @@ await useAsyncData('paddock-list-agents', () => agentStore.fetchAll(), {
 });
 await useAsyncData('paddock-list-templates', () => templateStore.fetchAll(), {
   immediate: showTemplate.value,
+});
+
+// The Ranch assistant's evaluations are the Owner's to read (CLEAN-268): a
+// list across agents leaves them out for anybody else, and says so
+// (CLEAN-269). A list of one agent left nothing out; the agents are in the
+// store only when this list is across them.
+const leftOutText = computed(() => {
+  if (props.agentId) return '';
+  const assistant = ownerOnlyAssistant(authStore.user?.role, agentStore.agents);
+  return assistant ? ownerOnlyLeftOutText('evaluations', assistant.name) : '';
 });
 
 const agentName = (id: string): string => {
@@ -132,5 +144,9 @@ defineExpose({ refresh, pending });
     <div v-else class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
       No evaluations yet.
     </div>
+
+    <AccessNote v-if="leftOutText && !pending" data-evaluations-left-out>
+      {{ leftOutText }}
+    </AccessNote>
   </div>
 </template>

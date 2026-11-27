@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { isOwnerRole, notAvailableText } from '#agent/utils/agentAccess';
 import { patchSourceRating } from '#bridle/stores/bridle';
 import { openCitedSource, setCitedSourceRating } from '#bridle/utils/citedSource';
 import { describeCitedSourceError } from '#bridle/utils/citedSourceFile';
+import type { ChatScope } from '#chat/stores/chat';
 import {
   groupTranscript,
   snippet,
@@ -10,10 +12,46 @@ import {
 
 const props = defineProps<{ id: string }>();
 const store = useChatStore();
+const authStore = useAuthStore();
+const route = useRoute();
 
-const { data: session } = await useAsyncData(`chat-detail-${props.id}`, () =>
-  store.getById(props.id),
-);
+// ── Which reading of the chat this is (CLEAN-269) ───────────────
+// `/chats/:id` is what other people said to an agent whose conversations
+// the viewer may read. The viewer's own conversation with the Ranch assistant
+// is not there for anybody but the Owner (the assistant's conversations are
+// the Owner's to read), and is read through `/me/chats/:id`. The list marks
+// such a row (`?own=1`), so its address asks the right route first and no
+// request is answered "not found" on the way; an address without the mark is
+// tried the other way too. The Owner reads every chat on the first route, so
+// nothing is asked twice for them.
+//
+// A chat neither route gives is not available: one state for an id that
+// names nothing, a chat of an agent out of reach and somebody else's
+// conversation with the assistant. Nothing is asked about it after that.
+const ownHinted = route.query.own !== undefined;
+const scopes: ChatScope[] = ownHinted
+  ? ['own', 'supervised']
+  : isOwnerRole(authStore.user?.role)
+    ? ['supervised']
+    : ['supervised', 'own'];
+
+const {
+  data: session,
+  error: loadError,
+  refresh: reload,
+} = await useAsyncData(`chat-detail-${props.id}`, async () => {
+  for (const scope of scopes) {
+    const found = await store.getById(props.id, scope);
+    if (found) return found;
+  }
+  return null;
+});
+
+const reading = {
+  readable: () => !!session.value,
+  scope: (): ChatScope => (session.value?.own ? 'own' : 'supervised'),
+};
+const notAvailableHint = computed(() => notAvailableText(authStore.user?.role));
 
 const {
   messages,
@@ -24,11 +62,21 @@ const {
   scroller,
   loadLatest,
   loadOlder,
-} = useChatTranscript(props.id);
-const { feedbackByMsg, rate } = useChatFeedback(props.id);
+} = useChatTranscript(props.id, reading);
+const { feedbackByMsg, rate, load: loadFeedback } = useChatFeedback(props.id, reading);
 
-const who = computed(
-  () => session.value?.title || session.value?.externalUserId || '—',
+/** The first read failed for a reason other than "not found": ask again. */
+async function onRetry() {
+  await reload();
+  if (session.value) await Promise.all([loadLatest(), loadFeedback()]);
+}
+
+// The viewer's own conversation is named as the list names it: its client
+// id is their account id, which says nothing to them.
+const who = computed(() =>
+  session.value?.own
+    ? 'You'
+    : session.value?.title || session.value?.externalUserId || '—',
 );
 
 const grouped = computed(() =>
@@ -49,7 +97,7 @@ function onJump(id: string) {
 }
 
 function onExport(format: 'json' | 'markdown' | 'csv') {
-  void store.exportChat(props.id, format);
+  void store.exportChat(props.id, format, reading.scope());
 }
 
 // ── Cited sources (CLEAN-138) ──────────────────────────────────
@@ -94,7 +142,25 @@ async function onRateSource(messageId: string, n: number, rating: 1 | -1 | null)
 </script>
 
 <template>
-  <div class="flex w-full flex-col gap-4">
+  <!-- The API said "not found": not an empty conversation, and nothing of
+       it is drawn (CLEAN-269). -->
+  <PageNotAvailable
+    v-if="!session && !loadError"
+    what="chat"
+    :hint="notAvailableHint"
+    back-to="/chats"
+    back-label="Chats"
+  />
+
+  <div v-else-if="!session" class="flex w-full flex-col gap-4" data-chat-load-failed>
+    <PageBreadcrumbs :items="[{ label: 'Chats', to: '/chats' }, { label: 'Chat' }]" class="min-w-0" />
+    <div class="flex flex-col items-center gap-3 py-16 text-center text-sm text-muted-foreground">
+      This chat could not be loaded.
+      <Button size="sm" variant="outline" @click="onRetry">Try again</Button>
+    </div>
+  </div>
+
+  <div v-else class="flex w-full flex-col gap-4">
     <!-- Slim header -->
     <div class="flex items-center gap-3 border-b pb-3">
       <PageBreadcrumbs :items="[{ label: 'Chats', to: '/chats' }, { label: who }]" class="min-w-0" />
@@ -167,11 +233,14 @@ async function onRateSource(messageId: string, n: number, rating: 1 | -1 | null)
         <ChatDetailMetaCard
           v-if="session"
           :session="session"
+          :tool-events="!session.own"
           v-model:show-tools="showTools"
           v-model:show-thinking="showThinking"
         />
+        <!-- The summary is made for whoever supervises the agent; a
+             person's own conversation has no such route. -->
         <ChatDetailSummaryCard
-          v-if="session"
+          v-if="session && !session.own"
           :session="session"
           @updated="session = $event"
         />

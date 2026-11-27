@@ -1,10 +1,36 @@
 import { describe, expect, test } from 'bun:test';
-import { canManageAgent } from './agentAccess';
+import { canManageAgent, canPinAgent, canShareAgent } from './agentAccess';
 
 // Twin of admin/slices/agent/agent/utils/agentAccess.test.ts: the line about
 // the Ranch admin agent is the same in both consoles (CLEAN-232).
 const ranchAdmin = { isAdmin: true };
 const ordinary = { isAdmin: false };
+
+describe('canPinAgent', () => {
+  // CLEAN-269: the Ranch assistant is first in every list as it is.
+  test('there is no pin on the Ranch admin agent, for any role', () => {
+    expect(canPinAgent(ranchAdmin)).toBe(false);
+  });
+
+  test('every other agent is pinned by whoever sees it', () => {
+    expect(canPinAgent(ordinary)).toBe(true);
+  });
+});
+
+describe('canShareAgent', () => {
+  test('whoever opens an ordinary agent may share it', () => {
+    for (const role of ['Owner', 'Admin', 'User']) {
+      expect(canShareAgent(role, ordinary)).toBe(true);
+    }
+  });
+
+  test('the share link of the Ranch admin agent is the Owner\'s alone', () => {
+    expect(canShareAgent('Owner', ranchAdmin)).toBe(true);
+    expect(canShareAgent('Admin', ranchAdmin)).toBe(false);
+    expect(canShareAgent('User', ranchAdmin)).toBe(false);
+    expect(canShareAgent(null, ranchAdmin)).toBe(false);
+  });
+});
 
 describe('canManageAgent', () => {
   test('the Owner manages the Ranch admin agent', () => {

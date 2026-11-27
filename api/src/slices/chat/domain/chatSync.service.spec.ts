@@ -296,6 +296,7 @@ describe('ChatSyncService.syncForExternalUser', () => {
       scannedFiles: 1,
       upserted: 1,
       skipped: 0,
+      pruned: 0,
     });
     expect(upserts.map((u) => u.sessionKey)).toEqual(['bridle:user-1']);
   });
@@ -328,6 +329,7 @@ describe('ChatSyncService.syncForExternalUser', () => {
       scannedFiles: 0,
       upserted: 0,
       skipped: 0,
+      pruned: 0,
     });
   });
 
@@ -357,6 +359,7 @@ describe('ChatSyncService.syncForExternalUser', () => {
       scannedFiles: 1,
       upserted: 0,
       skipped: 1,
+      pruned: 0,
     });
     expect(upserts).toEqual([]);
   });
@@ -370,7 +373,11 @@ describe('ChatSyncService.syncForExternalUser', () => {
  */
 describe('ChatSyncService.syncAll for a caller with a reach', () => {
   const threeAgents = {
-    findAll: async () => [{ id: 'agent-1' }, { id: 'agent-2' }, { id: 'agent-3' }],
+    findAll: async () => [
+      { id: 'agent-1' },
+      { id: 'agent-2' },
+      { id: 'agent-3' },
+    ],
   } as unknown as IAgentGateway;
 
   function service() {
@@ -412,5 +419,153 @@ describe('ChatSyncService.syncAll for a caller with a reach', () => {
     const result = await svc.syncAll();
     expect(listed).toEqual(['agent-1', 'agent-2', 'agent-3']);
     expect(result.scannedAgents).toBe(3);
+  });
+});
+
+/**
+ * A row whose transcript file is gone (CLEAN-272). On production the Owner's
+ * conversation with one agent stood in both consoles as going on, 40
+ * messages long, and opened empty: its file had been deleted by a chat reset
+ * and nothing ever removed the row.
+ */
+describe('ChatSyncService: rows whose transcript file is gone', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const LIVE = 'data/sessions/bridle:admin.jsonl';
+  const transcript = jsonl(
+    { id: 'u1', type: 'user', ts: 1, data: { text: 'hello' } },
+    { id: 'a1', type: 'assistant', ts: 2, data: { text: 'hi' } },
+  );
+
+  const row = (
+    id: string,
+    sessionKey: string,
+    idleMs: number,
+    externalUserId = 'admin',
+  ): Partial<IChatSessionData> => ({
+    id,
+    agentId: 'agent-1',
+    channel: 'bridle',
+    externalUserId,
+    sessionKey,
+    lastIndexedSize: 70,
+    lastMessageAt: new Date(Date.now() - idleMs),
+  });
+
+  function bed(
+    paths: string[],
+    indexed: Partial<IChatSessionData>[],
+    opts: { listFails?: boolean; deleteFails?: boolean } = {},
+  ) {
+    const files_ = fileStub(
+      paths.map((path) => ({ path, size: 70 })),
+      Object.fromEntries(paths.map((path) => [path, transcript])),
+    );
+    if (opts.listFails) {
+      files_.list = async () => {
+        throw new Error('storage unreachable');
+      };
+    }
+    const removed: string[] = [];
+    const chats = {
+      list: async (filter: Record<string, unknown>) => {
+        const items = indexed.filter(
+          (s) =>
+            filter.externalUserId === undefined ||
+            s.externalUserId === filter.externalUserId,
+        );
+        return { items: items as IChatSessionData[], total: items.length };
+      },
+      reconcileUpsert: async (i: IChatReconcileInput) =>
+        i as unknown as IChatSessionData,
+      deleteSessions: async (ids: string[]) => {
+        if (opts.deleteFails) throw new Error('database unavailable');
+        removed.push(...ids);
+        return ids.length;
+      },
+    } as unknown as IChatGateway;
+    const svc = new ChatSyncService(
+      files_,
+      new TranscriptReaderService(files_),
+      chats,
+      agentsStub,
+    );
+    return { svc, removed };
+  }
+
+  it('removes a row that has no file and has been silent for more than a day', async () => {
+    const { svc, removed } = bed(
+      [LIVE],
+      [
+        row('kept', 'bridle:admin', 3 * DAY),
+        row('orphan', 'bridle:user-9', 2 * DAY, 'user-9'),
+      ],
+    );
+    const result = await svc.syncAll('agent-1');
+    expect(removed).toEqual(['orphan']);
+    expect(result.pruned).toBe(1);
+  });
+
+  it('leaves a young row alone: the agent may not have pushed its file yet', async () => {
+    const { svc, removed } = bed(
+      [],
+      [row('fresh', 'bridle:admin', 60 * 60 * 1000)],
+    );
+    const result = await svc.syncAll('agent-1');
+    expect(removed).toEqual([]);
+    expect(result.pruned).toBe(0);
+  });
+
+  it('prunes an agent that has no session file left at all', async () => {
+    const { svc, removed } = bed([], [row('orphan', 'bridle:admin', 2 * DAY)]);
+    const result = await svc.syncAll('agent-1');
+    expect(removed).toEqual(['orphan']);
+    expect(result.pruned).toBe(1);
+  });
+
+  it('removes a closed conversation whose archived file was deleted', async () => {
+    const { svc, removed } = bed(
+      [LIVE],
+      [
+        row('live', 'bridle:admin', 2 * DAY),
+        row(
+          'closed',
+          'bridle:admin.2026-01-01T00-00-00-000Z.archived',
+          9 * DAY,
+        ),
+      ],
+    );
+    await svc.syncAll('agent-1');
+    expect(removed).toEqual(['closed']);
+  });
+
+  it('removes nothing when the agent’s files cannot be listed', async () => {
+    const { svc, removed } = bed([], [row('orphan', 'bridle:admin', 2 * DAY)], {
+      listFails: true,
+    });
+    const result = await svc.syncAll('agent-1');
+    expect(removed).toEqual([]);
+    expect(result.pruned).toBe(0);
+  });
+
+  it('a person’s own reconcile prunes that person’s rows and no one else’s', async () => {
+    const { svc, removed } = bed(
+      [],
+      [
+        row('mine', 'bridle:user-1', 2 * DAY, 'user-1'),
+        row('theirs', 'bridle:user-2', 2 * DAY, 'user-2'),
+      ],
+    );
+    const result = await svc.syncForExternalUser('user-1');
+    expect(removed).toEqual(['mine']);
+    expect(result.pruned).toBe(1);
+  });
+
+  it('carries on when the rows cannot be removed', async () => {
+    const { svc } = bed([LIVE], [row('orphan', 'bridle:user-9', 2 * DAY)], {
+      deleteFails: true,
+    });
+    const result = await svc.syncAll('agent-1');
+    expect(result.pruned).toBe(0);
+    expect(result.scannedFiles).toBe(1);
   });
 });

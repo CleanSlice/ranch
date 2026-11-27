@@ -1,4 +1,14 @@
-import type { IChatMessage } from '#chat/stores/chat';
+import type { ChatScope, IChatMessage } from '#chat/stores/chat';
+
+/**
+ * How the page reads the chat it has open (CLEAN-269). `readable` is false
+ * while the API has not said the chat is the viewer's to read, and stays
+ * false when it said "not found": nothing is asked about such a chat.
+ */
+export interface IChatReading {
+  readable: () => boolean;
+  scope: () => ChatScope;
+}
 
 const PAGE = 50;
 
@@ -9,7 +19,7 @@ const PAGE = 50;
  * changes how the page groups what it already has, so it fetches nothing.
  * Loads on mount.
  */
-export function useChatTranscript(chatId: string) {
+export function useChatTranscript(chatId: string, source: IChatReading) {
   const store = useChatStore();
 
   const messages = ref<IChatMessage[]>([]);
@@ -27,9 +37,14 @@ export function useChatTranscript(chatId: string) {
   );
 
   async function loadLatest() {
+    if (!source.readable()) return;
     loading.value = true;
     try {
-      const r = await store.messages(chatId, { limit: PAGE, types: types.value });
+      const r = await store.messages(
+        chatId,
+        { limit: PAGE, types: types.value },
+        source.scope(),
+      );
       messages.value = r.messages;
       cursor.value = r.nextCursor;
       hasMore.value = r.hasMore;
@@ -45,11 +60,11 @@ export function useChatTranscript(chatId: string) {
     loading.value = true;
     const prevHeight = scroller.value?.scrollHeight ?? 0;
     try {
-      const r = await store.messages(chatId, {
-        limit: PAGE,
-        cursor: cursor.value,
-        types: types.value,
-      });
+      const r = await store.messages(
+        chatId,
+        { limit: PAGE, cursor: cursor.value, types: types.value },
+        source.scope(),
+      );
       messages.value = [...r.messages, ...messages.value];
       cursor.value = r.nextCursor;
       hasMore.value = r.hasMore;

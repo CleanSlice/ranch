@@ -25,6 +25,17 @@ function session(over: Partial<IChatSession> & { id: string }): IChatSession {
 }
 
 describe('chatUser', () => {
+  // CLEAN-269: a conversation read through `/me/chats` is the viewer's own.
+  test('a conversation of the viewer is "You", whatever its client id', () => {
+    expect(chatUser(session({ id: 'c', externalUserId: 'a587d388-c6d5-4ae3-a887-ade07cff2caf', own: true }))).toEqual({
+      kind: 'own',
+      label: 'You',
+      id: '',
+      fullId: '',
+    });
+    expect(chatUser(session({ id: 'c', externalUserId: 'admin', own: true })).label).toBe('You');
+  });
+
   test('reads the kind off the client id', () => {
     expect(chatUser(session({ id: 'c', externalUserId: 'admin' }))).toEqual({
       kind: 'admin',

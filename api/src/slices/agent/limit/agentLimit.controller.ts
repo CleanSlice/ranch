@@ -108,8 +108,12 @@ export class AgentLimitController {
   })
   @ApiOkResponse({ type: [AgentLimitSummaryDto] })
   async list(@Req() req?: AuthedRequest): Promise<AgentLimitSummaryDto[]> {
-    // One line per agent the caller reaches (CLEAN-231).
-    const reach = await this.access.reachableIds(accessCallerOf(req));
+    // One line per agent the caller reaches (CLEAN-231), and none for the
+    // Ranch assistant to anybody but the Owner (CLEAN-268): how it is
+    // limited and how loaded it is are the Owner's, as the write is.
+    const reach = (
+      await this.access.reachableIds(accessCallerOf(req))
+    ).forRecords();
     return this.limits.summary(
       reach.filter(await this.agents.findAll(), (agent) => agent.id),
     );
@@ -117,7 +121,9 @@ export class AgentLimitController {
 
   @Get('agents/:agentId/limits')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
-  @AgentScoped('agentId', { notFound: agentNotFound })
+  // The tool for the same thing, `get_agent_limits`, is the Owner's for the
+  // Ranch assistant; so is this route (CLEAN-268).
+  @AgentScoped('agentId', { notFound: agentNotFound, records: true })
   @ApiOperation({
     operationId: 'getAgentLimits',
     summary: 'The request limits of one agent. Admin or Owner.',
@@ -185,7 +191,7 @@ export class AgentLimitController {
 
   @Get('agents/:agentId/load')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
-  @AgentScoped('agentId', { notFound: agentNotFound })
+  @AgentScoped('agentId', { notFound: agentNotFound, records: true })
   @ApiOperation({
     operationId: 'getAgentLoad',
     summary:

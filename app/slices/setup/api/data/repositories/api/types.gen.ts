@@ -1928,6 +1928,10 @@ export type SyncChatsResponseDto = {
   scannedFiles: number;
   upserted: number;
   skipped: number;
+  /**
+   * Index rows removed because their transcript file no longer exists
+   */
+  pruned: number;
 };
 
 export type CreateChatFeedbackDto = {
@@ -3476,7 +3480,7 @@ export type InstallationStatsReachDto = {
    */
   agents: number;
   /**
-   * Names of the agents the caller reaches whose conversations are left out of `board.people`, `quality` and `channels`, because only the Owner manages them: for an Admin, the Ranch assistant. What such an agent spent, its incidents and its refused requests are counted as for any other agent. Empty for the Owner, and for a caller who does not reach such an agent. When it is not empty the page says whose conversations are not counted.
+   * Names of the agents the caller reaches whose conversations are left out of `board.people`, `quality` and `channels`, because only the Owner manages them: for an Admin, the Ranch assistant. What such an agent spent and its refused requests are left out too, of every row and every total: tokens, calls, cost, `daily`, `agents`, `projection30d` and `health.refusals`. Its incidents are listed as for any other agent. Empty for the Owner, and for a caller who does not reach such an agent. When it is not empty the page says whose figures are not counted.
    */
   ownerOnly: Array<string>;
 };

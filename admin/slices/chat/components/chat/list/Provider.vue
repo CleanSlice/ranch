@@ -5,6 +5,7 @@ import {
   IconBrandTelegram,
   IconChevronRight,
   IconLink,
+  IconLock,
   IconMessage,
   IconMessageOff,
   IconRefresh,
@@ -14,6 +15,7 @@ import {
   IconUser,
 } from '@tabler/icons-vue';
 import type { Component } from 'vue';
+import { ownerOnlyAssistant, ownerOnlyLeftOutText } from '#agent/utils/agentAccess';
 import type { ChatChannel, IChatSession } from '#chat/stores/chat';
 import { chatCountLabel, chatUser, groupByDay, isConversation } from '#chat/utils/chatList';
 import { formatClock } from '#common/utils/format';
@@ -26,6 +28,7 @@ const props = defineProps<{ agentId?: string }>();
 
 const store = useChatStore();
 const agentStore = useAgentStore();
+const authStore = useAuthStore();
 
 const showAgent = computed(() => !props.agentId);
 
@@ -42,10 +45,43 @@ const includeInternal = ref(false);
 const page = ref(1);
 const perPage = 50;
 
+// The agent the list is narrowed to, by the page or by the filter.
+const pickedAgentId = computed(
+  () => props.agentId ?? (agentFilter.value === AGENT_ALL ? undefined : agentFilter.value),
+);
+
+// ── The Ranch assistant's conversations (CLEAN-269) ─────────────
+// What other people said to the assistant is the Owner's to read
+// (CLEAN-236): for an Admin `GET /chats` leaves its conversations out, and
+// with the assistant picked answers an empty page. That read as "No chats
+// here, run Sync", in the one place an Admin looks for the conversation they
+// had with it themselves. So:
+//
+//  - with the assistant picked, the list is the viewer's OWN conversations
+//    with it (`GET /me/chats`, what the app console's History shows), and one
+//    line says whose the others are. No Sync: it indexes what is supervised;
+//  - with no agent picked, one line under the list says that the assistant's
+//    are not in it, and where the viewer's own are.
+//
+// Null for the Owner, who reads everything, and for a viewer who does not
+// have the assistant: it is not among their agents, and is not named.
+const assistant = computed(() =>
+  ownerOnlyAssistant(authStore.user?.role, agentStore.agents),
+);
+const ownOnly = computed(
+  () => !!assistant.value && pickedAgentId.value === assistant.value.id,
+);
+const assistantLeftOut = computed(
+  () => showAgent.value && !!assistant.value && !pickedAgentId.value,
+);
+const leftOutText = computed(() =>
+  assistant.value ? ownerOnlyLeftOutText('conversations', assistant.value.name) : '',
+);
+
 // Everything but the channel and the page: the segment counts are taken
 // against this, so each segment says how many it would show.
 const baseQuery = computed(() => ({
-  agentId: props.agentId ?? (agentFilter.value === AGENT_ALL ? undefined : agentFilter.value),
+  agentId: pickedAgentId.value,
   search: search.value.trim() || undefined,
   archived: archived.value || undefined,
   includeInternal: includeInternal.value || undefined,
@@ -58,9 +94,27 @@ const query = computed(() => ({
   perPage,
 }));
 
+// A person's own conversations are on the console's own channel and nowhere
+// else, so the other segments hold nothing and nothing is asked for them.
+function listOwn(size: number, at = 1) {
+  return store.listOwn({
+    agentId: baseQuery.value.agentId,
+    search: baseQuery.value.search,
+    archived: baseQuery.value.archived,
+    page: at,
+    perPage: size,
+  });
+}
+
 const { data, pending, refresh } = await useAsyncData(
   `chat-list-${props.agentId ?? 'all'}`,
-  () => store.list(query.value),
+  () => {
+    if (!ownOnly.value) return store.list(query.value);
+    if (channel.value !== 'all' && channel.value !== 'bridle') {
+      return Promise.resolve({ items: [], total: 0, page: 1, perPage });
+    }
+    return listOwn(perPage, page.value);
+  },
   { watch: [query] },
 );
 
@@ -69,6 +123,10 @@ const { data, pending, refresh } = await useAsyncData(
 const { data: counts } = await useAsyncData(
   `chat-list-counts-${props.agentId ?? 'all'}`,
   async () => {
+    if (ownOnly.value) {
+      const own = (await listOwn(1)).total;
+      return { all: own, bridle: own, telegram: 0, slack: 0 } as Record<string, number>;
+    }
     const totals = await Promise.all(
       CHANNELS.map((c) =>
         store.list({ ...baseQuery.value, channel: c === 'all' ? undefined : c, perPage: 1 }),
@@ -129,6 +187,8 @@ function tile(c: string) {
 
 const userIcon: Partial<Record<string, Component>> = {
   admin: IconShield,
+  // The viewer's own conversation with the Ranch assistant (CLEAN-269).
+  own: IconUser,
   // A signed-in person by name, and another agent's question (CLEAN-236).
   person: IconUser,
   peer: IconRobot,
@@ -188,11 +248,16 @@ const userIcon: Partial<Record<string, Component>> = {
       <label class="flex min-h-8 cursor-pointer items-center gap-2 text-[13px] text-muted-foreground">
         <Switch v-model="archived" /> Archived
       </label>
-      <label class="flex min-h-8 cursor-pointer items-center gap-2 text-[13px] text-muted-foreground">
+      <!-- Internal sessions and Sync are about what is supervised; a
+           person's own conversations have neither (CLEAN-269). -->
+      <label
+        v-if="!ownOnly"
+        class="flex min-h-8 cursor-pointer items-center gap-2 text-[13px] text-muted-foreground"
+      >
         <Switch v-model="includeInternal" /> Internal
       </label>
 
-      <div class="ml-auto flex items-center gap-2">
+      <div v-if="!ownOnly" class="ml-auto flex items-center gap-2">
         <span v-if="syncNote" class="text-xs text-muted-foreground">{{ syncNote }}</span>
         <Button variant="outline" :disabled="syncing" @click="onSync">
           <IconRefresh class="size-4" :class="syncing && 'animate-spin'" />
@@ -200,6 +265,13 @@ const userIcon: Partial<Record<string, Component>> = {
         </Button>
       </div>
     </div>
+
+    <!-- With the Ranch assistant picked by somebody who is not the Owner:
+         whose conversations these are, and whose the others are. -->
+    <AccessNote v-if="ownOnly && rows.length" data-chats-own-only>
+      These are your own conversations with {{ assistant?.name }}. Other
+      people's conversations with it are read by the Owner only.
+    </AccessNote>
 
     <!-- Rows, a group per day -->
     <div v-if="pending" class="text-sm text-muted-foreground">Loading…</div>
@@ -210,7 +282,7 @@ const userIcon: Partial<Record<string, Component>> = {
         <NuxtLink
           v-for="s in g.sessions"
           :key="s.id"
-          :to="`/chats/${s.id}`"
+          :to="s.own ? { path: `/chats/${s.id}`, query: { own: '1' } } : `/chats/${s.id}`"
           class="group flex items-start gap-3.5 border-b px-5 py-3.5 text-foreground transition-colors last:border-b-0 hover:bg-muted/40"
         >
           <span
@@ -266,6 +338,24 @@ const userIcon: Partial<Record<string, Component>> = {
       </template>
     </Card>
 
+    <!-- Nothing of the viewer's own with the assistant. Said as that, and
+         never as "run Sync": the rest is not missing, it is the Owner's. -->
+    <div
+      v-else-if="ownOnly"
+      class="flex flex-col items-center gap-2.5 rounded-xl border border-dashed px-6 py-14 text-center"
+      data-chats-own-only
+    >
+      <span class="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+        <IconLock class="size-5" />
+      </span>
+      <span class="text-[15px] font-semibold">
+        No conversations of your own with {{ assistant?.name }} here
+      </span>
+      <span class="text-[13px] text-muted-foreground">
+        Other people's conversations with it are read by the Owner only.
+      </span>
+    </div>
+
     <div
       v-else
       class="flex flex-col items-center gap-2.5 rounded-xl border border-dashed px-6 py-14 text-center"
@@ -278,6 +368,12 @@ const userIcon: Partial<Record<string, Component>> = {
         Try another channel or agent, or run <span class="font-medium text-foreground">Sync</span> to index existing sessions.
       </span>
     </div>
+
+    <!-- Every agent's conversations, less the assistant's: said, so that the
+         list is not read as all there is (CLEAN-269). -->
+    <AccessNote v-if="assistantLeftOut && !pending" data-chats-left-out>
+      {{ leftOutText }} Pick {{ assistant?.name }} in the agent filter for your own.
+    </AccessNote>
 
     <!-- Pagination -->
     <div v-if="pageCount > 1" class="flex items-center justify-end gap-2 text-sm">

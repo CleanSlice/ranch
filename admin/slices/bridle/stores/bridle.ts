@@ -33,6 +33,7 @@ import {
   type IQueuedMessage,
 } from '../utils/queue'
 import { ownChannel } from '../utils/ownChannel'
+import { newChatFailureNotice, newChatRefusalCode } from '../utils/newChat'
 import { INTERIM_TURN, foldReplayedInterim, interimStep, isReplayBlock, trailingBlock } from '../utils/interim'
 import { openCitedSource, setCitedSourceRating } from '../utils/citedSource'
 import { describeCitedSourceError } from '../utils/citedSourceFile'
@@ -2404,33 +2405,41 @@ export const useBridleStore = defineStore('bridle', {
       }
     },
 
-    async resetTranscript(apiUrl: string, agentId: string, channel = defaultChannel()) {
-      const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(agentId)}/transcript?channel=${encodeURIComponent(channel)}`
+    /**
+     * "New chat": close the current conversation and start an empty one.
+     *
+     * The conversation is kept. The server sets its transcript aside as
+     * archived and moves its row in the chat index with it, so it stays
+     * readable under the agent's Chats, and for the person themselves in the
+     * app console's History. This button used to DELETE the transcript
+     * instead: the same name as the app's button, the opposite outcome, and
+     * for the Owner the very same conversation in both consoles (CLEAN-277).
+     *
+     * Either it really happened on the server, and the view is emptied, or
+     * the conversation stays exactly as it is and the notice says why. The
+     * server refuses when a real reset cannot be guaranteed: the agent is off
+     * the hub, it is still answering, or it did not push its files in time.
+     */
+    async startNewChat(apiUrl: string, agentId: string, channel = defaultChannel()) {
+      const url = `${apiUrl.replace(/\/$/, '')}/api/agent/${encodeURIComponent(agentId)}/transcript/archive?channel=${encodeURIComponent(channel)}`
+      const c = this.conversation(agentId, channel)
       try {
-        const res = await authedFetch(url, { method: 'DELETE' })
+        const res = await authedFetch(url, { method: 'POST' })
         if (!res.ok) {
-          console.warn('[bridle] transcript reset returned', res.status)
+          const body: unknown = await res.json().catch(() => null)
+          c.notice = newChatFailureNotice(newChatRefusalCode(body))
           return false
         }
-        const c = this.conversation(agentId, channel)
-        for (const url of c.echoUrls) URL.revokeObjectURL(url)
-        c.echoUrls = []
-        c.messages = []
-        c.nextSeq = 1
-        c.transcriptTailTs = 0
-        c.transcriptCursor = null
-        c.hasMoreOlder = false
-        c.debugByMessageId = {}
-        c.lastDebug = null
-        c.thinkingBlocks = []
-        c.closedTurns = {}
-        c.notice = null
+        // The hub's `conversation_reset` frame usually lands first and has
+        // done this already; emptying an empty conversation is harmless.
+        this.clearMessages(c.key)
         clearDebugFromStorage(agentId)
         // A new chat starts clean: undelivered leftovers of the old one go too.
         saveOutbox(c.key, [])
         return true
       } catch (err) {
-        console.warn('[bridle] failed to reset transcript', err)
+        console.warn('[bridle] failed to start a new chat', err)
+        c.notice = newChatFailureNotice(undefined)
         return false
       }
     },

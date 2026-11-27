@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { canManageAgent } from '#agent/utils/agentAccess';
+import { canManageAgent, canShareAgent } from '#agent/utils/agentAccess';
 import { agentStatusMeta, LEGEND_STATUSES } from '#agent/utils/agentStatus';
 import {
   effectiveOwnerFilter,
@@ -44,6 +44,9 @@ const agent = computed(() => agentStore.byId(props.id));
 // (CLEAN-231).
 const canManageOpen = computed(() =>
   agent.value ? canManageAgent(authStore.role, agent.value) : false,
+);
+const canShareOpen = computed(() =>
+  agent.value ? canShareAgent(authStore.role, agent.value) : false,
 );
 
 // The hub said this account does not reach the open agent (CLEAN-231): the
@@ -379,6 +382,7 @@ function onSelect(id: string) {
         :agent="agent"
         :pending="pending"
         :can-manage="canManageOpen"
+        :can-share="canShareOpen"
         :view="panelView.kind"
         @to-chat="toChat"
         @to-list="toList"

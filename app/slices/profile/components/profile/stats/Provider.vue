@@ -344,9 +344,12 @@ const PLACEHOLDERS: Record<StatsScope, readonly { block: string; height: number 
               )
             }}
           </p>
-          <!-- Agents whose conversations are the Owner's alone to read: the
-               people count, the quality block and the channels block were
-               counted without them, their spend and health with them. The
+          <!-- Agents whose records are the Owner's alone to read (the Ranch
+               assistant): their conversations, their spend and their limit
+               refusals are in none of the figures here (CLEAN-268); only
+               their incidents are listed, as for any agent the viewer
+               reaches. The sentence is the management console's
+               `ownerOnlyLeftOutText`, said through i18n (CLEAN-269). The
                names are shown as received and joined by the format module.
                The sentence is for one agent or for several, so the form is
                chosen by 1 or 2 and not by the count: 21 names are several,

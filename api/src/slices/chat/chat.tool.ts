@@ -11,6 +11,8 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  ACCESS_SCOPE_NOTE,
+  accessScope,
   callerIsOperator,
   err,
   ok,
@@ -187,12 +189,22 @@ export class ChatTool implements IConditionallyListedTool {
    * assistant's; a silent list made it say there were none.
    */
   private async supervised(httpRequest: Request) {
+    return (await this.readable(httpRequest)).reach;
+  }
+
+  /**
+   * `supervised`, together with the reach it was cut from. The second is
+   * what says whether the caller's access lists narrowed a list over every
+   * agent (`scope`, CLEAN-268): taking the assistant out is another limit
+   * and has its own field (`notIncluded`), so it must not be read as one.
+   */
+  private async readable(httpRequest: Request) {
     const caller = callerParty(httpRequest);
-    const [reach, ownerOnly] = await Promise.all([
+    const [used, ownerOnly] = await Promise.all([
       this.access.reachableIds(caller),
       this.permission.ownerOnlyIds(caller),
     ]);
-    return reach.without(ownerOnly);
+    return { reach: used.without(ownerOnly), used };
   }
 
   /**
@@ -321,7 +333,9 @@ export class ChatTool implements IConditionallyListedTool {
       'each row before saying whose chat it is. Paged: `total` says how ' +
       'many match. When the result carries `notIncluded`, conversations ' +
       'exist that this person may not read: say so, never that there are ' +
-      'none. Use the `id` of a row with get_chat, get_chat_messages, ' +
+      'none. ' +
+      ACCESS_SCOPE_NOTE +
+      ' Use the `id` of a row with get_chat, get_chat_messages, ' +
       'summarize_chat or export_chat.',
     parameters: z.object({
       agentId: z.string().optional().describe('Restrict to one agent'),
@@ -367,7 +381,7 @@ export class ChatTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const page = args.page ?? DEFAULT_PAGE;
     const perPage = args.perPage ?? DEFAULT_PER_PAGE;
-    const reach = await this.supervised(httpRequest);
+    const { reach, used } = await this.readable(httpRequest);
     if (args.agentId && !reach.has(args.agentId)) {
       return agentNotFound(httpRequest, args.agentId, 'conversations');
     }
@@ -383,6 +397,7 @@ export class ChatTool implements IConditionallyListedTool {
       page,
       perPage,
       ...this.leftOut(httpRequest, args.agentId),
+      ...accessScope(used, args.agentId),
     });
   }
 
@@ -538,7 +553,8 @@ export class ChatTool implements IConditionallyListedTool {
       'how many rows were updated; all zeros with nothing scanned means a ' +
       'sync was already running — try again in a minute. When the result ' +
       'carries `notIncluded`, an agent this person may not read was left ' +
-      'out of the walk and of the counts.',
+      'out of the walk and of the counts. ' +
+      ACCESS_SCOPE_NOTE,
     parameters: z.object({
       agentId: z
         .string()
@@ -552,13 +568,14 @@ export class ChatTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    const reach = await this.supervised(httpRequest);
+    const { reach, used } = await this.readable(httpRequest);
     if (agentId && !reach.has(agentId)) {
       return agentNotFound(httpRequest, agentId, 'conversations');
     }
     return ok({
       ...(await this.sync.syncAll(agentId, reach)),
       ...this.leftOut(httpRequest, agentId),
+      ...accessScope(used, agentId),
     });
   }
 

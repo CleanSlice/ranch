@@ -211,7 +211,10 @@ with a time on it. Most do.
 - Does every interval, cap and retention carry its reason where it is
   defined?
 - Is a person's figure reachable only by that person, and an installation
-  figure filtered by reach, totals included?
+  figure filtered by reach, totals included? Does a figure about the Ranch
+  assistant (what was said to it, what it spent, what its limits refused)
+  leave it out for anybody but the Owner, and does the answer name it in
+  `reach.ownerOnly` (CLEAN-268)? That it was down is not such a figure.
 - Does any statistics row hold message text? It must not.
 - Does raw SQL bind a date to compare with a `timestamp` column? It must say
   the zone, `($n::timestamptz AT TIME ZONE 'UTC')`, or the answer depends on

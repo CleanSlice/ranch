@@ -49,7 +49,12 @@ export class PeerLinkController {
   })
   @ApiOkResponse({ type: [AgentLinkDto] })
   async list(@Req() req?: Request): Promise<AgentLinkDto[]> {
-    const reach = await this.access.reachableIds(accessCallerOf(req));
+    // The connections of the Ranch assistant are the Owner's to read, as
+    // `list_agent_peers` answers for it (CLEAN-268): a pair with it at
+    // either end is left out for anybody else.
+    const reach = (
+      await this.access.reachableIds(accessCallerOf(req))
+    ).forRecords();
     // Both ends: a pair with one hidden end would name the hidden agent.
     const links = (await this.peers.listInternalLinks()).filter(
       (link) => reach.has(link.agentId) && reach.has(link.peerAgentId),

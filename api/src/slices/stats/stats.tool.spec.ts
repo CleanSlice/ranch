@@ -9,7 +9,12 @@ import {
 } from '#/mcp/decorators';
 import { toolMetadataProblems } from '#/mcp/services/mcp-registry.service';
 import { asGuest, asPeer, asPerson, asTrustedAgent } from '#/mcp/testing';
-import { GUEST_REFUSAL, OPERATOR_REFUSAL, audienceAllows } from '#/mcp/tooling';
+import {
+  ACCESS_SCOPE_TEXT,
+  GUEST_REFUSAL,
+  OPERATOR_REFUSAL,
+  audienceAllows,
+} from '#/mcp/tooling';
 import {
   ADMIN,
   OWNER,
@@ -724,6 +729,9 @@ describe('get_installation_stats: who may ask, and for which agents', () => {
       ...answer,
       // The moment each was computed, a few milliseconds apart.
       range: undefined,
+      // The sentence a tool adds for the model (CLEAN-268); the page reads
+      // `reach.limited`.
+      scope: undefined,
     });
 
     const mine = textOf(
@@ -752,6 +760,10 @@ describe('get_installation_stats: who may ask, and for which agents', () => {
       ownerOnly: [],
     });
     expect((JSON.parse(mine) as Answer).board.calls.value).toBe(4);
+    expect((JSON.parse(mine) as Answer & { scope?: string }).scope).toBe(
+      ACCESS_SCOPE_TEXT,
+    );
+    expect(JSON.parse(whole)).not.toHaveProperty('scope');
     expect(whole).toContain('Beacon-hidden');
     expect((JSON.parse(whole) as Answer).board.calls.value).toBe(40);
     expect(without(JSON.parse(mine) as Answer)).toEqual(
@@ -817,7 +829,7 @@ describe('get_installation_stats: who may ask, and for which agents', () => {
   // assistant is the Owner's. An Admin asking through that very assistant
   // gets what it cost and how it fared, and no figure made from its
   // conversations, with its name as the reason.
-  it('leaves the assistant’s conversations out for an Admin and says so, and keeps its spend, refusals and incidents', async () => {
+  it('leaves the assistant’s conversations, spend and refusals out for an Admin and says so, and keeps its incidents', async () => {
     const { service: access } = accessHarness(['a1', 'ranch']);
     const now = Date.now();
     const today = new Date(now).toISOString().slice(0, 10);
@@ -909,13 +921,14 @@ describe('get_installation_stats: who may ask, and for which agents', () => {
     expect(mine.quality.map((q) => q.agentId)).toEqual(['a1']);
     expect(mine.channels).toEqual([{ channel: 'console', conversations: 1 }]);
     expect(mine.board.people.value).toBe(1);
-    // Operations: the same agents as the usage overview shows this Admin.
-    expect(mine.board.calls.value).toBe(40);
-    expect(mine.agents.map((a) => a.agentId)).toEqual(['ranch', 'a1']);
-    expect(mine.health.refusals).toEqual([
-      { agentId: 'ranch', name: 'Ranch', refused: 5 },
-    ]);
+    // Its records are the Owner's too (CLEAN-268): the same agents as the
+    // usage overview shows this Admin. That it is down is not a record.
+    expect(mine.board.calls.value).toBe(4);
+    expect(mine.agents.map((a) => a.agentId)).toEqual(['a1']);
+    expect(mine.health.refusals).toEqual([]);
     expect(mine.health.incidents.map((i) => i.number)).toEqual([8]);
+    // Nothing narrowed this Admin's lists.
+    expect(mine).not.toHaveProperty('scope');
 
     // The Owner, and the assistant on its own schedule: everything, and
     // nothing to explain.

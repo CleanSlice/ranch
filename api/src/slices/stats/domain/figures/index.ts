@@ -4,6 +4,7 @@ import { FigureRegistry } from '../figureRegistry';
 import { activityFigure } from './activity';
 import { citationsFigure } from './citations';
 import { handoversFigure } from './handovers';
+import { incidentsFigure } from './incidents';
 import { ratingsFigure } from './ratings';
 import { refusalsFigure } from './refusals';
 import { spendFigure } from './spend';
@@ -12,6 +13,7 @@ export {
   activityFigure,
   citationsFigure,
   handoversFigure,
+  incidentsFigure,
   ratingsFigure,
   refusalsFigure,
   spendFigure,
@@ -43,7 +45,9 @@ export class StatFigures implements OnModuleInit {
     this.registry.register(refusalsFigure(this.limits));
     // Read in place: no row and no note (CLEAN-262).
     this.registry.register(spendFigure);
-    // What "How agents helped" shows a person (CLEAN-258).
+    this.registry.register(incidentsFigure);
+    // What "How agents helped" shows a person (CLEAN-258); the ratings are
+    // also the installation's (CLEAN-265).
     this.registry.register(ratingsFigure);
     this.registry.register(citationsFigure);
     this.registry.register(handoversFigure);

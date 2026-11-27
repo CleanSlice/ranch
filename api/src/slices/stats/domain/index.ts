@@ -9,3 +9,8 @@ export {
   PersonalStatsService,
   TOP_SOURCES,
 } from './personalStats.service';
+export * from './installationStats.types';
+export {
+  INCIDENTS_SHOWN,
+  InstallationStatsService,
+} from './installationStats.service';

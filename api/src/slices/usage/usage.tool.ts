@@ -60,7 +60,9 @@ export class UsageTool implements IConditionallyListedTool {
       'most expensive agent first (a deleted agent is still listed, under ' +
       'the name it had). Reported usage only — the current day is included once each ' +
       'agent has posted its daily report. For one agent in detail, or a ' +
-      'different window, call agent_usage.',
+      'different window, call agent_usage. For every agent over 7 or 90 ' +
+      'days, with the period before it for comparison, call ' +
+      'get_installation_stats.',
     parameters: z.object({}),
   })
   async getUsageOverview(

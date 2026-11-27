@@ -155,6 +155,38 @@ describe('every route asks for a role', () => {
     );
   });
 
+  // The installation's statistics sit in the same slice as a route every
+  // account may call (`GET /me/stats`), so the pair is pinned here by name
+  // (CLEAN-265): what the agents cost and how they fared is the Owner's and
+  // the Admins' to read, stated on the route and not left to the default.
+  // Which agents an Admin sees there is their reach, applied in the handler
+  // (the route names no agent, so agentScopedRoutes.spec.ts cannot find it;
+  // installationStats.service.spec.ts holds that half).
+  it('the installation’s statistics are for the Owner and Admins, stated, and closed to a User', () => {
+    const row = appRoutes().find((r) => r.route === 'GET /stats/installation');
+    expect(row).toBeDefined();
+    if (!row) return;
+    expect(row.isPublic).toBe(false);
+    expect(row.statedRoles).toEqual([UserRoleTypes.Owner, UserRoleTypes.Admin]);
+
+    const token = (role: UserRoleTypes, sub = 'user-x') => ({
+      sub,
+      email: '',
+      roles: [role],
+    });
+    expect(passes(row, token(UserRoleTypes.Owner))).toBe(true);
+    expect(passes(row, token(UserRoleTypes.Admin))).toBe(true);
+    expect(passes(row, token(UserRoleTypes.User))).toBe(false);
+    // The Ranch admin agent's own token: an agent on a route, whatever
+    // roles it carries. Its way to these figures is the tool.
+    expect(passes(row, token(UserRoleTypes.Owner, 'agent:ranch'))).toBe(false);
+    expect(passes(row, undefined)).toBe(false);
+
+    // And the personal route beside it stays every account's.
+    const mine = appRoutes().find((r) => r.route === 'GET /me/stats');
+    expect(mine?.statedRoles).toEqual([UserRoleTypes.User]);
+  });
+
   it('only the MCP endpoints are open to every bearer', () => {
     const anyBearer = guarded()
       .filter(

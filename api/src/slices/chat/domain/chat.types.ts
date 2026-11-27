@@ -94,6 +94,60 @@ export interface IPersonActivityHour {
 }
 
 /**
+ * Where the people of a conversation write from, as the installation's
+ * statistics name it (CLEAN-265). Not the stored `channel`: the console chat
+ * is `bridle` there, and a share link's visitors write on it too.
+ */
+export const ActivityChannelTypes = {
+  Console: 'console',
+  Telegram: 'telegram',
+  Slack: 'slack',
+  Share: 'share',
+  Other: 'other',
+} as const;
+export type ActivityChannel =
+  (typeof ActivityChannelTypes)[keyof typeof ActivityChannelTypes];
+
+/**
+ * A period and the one before it, as an installation view asks for them:
+ * `[from, to]` is the period, `[previousFrom, from)` the one before.
+ */
+export interface IActivityPeriods {
+  from: Date;
+  to: Date;
+  previousFrom: Date;
+}
+
+/** Conversations one agent had on one channel in a period. */
+export interface IAgentChannelConversations {
+  agentId: string;
+  channel: ActivityChannel;
+  /** Distinct conversations a person wrote in. */
+  conversations: number;
+}
+
+/**
+ * An installation's activity over a period (CLEAN-265): counts by agent and
+ * channel, and how many different people wrote. No identity leaves the
+ * query: a person is counted and never named.
+ */
+export interface IInstallationActivity {
+  /** One entry per agent and channel with at least one conversation. */
+  conversations: IAgentChannelConversations[];
+  /** Distinct people who wrote, in the period and in the one before it. */
+  people: { value: number; previous: number };
+}
+
+/** The ratings the answers of one agent got in a period. */
+export interface IAgentFeedbackCounts {
+  agentId: string;
+  /** Every rating, up or down. */
+  rated: number;
+  /** The ones that were down. */
+  down: number;
+}
+
+/**
  * Metadata derived from a session's S3 JSONL file during reconciliation.
  * Counts are the current *viewable* (post-hygiene) user/assistant totals — the
  * gateway seeds/raises with them but never lowers an existing count.

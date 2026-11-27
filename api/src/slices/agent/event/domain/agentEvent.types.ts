@@ -381,3 +381,24 @@ export interface IPage<T> {
   items: T[];
   nextCursor: string | null;
 }
+
+/**
+ * The incidents of a period, for a statistics view (CLEAN-265): those opened
+ * in `[from, to]`, and those opened before it that are still open.
+ */
+export interface IIncidentRangeQuery {
+  from: Date;
+  /** The moment the view is computed. Nothing opened after it is returned. */
+  to: Date;
+  /** As on the incident list: an incident of a deleted agent matches none. */
+  agentScope?: IAgentIdScope;
+  /** How many to return, newest first. `total` counts them all. */
+  limit: number;
+}
+
+export interface IIncidentRange {
+  /** Newest first, at most `limit`. */
+  items: IAgentIncidentData[];
+  /** How many match, the ones past `limit` included. */
+  total: number;
+}

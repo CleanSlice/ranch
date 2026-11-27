@@ -8,6 +8,8 @@ import {
   ICreateAgentEventData,
   IEventListFilter,
   IIncidentListFilter,
+  IIncidentRange,
+  IIncidentRangeQuery,
   IJoinedNotificationPayload,
   INotificationDestination,
   IOpenedNotificationPayload,
@@ -86,6 +88,14 @@ export abstract class IAgentEventGateway {
   abstract listIncidents(
     filter: IIncidentListFilter,
   ): Promise<IPage<IAgentIncidentView>>;
+  // What a statistics view shows of a period (CLEAN-265): the incidents
+  // opened in it and the ones still open from before, newest first, cut at
+  // `limit`, with how many there are in all. Scoped like `listIncidents`.
+  // Without their notifications: a period view says what happened, not
+  // whether the team was told.
+  abstract findIncidentsInRange(
+    query: IIncidentRangeQuery,
+  ): Promise<IIncidentRange>;
 
   // ── The bot's root message on an incident ─────────────────────────────
   abstract setIncidentRoot(

@@ -1,4 +1,5 @@
 import {
+  IAgentFeedbackCounts,
   IChatActivity,
   IChatAgentScope,
   IChatFeedbackCounts,
@@ -116,6 +117,19 @@ export abstract class IChatGateway {
     to: Date,
     agentScope?: IChatAgentScope,
   ): Promise<IChatFeedbackCounts>;
+
+  /**
+   * The ratings given with `createdAt` in `[from, to]`, both ends included,
+   * by the agent of the conversation each was given in (CLEAN-265): how many
+   * there were and how many of them were down. Whoever gave them; nobody is
+   * named. Read where they are, as they stand now. An agent with no rating
+   * in the range is absent. With `agentScope`, only the agents inside it.
+   */
+  abstract feedbackByAgent(
+    from: Date,
+    to: Date,
+    agentScope?: IChatAgentScope,
+  ): Promise<IAgentFeedbackCounts[]>;
 
   /**
    * When the earliest rating there is was given, or null when there is none:

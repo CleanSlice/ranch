@@ -221,6 +221,19 @@ describe('UsageTool', () => {
       expect(description).not.toContain('shows its id as the name');
     });
 
+    // This tool has one window, the console page's. The same figures for 7
+    // or 90 days are the installation statistics' (CLEAN-265), and the model
+    // has to be told, or it answers "last week" with 30 days.
+    it('points to get_installation_stats for another period', () => {
+      const description = toolDescription('getUsageOverview');
+
+      expect(description).toMatch(
+        /7 or 90 days[^.]*call get_installation_stats\./,
+      );
+      // And still to agent_usage for one agent.
+      expect(description).toContain('call agent_usage');
+    });
+
     it('falls back to the id for a deleted agent whose rows carry no name', async () => {
       const { tool } = harness(
         [

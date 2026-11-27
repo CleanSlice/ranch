@@ -3253,6 +3253,267 @@ export type MyStatsDto = {
   models: MyStatsModelsDto;
 };
 
+export type InstallationStatsRangeDto = {
+  /**
+   * Start of the period's first UTC day.
+   */
+  from: string;
+  /**
+   * The moment the view was computed: the period includes today so far.
+   */
+  to: string;
+  /**
+   * Start of the period before this one, which has the same number of UTC days and ends where this one starts.
+   */
+  previousFrom: string;
+};
+
+export type InstallationStatsReachDto = {
+  /**
+   * True when some agent is hidden from the caller, so every figure here is of a part of the installation. The page says so.
+   */
+  limited: boolean;
+  /**
+   * Agents the caller reaches now.
+   */
+  agents: number;
+  /**
+   * Names of the agents the caller reaches whose conversations are left out of `board.people`, `quality` and `channels`, because only the Owner manages them: for an Admin, the Ranch assistant. What such an agent spent, its incidents and its refused requests are counted as for any other agent. Empty for the Owner, and for a caller who does not reach such an agent. When it is not empty the page says whose conversations are not counted.
+   */
+  ownerOnly: Array<string>;
+};
+
+export type InstallationStatsNoteDto = {
+  /**
+   * Which figure is not complete over the whole of the requested and the previous period: `activity` is people, conversations and channels, `refusals` the requests refused by limits. Spend, ratings and incidents are read where they are recorded and never have one.
+   */
+  figure: "activity" | "refusals";
+  /**
+   * Since when it is counted. Later than `range.previousFrom`; the page says "counted since …" once for the block.
+   */
+  completeSince: string;
+};
+
+export type InstallationStatsTokensDto = {
+  /**
+   * Tokens sent to models.
+   */
+  input: number;
+  /**
+   * Tokens models wrote.
+   */
+  output: number;
+};
+
+export type InstallationStatsCostDto = {
+  /**
+   * USD in the period, from the product's own price list: an estimate, not an invoice. Models without a price are left out of it.
+   */
+  value: number;
+  /**
+   * The same for the period before it.
+   */
+  previous: number;
+  /**
+   * Models used in the period that the price list does not have, most tokens first. Their tokens are counted, their cost is in no sum here: show them as "no price", never as free.
+   */
+  unpriced: Array<string>;
+};
+
+export type InstallationStatsBoardDto = {
+  tokens: InstallationStatsTokensDto;
+  /**
+   * Model calls.
+   */
+  calls: StatsComparedCountDto;
+  cost: InstallationStatsCostDto;
+  /**
+   * Distinct people who wrote in a conversation. Scheduled jobs and other agents' questions are not people and are not counted. A person who wrote in both periods is counted in both. Conversations with an agent named in `reach.ownerOnly` are not counted.
+   */
+  people: StatsComparedCountDto;
+};
+
+export type InstallationStatsDayModelDto = {
+  /**
+   * The model, shown as received.
+   */
+  model: string;
+  /**
+   * Input and output tokens together.
+   */
+  tokens: number;
+};
+
+export type InstallationStatsDayDto = {
+  /**
+   * The UTC day.
+   */
+  date: string;
+  /**
+   * USD of the day's priced models. 0 for a day nobody reported usage for, and for a day of unpriced models alone.
+   */
+  cost: number;
+  /**
+   * Tokens of the day by model, most first. Empty for a day with no usage. Today is usually short: an agent posts its usage at the end of the UTC day or when it shuts down.
+   */
+  byModel: Array<InstallationStatsDayModelDto>;
+};
+
+export type InstallationStatsModelDto = {
+  model: string;
+  /**
+   * Whether the price list has it. False is "no price".
+   */
+  priced: boolean;
+};
+
+export type InstallationStatsAgentDto = {
+  agentId: string;
+  /**
+   * The name the agent has now. For one that no longer exists, the name its usage was last reported under.
+   */
+  name: string;
+  /**
+   * True when the agent no longer exists. What it spent stays in the period it was spent in.
+   */
+  removed: boolean;
+  /**
+   * The model that took most of its tokens in the period.
+   */
+  model: string;
+  /**
+   * Input and output tokens together.
+   */
+  tokens: number;
+  /**
+   * Model calls.
+   */
+  calls: number;
+  /**
+   * USD over the models of this agent that have a price. Null when none of them has one: "no price", not zero.
+   */
+  cost: number | null;
+  /**
+   * True when `cost` leaves out a model of this agent that has no price: the figure is of the rest, not of everything it ran.
+   */
+  partial: boolean;
+};
+
+export type InstallationStatsIncidentDto = {
+  /**
+   * The short handle people use: "#12".
+   */
+  number: number;
+  /**
+   * The agent's name when the incident opened.
+   */
+  agentName: string;
+  /**
+   * True while it is still going on.
+   */
+  open: boolean;
+  /**
+   * The first failure's cause, in the sender's words, shown as received. Null when none was given.
+   */
+  reason: string | null;
+  openedAt: string;
+  /**
+   * Null while the incident is open.
+   */
+  closedAt: string | null;
+};
+
+export type InstallationStatsRefusalsDto = {
+  agentId: string;
+  name: string;
+  /**
+   * Requests its limits refused in the period. Always above zero: an agent that refused nothing is not listed.
+   */
+  refused: number;
+};
+
+export type InstallationStatsHealthDto = {
+  /**
+   * Incidents opened in the period, and older ones that are still open, newest first. At most 50; `incidentsTotal` says how many there are.
+   */
+  incidents: Array<InstallationStatsIncidentDto>;
+  /**
+   * How many incidents the period has, the ones not listed included.
+   */
+  incidentsTotal: number;
+  /**
+   * Agents whose limits refused at least one request, most first.
+   */
+  refusals: Array<InstallationStatsRefusalsDto>;
+};
+
+export type InstallationStatsQualityDto = {
+  agentId: string;
+  name: string;
+  /**
+   * Conversations a person wrote in during the period.
+   */
+  conversations: number;
+  /**
+   * Ratings of its answers that were down. Out of `rated`.
+   */
+  down: number;
+  /**
+   * Every rating its answers got in the period, up or down. Ratings are read as they stand now: one withdrawn since is not counted.
+   */
+  rated: number;
+};
+
+export type InstallationStatsChannelDto = {
+  /**
+   * Where people wrote from: `console` is the chat of the consoles, `share` a share link, `other` anything that is none of the four.
+   */
+  channel: "console" | "telegram" | "slack" | "share" | "other";
+  /**
+   * Conversations a person wrote in during the period.
+   */
+  conversations: number;
+};
+
+export type InstallationStatsDto = {
+  period: 7 | 30 | 90;
+  /**
+   * UTC days, whoever is looking: the boundary spend is reported on.
+   */
+  range: InstallationStatsRangeDto;
+  reach: InstallationStatsReachDto;
+  /**
+   * One entry for each figure whose history starts inside the requested or the previous period. Empty when every figure covers both.
+   */
+  notes: Array<InstallationStatsNoteDto>;
+  board: InstallationStatsBoardDto;
+  /**
+   * One entry per UTC day of the period, oldest first, today last; a day with no usage is there with nothing.
+   */
+  daily: Array<InstallationStatsDayDto>;
+  /**
+   * Every model used in the period, most tokens first: the legend of `daily`.
+   */
+  models: Array<InstallationStatsModelDto>;
+  /**
+   * The agents that reported usage in the period, by cost, most first; agents with no price come after them, by tokens.
+   */
+  agents: Array<InstallationStatsAgentDto>;
+  /**
+   * USD for 30 days at the pace of the period's finished days: their priced cost, divided by their number, times 30. Today is left out, and so are the days before anybody reported usage. Null while no such day is finished, and when no model with a price ran in those days: "no projection yet", not zero.
+   */
+  projection30d: number | null;
+  health: InstallationStatsHealthDto;
+  /**
+   * Per agent with a conversation or a rating in the period: how many conversations, and how its answers were rated. Most conversations first.
+   */
+  quality: Array<InstallationStatsQualityDto>;
+  /**
+   * The period's conversations by channel, most first. A channel nobody wrote on is absent.
+   */
+  channels: Array<InstallationStatsChannelDto>;
+};
+
 export type StartMcpOauthDto = {
   /**
    * Agent whose secret store receives the token. The stored refresh token is scoped to this agent.
@@ -7750,6 +8011,40 @@ export type GetMyStatsResponses = {
 };
 
 export type GetMyStatsResponse = GetMyStatsResponses[keyof GetMyStatsResponses];
+
+export type GetInstallationStatsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Days in the period. Anything else is a 400.
+     */
+    period?: 7 | 30 | 90;
+  };
+  url: "/stats/installation";
+};
+
+export type GetInstallationStatsErrors = {
+  /**
+   * `period` is not 7, 30 or 90.
+   */
+  400: unknown;
+  /**
+   * No valid token.
+   */
+  401: unknown;
+  /**
+   * The caller is a User.
+   */
+  403: unknown;
+};
+
+export type GetInstallationStatsResponses = {
+  200: InstallationStatsDto;
+};
+
+export type GetInstallationStatsResponse =
+  GetInstallationStatsResponses[keyof GetInstallationStatsResponses];
 
 export type RancherControllerStatusData = {
   body?: never;

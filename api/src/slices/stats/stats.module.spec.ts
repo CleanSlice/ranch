@@ -1,7 +1,9 @@
 import 'reflect-metadata';
 import { MODULE_METADATA } from '@nestjs/common/constants';
+import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
+import { InstallationStatsController } from './installationStats.controller';
 import { MyStatsController } from './myStats.controller';
 import { StatsModule } from './stats.module';
 
@@ -33,7 +35,11 @@ jest.mock('@kubernetes/client-node', () => ({
 type Token = abstract new (...args: never[]) => unknown;
 
 /** Provided by modules marked `@Global()`: no import is needed for them. */
-const GLOBAL: unknown[] = [PrismaService, AgentAccessService];
+const GLOBAL: unknown[] = [
+  PrismaService,
+  AgentAccessService,
+  AgentPermissionService,
+];
 
 const metadata = <T>(key: string, target: object): T[] =>
   (Reflect.getMetadata(key, target) as T[] | undefined) ?? [];
@@ -95,7 +101,44 @@ describe('StatsModule', () => {
     expect(metadata('design:paramtypes', service as Token)).toHaveLength(9);
   });
 
-  it('serves the personal view', () => {
-    expect(controllers).toEqual([MyStatsController]);
+  // The installation view reads four more slices (CLEAN-265): the hours and
+  // ratings of `chat`, `usage`, the refusals of `agent/limit` and the
+  // incidents of `agent/event`. That last one is the module this view added
+  // to the imports; without it the API does not start. Who manages an agent
+  // (`AgentPermissionService`, which says whose the assistant's
+  // conversations are, CLEAN-236) comes from a global module, like the access
+  // lists beside it.
+  it('and so has the installation view', () => {
+    const service = providers
+      .map(classOf)
+      .find((c) => c?.name === 'InstallationStatsService');
+    expect(service).toBeDefined();
+    expect(
+      metadata<Token>('design:paramtypes', service as Token).map((p) => p.name),
+    ).toEqual([
+      'IChatActivityGateway',
+      'IChatGateway',
+      'IUsageGateway',
+      'IAgentGateway',
+      'AgentLimitService',
+      'AgentEventService',
+      'AgentAccessService',
+      'AgentPermissionService',
+      'FigureRegistry',
+    ]);
+  });
+
+  it('gives the tool both views', () => {
+    const tool = providers.map(classOf).find((c) => c?.name === 'StatsTool');
+    expect(
+      metadata<Token>('design:paramtypes', tool as Token).map((p) => p.name),
+    ).toEqual(['PersonalStatsService', 'InstallationStatsService']);
+  });
+
+  it('serves the personal view and the installation view', () => {
+    expect(controllers).toEqual([
+      MyStatsController,
+      InstallationStatsController,
+    ]);
   });
 });

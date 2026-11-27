@@ -34,7 +34,7 @@ The signed-in person's own statistics.
 |-------|---------|
 | `period`, `timeZone`, `range { from, to, previousFrom }` | what was computed; instants in ISO form |
 | `notes[]` | `{ figure, completeSince }` for each figure whose history starts inside the requested or previous period |
-| `summaries { enabled, summarised, waiting, tooShort }` | whether the installation produces summaries (`ChatInsightService.isEnabled()`: the batch is scheduled, an Anthropic credential is active and the provider did not refuse it), and for the period's conversations how many have one (`summaryAt` set), how many will get one, how many never will as they stand: under three messages from the person in the whole conversation (`INSIGHT_MIN_USER_MESSAGES`). The three add up to `board.conversations.value`. A conversation whose transcript the batch could not read is among `waiting`: nothing is stored that tells it apart |
+| `summaries { enabled, topicsReady, summarised, waiting, tooShort }` | whether the installation produces summaries (`ChatInsightService.isEnabled()`: the batch is scheduled, an Anthropic credential is active and the provider did not refuse it); whether their topics are there to show (`topicsReady`: `enabled`, and the installation has a vocabulary, at least one topic that stands; one row of `ChatTopic` by id through `IChatTopicGateway.hasStanding()`, not asked when `enabled` is false); and for the period's conversations how many have one (`summaryAt` set), how many will get one, how many never will as they stand: under three messages from the person in the whole conversation (`INSIGHT_MIN_USER_MESSAGES`). The three add up to `board.conversations.value`. A conversation whose transcript the batch could not read is among `waiting`: nothing is stored that tells it apart |
 | `board.conversations { value, previous }` | conversations the person wrote in |
 | `board.messages { value, previous }` | the person's own messages |
 | `board.agents { value, reachable }` | agents that answered; agents the person reaches now |
@@ -43,11 +43,11 @@ The signed-in person's own statistics.
 | `activity.weekdays[7]` | conversations by weekday within the period, Monday first |
 | `activity.activeDays` | days with at least one conversation within the period |
 | `agents[]` | `{ agentId, name, messages, conversations, resolved, summarised, model, lastMessageAt }`, by messages, descending. `resolved` and `summarised` are of the agent's `conversations`, both 0 when summaries are off |
-| `topics[]` | up to 8, most conversations first, equal ones by label: `{ id, label, conversations, resolved, open, questions[] }`. `id` is the topic that stands: a merged topic is counted under the one it was folded into (followed once), and a conversation that carries both is counted once. `label` in the request's language (`Accept-Language`, falling back to `en`, then to the key). `conversations` are summarised conversations of the period; `resolved` and `open` are of them, and `unknown` is in neither, so the two can add up to less. `questions` up to 4, each wording once (compared without case and spacing), newest first by the conversation's last message: `{ chatId, agentId, agentName, question, at, outcome }`, where `at` is that last message and `outcome` one of `resolved`, `open`, `unknown`; a conversation whose summary quotes no question takes no place |
+| `topics[]` | up to 8, most conversations first, equal ones by label: `{ id, label, conversations, resolved, open, questions[] }`. `id` is the topic that stands: a merged topic is counted under the one it was folded into (followed once), and a conversation that carries both is counted once. `label` in the request's language (`Accept-Language`, falling back to `en`, then to the key). `conversations` are summarised conversations of the period; `resolved` and `open` are of them, and `unknown` is in neither, so the two can add up to less. `questions` up to 4, each wording once (compared without case and spacing), newest first by the conversation's last message: `{ chatId, agentId, agentName, question, at, outcome }`, where `at` is that last message and `outcome` one of `resolved`, `open`, `unknown`; a conversation whose summary quotes no question takes no place. `[]` while `summaries.topicsReady` is false |
 | `outcome { resolved, open, unknown, notSummarised }` | parts of `board.conversations.value`: they add up to it. `unknown` is a summarised conversation whose summary could not tell, or stored no outcome; `notSummarised` is `summaries.waiting + summaries.tooShort` |
 | `outcome.sentiment { positive, neutral, mixed, negative }` | counts among summarised conversations; a summary that stored no tone is in none |
 | `outcome.languages[]` | `{ code, conversations }` among summarised conversations, most first |
-| `openQuestions { items[], more }` | up to 4 `{ chatId, agentId, agentName, question, topic, at }`, newest first; `more` is the remainder, so `items` and `more` together are `outcome.open`. `question` is null when the summary left the conversation open and quoted no question; `topic` is the label of the conversation's first topic, or null; `at` is the conversation's last message |
+| `openQuestions { items[], more }` | up to 4 `{ chatId, agentId, agentName, question, topic, at }`, newest first; `more` is the remainder, so `items` and `more` together are `outcome.open`. `question` is null when the summary left the conversation open and quoted no question; `topic` is the label of the conversation's first topic, or null, and null for every item while `summaries.topicsReady` is false; `at` is the conversation's last message |
 | `help.cited { conversations, sources[] }` | conversations with at least one cited source; up to 2 `{ name, citations }`, a knowledge base by its name, the web as `web` |
 | `help.handovers { total, answered, topPeer }` | `topPeer` is `{ name, count }` or null |
 | `help.ratings { up, down }` | the person's ratings given in the period |
@@ -63,11 +63,24 @@ computed then, whatever a summary made by hand left on a conversation, so
 the parts of `outcome` do not add up to anything: `summaries.enabled` is
 the only field that says which case it is.
 
+`topics` is also empty, and `topic` of every open question null, while
+`summaries.topicsReady` is false: summaries are produced and the
+installation has no vocabulary yet (the owner's decision of 2026-11-28,
+[summary-judgments.md](summary-judgments.md), *Decision*). Until a topic
+stands the summary asks no conversation about topics and coins none, so
+there is nothing to read, and no topic is read: `findByIds` is not called.
+Everything else made of summaries (`summaries`' counts, `board.resolved`,
+`outcome` with tone and languages, `openQuestions`) is counted as with a
+vocabulary. The page leaves the Topics block out by that field, never by the
+empty list, which also means "no conversation of this period has a topic".
+How a vocabulary comes to exist is CLEAN-278.
+
 **How the summaries are read.** By the ids of the conversations the
 person's hour rows of the period named (`findOutcomesForSessions`, by
 primary key, 1000 ids a statement), in place of the read that brought each
 conversation's agent and last message; `ChatSession` is never searched.
-The topics those conversations carry are then read by id. The main
+The topics those conversations carry are then read by id, where
+`summaries.topicsReady` is true. The main
 question is the person's own words (FR-033): it is in this answer because
 the answer is its owner's, and in no other route or tool of this slice.
 

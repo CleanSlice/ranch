@@ -49,7 +49,7 @@ period view as props; none fetches.
 | 1 | Scoreboard | `Board.vue` | always |
 | 2 | Activity | `Activity.vue` (`Calendar.vue`, table view) | always |
 | 3 | Who you talk to | `Agents.vue` (`Orbit.vue`) | at least one agent |
-| 4 | Topics and questions | `Topics.vue` | summaries on |
+| 4 | Topics and questions | `Topics.vue` | summaries on and the installation has a vocabulary (`summaries.topicsReady`); otherwise not there, with nothing in its place |
 | 5 | How conversations end · Who answers you (side by side; stacked under 640 px) | `Outcome.vue`, `Models.vue` | outcome: summaries on; models: always |
 | 6 | Open questions | `OpenQuestions.vue` | summaries on |
 | 4–6 replaced | Topics, outcomes and open questions | `SummariesOff.vue` | summaries off; then `Models.vue` takes a full row |
@@ -78,7 +78,13 @@ As built:
   never opens on a touch. The line is the shortest that says it: what it
   takes at 390 px it takes from the agent's name. No share for an agent
   without a summarised conversation, and none while summaries are off.
-- **Topics.** The caption is the coverage. Rows are buttons with
+- **Topics.** Shown only where the installation has a vocabulary to choose
+  topics from: `summaries.enabled && summaries.topicsReady` (the owner's
+  decision of 2026-11-28; an answer without the field is read as false).
+  Where it is false the block is not drawn at all: no placeholder, no
+  "coming soon", and no open question shows a topic. Blocks 5 and 6 then
+  follow "Who you talk to" directly. The block has no caption: the coverage
+  is said by "How conversations end". Rows are buttons with
   `aria-pressed`; the first is selected, a choice lasts until the period
   changes. The bar is `topicPixels.ts`: 34 pixels for the largest topic,
   resolved in full colour, left open thinned, and what a summary could not
@@ -91,11 +97,20 @@ As built:
   row is how a phone reads a topic's counts, and the rows are no wider for
   it. A question's mark is a word and an icon of its own: resolved (check),
   open (dot in a circle), unclear (question mark). A topic no summary quoted
-  a question for says so. With no topic at all the block is one line, "No
-  topics yet. A topic comes from a conversation's summary.", and the line
-  under it still says what is waiting or too short; "All conversations of
-  the period are counted." is not said over it while nothing has a summary.
-- **How conversations end.** Resolved and open are always in the legend,
+  a question for says so. With a vocabulary and no topic among the
+  period's conversations the block is one line, "No topics yet. A topic
+  comes from a conversation's summary."; under a list of topics one line
+  says where a topic comes from (`data-stats-topics-source`).
+- **How conversations end.** The caption is the coverage, "summary for 8 of
+  12", and one line under the card says how many conversations are waiting
+  for a summary and, in a sentence of its own, how many are too short for
+  one; "All conversations of the period are counted." only when neither
+  count is above zero and something has a summary (`utils/coverage.ts`).
+  They are the conversations of the bar's "no summary" part. The coverage
+  stood on Topics until 2026-11-28; it is here because this card is on
+  every page that has summaries, and it is said once: the scoreboard's
+  fourth tile keeps its own "summary for N of M" under the resolved share,
+  as before. Resolved and open are always in the legend,
   unclear and "no summary" only above zero. Unclear is hatched, so that it
   differs from "no summary" beside it by more than a shade. Tones and
   language chips are of the summarised conversations: while none of the
@@ -194,9 +209,10 @@ bars), `Tip.vue` (hover and focus detail, on `reka-ui`'s tooltip),
 | Failed | one card: it could not be loaded, with Retry. The Account tab is unaffected |
 | No conversations in the period or the one before | one card: figures appear after the first conversation, with a link to the agents |
 | Summaries off (`summaries.enabled` false, or an answer without the field) | blocks 4 to 6 become one card and `Models.vue` takes the row; the scoreboard's fourth tile is a dash with "summaries are not produced"; no agent row has a resolved share. The card's text depends on the role: a User is told an administrator switches them on and that the rest is counted without them; the owner and an administrator are told they are off for this installation and that the summary interval `CHAT_INSIGHT_INTERVAL_SEC` and an active Anthropic credential switch them on |
-| Summaries on, some conversations waiting | one line under Topics: how many are waiting and not counted yet; conversations too short to summarise are named separately, in a sentence of their own, and not as waiting. "All conversations of the period are counted." only when neither count is above zero, and not at all while there is no topic and nothing has a summary: the line is then not drawn |
-| Summaries on, nothing summarised in the period yet (a new account) | the three blocks stand, each saying it: the fourth tile is a dash with "no summaries yet"; Topics is "No topics yet. A topic comes from a conversation's summary." with the coverage "summary for 0 of N" and the waiting / too-short line; "How conversations end" is the bar as one part, "no summary", its legend, and "No conversation of this period has a summary yet." in place of tones and languages; Open questions is "No conversation of this period has a summary yet, so no question is known to be open.", without the check mark |
-| Summaries on, summarised conversations but no topic among them | Topics is the same one line; outcomes and open questions are drawn as usual |
+| Summaries on, no vocabulary (`summaries.topicsReady` false, or an answer without the field) | the Topics block is not drawn and nothing stands in for it; "How conversations end" beside "Who answers you" and then "Open questions" follow "Who you talk to"; an open question shows its agent and age and no topic. Every other block is as with a vocabulary |
+| Summaries on, some conversations waiting | one line under "How conversations end": how many are waiting and not counted yet; conversations too short to summarise are named separately, in a sentence of their own, and not as waiting. "All conversations of the period are counted." only when neither count is above zero, and not at all while nothing has a summary: the line is then not drawn |
+| Summaries on, nothing summarised in the period yet (a new account) | the three blocks stand, each saying it: the fourth tile is a dash with "no summaries yet"; Topics, where the installation has a vocabulary, is "No topics yet. A topic comes from a conversation's summary."; "How conversations end" is the coverage "summary for 0 of N", the bar as one part, "no summary", its legend, "No conversation of this period has a summary yet." in place of tones and languages, and the waiting / too-short line; Open questions is "No conversation of this period has a summary yet, so no question is known to be open.", without the check mark |
+| Summaries on, a vocabulary, summarised conversations but no topic among them | Topics is the same one line; outcomes and open questions are drawn as usual |
 | A topic whose summaries quoted no question | "No summary of these conversations quoted a question." in place of the list |
 | An open conversation with no quoted question (`question: null`) | listed under "The summary quoted no question", in muted type, with its agent, topic, age and Continue |
 | The summary could not tell how a conversation ended (`unknown`) | a part of its own in the outcome bar and legend ("unclear"), an empty-outline pixel in the topic's bar, an "unclear" mark on its question; never under open questions |
@@ -239,13 +255,14 @@ Hooks of the summaries blocks (CLEAN-270):
 | `data-stats-summaries-how` | the sentence that says what switches summaries on | in the "summaries off" card for operators and in the line under the quality table |
 | `data-stats-summaries` | the scoreboard's fourth tile (`data-stats-tile="resolved"`) | `off`, `none` or `share`; with `share`, `data-stats-value` is the whole percent and `data-stats-coverage` marks the line under it |
 | `data-stats-resolved-share` | an agent's row in "Who you talk to" | the visible line "67% resolved of 6", present only when the agent has a share; `data-stats-value` is the whole percent and `data-stats-of` the summarised conversations it is a share of |
-| `data-stats-summarised` | the Topics card | conversations of the period with a summary |
+| `data-stats-summarised` | the "How conversations end" card (the Topics card until 2026-11-28) | conversations of the period with a summary |
 | `data-stats-topic` | a topic's row | the topic's id; `data-stats-selected` is `true` on the selected one, `data-stats-value` its conversations |
 | `data-stats-topic-detail` | the pane with the selected topic's questions | the topic's id |
 | `data-stats-topic-counts` | the line under the selected topic's name | its conversations, resolved (with the share), left open and, if any, unclear, as visible text |
 | `data-stats-question` | a question of the selected topic | `data-stats-outcome` is `resolved`, `open` or `unknown`; `data-chat` its conversation |
 | `data-stats-questions-none`, `data-stats-topics-none` | the line in place of a topic's questions, of the topic list | present only then |
-| `data-stats-coverage` | each sentence of the line under Topics | `source`, `waiting`, `too-short` or `all-counted`; `data-stats-value` is the count of the two that have one |
+| `data-stats-coverage` | each sentence of the line under "How conversations end" | `waiting`, `too-short` or `all-counted`; `data-stats-value` is the count of the two that have one. On the scoreboard's fourth tile the attribute, without a value, still marks the line under the share |
+| `data-stats-topics-source` | the line under a list of topics | present only under a list; it was `data-stats-coverage="source"` |
 | `data-stats-part` | a legend entry of "How conversations end" | `resolved`, `open`, `unknown` or `notSummarised`, with `data-stats-value`; the bar's segments carry the same names in `data-segment` |
 | `data-stats-tone`, `data-stats-language` | a tone tile, a language chip | the tone, the language code; `data-stats-value` is the count |
 | `data-stats-outcome-none` | the line in place of tones and languages | present only while nothing is summarised |

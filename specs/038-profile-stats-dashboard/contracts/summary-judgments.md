@@ -32,8 +32,22 @@ the running batch coined, or picked up this way, are always among the 60 for
 the rest of the run, in the place of the least used: by count alone a topic
 coined a conversation ago is the sixty-first.
 
-**Who is asked this judgment at all**: every conversation but those with an
-agent only the Owner manages (today the Ranch assistant). The vocabulary is
+**In this release, since the decision of 2026-11-28** (*Decision*, at the
+end of this file): judgment 1 is not exercised until the installation has a
+vocabulary. While no topic stands, no conversation is asked it: the prompt
+is the one without the list and without the topics question, and the
+conversation is stored with no topic. And a proposed topic is never created,
+with a vocabulary or without one (`COINS_PROPOSED_TOPICS` in
+`chatInsight.service.ts`): the table above states the judgment and what the
+parser reads of an answer, and the one step of *The threshold* that makes a
+new topic is switched off. A conversation whose answer proposes one is
+stored with none. A proposal whose key a standing topic already has is read
+as before.
+
+**Who is asked this judgment at all**: on an installation that has a
+vocabulary, every conversation but those with an
+agent only the Owner manages (today the Ranch assistant); on one that has
+none, no conversation (the decision of 2026-11-28). The vocabulary is
 the installation's, a topic is shown to every operator, and a topic coined
 from a conversation nobody but the Owner may read would be a reading of it.
 Such a conversation is asked judgment 2 and the main question only: its
@@ -45,6 +59,12 @@ every conversation's prompt, so a person can have it repeated in the summary
 of their own conversation. They then hold the names, 1 to 3 words each, of
 the subjects people here talk about. Accepted as the price of one vocabulary
 for the installation.
+
+**The guard on that**: an answer whose summary or question names three or
+more topics of the list that the conversation was not filed under is not
+stored (`ECHOED_TOPICS_MAX`; the reason recorded is `'repeats the topic
+list'`), and its conversation is set aside like any other whose answer
+cannot be used. So what one conversation can bring out is two names.
 
 ## Judgment 2: how it ended
 
@@ -74,8 +94,8 @@ that was changed with its reason.*
 
 Three runs, all on 2026-11-28 and over the same sample. **Neither target is
 met.** The targets are unchanged: 90% of same-subject pairs with the same
-topic, 80% precision of `open`. What the runs say, and the decision they
-leave open, is at the end of this section.
+topic, 80% precision of `open`. What the runs say, and what the owner
+decided on them the same day, is at the end of this section.
 
 ### First run, 2026-11-28
 
@@ -304,7 +324,61 @@ Judgment 2, how it ended:
   reference, one conversation moves precision by about eight points. The
   runs show that `open` is not demonstrated at 80%, not how far under it is.
 
-**Open, and not decided in this change:** whether the summary blocks ship
-with these numbers stated, ship without the topics block until a vocabulary
-can be seeded, or wait for a larger sample labelled by a person is the
-owner's decision.
+### Decision, 2026-11-28
+
+The owner decided, on the three runs above: **outcomes, tone, languages,
+open questions and the installation's share left open ship now, with these
+numbers written down; topics wait until the installation has a vocabulary.**
+Neither target is changed, and neither is said to be met.
+
+What it means for each judgment:
+
+- **Judgment 2, how it ended, ships with its measured numbers under the
+  target.** `open`: precision 58% to 67% against 80%, on 9 to 12
+  conversations; recall 86% to 100%. `resolved`: precision 81% to 100%,
+  recall 76% to 100%. Accepted by the owner because of what a false `open`
+  costs: the open list costs its reader a glance at a conversation that was
+  not open, and nothing is done automatically from it. No message is sent,
+  nothing is escalated and no figure is acted on by the product. The
+  calibration row of judgment 2 stands: when `open` is measured again, on a
+  larger sample or one labelled by a person, under 80% still means the
+  definition is narrowed and the run repeated.
+- **Judgment 1, which topic, is not exercised in this release.** No topic is
+  asked while the vocabulary is empty, and none is coined: with an empty
+  vocabulary the model coined 10 to 15 topics in 33 conversations and cut
+  them along an axis of its own, another on each run (17.9% and 35.9% of
+  same-subject pairs), where from a given list it chose the reference's
+  topic for 23 of 28 and proposed 1 new topic in 33. So the model can choose
+  from a vocabulary and is not left to make one. The 82.1% of the third run
+  is not a number this release relies on: it is calibrated again, on the
+  approved list, under CLEAN-278.
+
+What was built for it, in the same change (CLEAN-270):
+
+- **The batch.** While no topic stands, every conversation gets the prompt
+  an Owner-only conversation gets: no list, no topics question, no topic
+  stored. Whether a topic stands is asked once per run, as one row of
+  `ChatTopic`. With a vocabulary, a conversation chooses from the list as
+  the table of judgment 1 says, and a proposal is not made a topic
+  (`COINS_PROPOSED_TOPICS`, off). The parser of a proposal, the bound of
+  100 standing topics and the offering of a run's own topics stay in the
+  code with their specs: the follow-up turns a proposal into a suggestion.
+- **The page.** `GET /me/stats` says `summaries.topicsReady`: summaries
+  are produced and a topic stands. While it is false the Topics block is not
+  drawn, with nothing in its place, and an open question shows no topic.
+  Outcomes, tone, languages and open questions are drawn as before, and the
+  coverage line (waiting, too short) stands under "How conversations end"
+  ([api.md](api.md), [ui.md](ui.md)).
+- **The calibration script** runs the service that ships. Without
+  `--vocabulary` it asks no conversation about topics, measures outcomes
+  only, and says so in its report. With `--vocabulary` it measures the
+  choice from the list as in the third run, and reports a topic the model
+  proposed as "proposed, not coined in this release", where the tables above
+  say "coined". The first and second runs, over an empty vocabulary with
+  coining, are recorded above and can no longer be repeated with the shipped
+  service; the outcome lines, [5] to [8], are printed as they were.
+
+**How a vocabulary comes to exist** is CLEAN-278 and is not built here: a
+proposal made over the whole installation, approved by the owner; from then
+on a conversation chooses from the list only, and one that fits no topic
+goes to a queue of suggestions.

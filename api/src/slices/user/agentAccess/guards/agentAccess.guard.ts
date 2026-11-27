@@ -116,7 +116,14 @@ export class AgentAccessGuard implements CanActivate {
     const agentId = typeof raw === 'string' ? raw : '';
     // Reached AND there: an id that names no agent leaves through the same
     // line as a hidden one, so the two cannot be told apart on any route.
-    if (agentId && (await this.access.reachesExisting(caller, agentId))) {
+    // A route that returns records about the agent asks the narrower reach:
+    // the assistant's are the Owner's (CLEAN-268).
+    if (
+      agentId &&
+      (await (scope.records
+        ? this.access.readsExisting(caller, agentId)
+        : this.access.reachesExisting(caller, agentId)))
+    ) {
       return true;
     }
 

@@ -55,16 +55,21 @@ export class PaddockScenarioController {
   ): Promise<IPaddockScenarioData> {
     const scenario = await this.gateway.findById(id);
     if (!scenario) throw new NotFoundException(SCENARIO_NOT_FOUND);
-    await this.access.assertReaches(
-      accessCallerOf(req),
-      scenario.agentId,
-      SCENARIO_NOT_FOUND,
-    );
+    // A scenario of the Ranch assistant is what the Owner tests it with:
+    // the Owner's, and the same 404 to anybody else (CLEAN-268).
+    if (
+      scenario.agentId &&
+      !(await this.access.reachableIds(accessCallerOf(req)))
+        .forRecords()
+        .has(scenario.agentId)
+    ) {
+      throw new NotFoundException(SCENARIO_NOT_FOUND);
+    }
     return scenario;
   }
 
   @Get()
-  @AgentScoped('query.agentId')
+  @AgentScoped('query.agentId', { records: true })
   @ApiOperation({
     summary:
       'List paddock scenarios. Filter by templateId or agentId; without filters returns all the caller may see: template scenarios, and the scenarios of the agents the caller reaches.',
@@ -76,7 +81,9 @@ export class PaddockScenarioController {
     @Query('agentId') agentId?: string,
     @Req() req?: Request,
   ) {
-    const reach = await this.access.reachableIds(accessCallerOf(req));
+    const reach = (
+      await this.access.reachableIds(accessCallerOf(req))
+    ).forRecords();
     return reach.filter(
       await this.gateway.findAll({ templateId, agentId }),
       (scenario) => scenario.agentId,
@@ -90,7 +97,7 @@ export class PaddockScenarioController {
   }
 
   @Post()
-  @AgentScoped('body.agentId')
+  @AgentScoped('body.agentId', { records: true })
   @ApiOperation({
     summary:
       'Create a paddock scenario scoped to either a template or an agent (XOR — exactly one).',
@@ -101,7 +108,7 @@ export class PaddockScenarioController {
   }
 
   @Post('generate')
-  @AgentScoped('body.agentId')
+  @AgentScoped('body.agentId', { records: true })
   @ApiOperation({
     summary:
       'Generate a scenario draft from a natural-language description via LLM. Result is NOT persisted — review + POST / to save.',

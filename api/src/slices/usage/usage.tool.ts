@@ -3,8 +3,11 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  ACCESS_SCOPE_NOTE,
+  accessScope,
   callerIsOperator,
   ok,
+  ownerOnlyLeftOutField,
   requireOperator,
   type ToolResult,
   callerParty,
@@ -60,7 +63,10 @@ export class UsageTool implements IConditionallyListedTool {
       'most expensive agent first (a deleted agent is still listed, under ' +
       'the name it had). Reported usage only — the current day is included once each ' +
       'agent has posted its daily report. For one agent in detail, or a ' +
-      'different window, call agent_usage.',
+      'different window, call agent_usage. The totals are of the agents ' +
+      'in the result, never more: when it carries `notIncluded`, the Ranch ' +
+      'assistant’s usage is the Owner’s to read and is in no figure here. ' +
+      ACCESS_SCOPE_NOTE,
     parameters: z.object({}),
   })
   async getUsageOverview(
@@ -69,17 +75,27 @@ export class UsageTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    // Only the agents the caller reaches, totals included (CLEAN-231).
+    // Only the agents the caller reaches, totals included (CLEAN-231), and
+    // never the assistant's spend for anybody but the Owner (CLEAN-268).
     const reach = await this.access.reachableIds(callerParty(httpRequest));
-    const rows = reach.filter(
-      await this.usage.findRecentAll(OVERVIEW_DAYS),
-      (row) => row.agentId,
-    );
+    const rows = reach
+      .forRecords()
+      .filter(
+        await this.usage.findRecentAll(OVERVIEW_DAYS),
+        (row) => row.agentId,
+      );
     const { last30days, totals, topModel, agentTotals } =
       rollUpAcrossAgents(rows);
     const byAgent = await resolveAgentNames(agentTotals, (id) =>
       this.agents.findById(id),
     );
-    return ok({ last30days, totals, topModel, byAgent });
+    return ok({
+      last30days,
+      totals,
+      topModel,
+      byAgent,
+      ...ownerOnlyLeftOutField(httpRequest, 'usage figures'),
+      ...accessScope(reach),
+    });
   }
 }

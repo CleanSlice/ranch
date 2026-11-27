@@ -20,6 +20,8 @@ import {
   requireOwner,
   requirePersonOrOperator,
   stripSecrets,
+  ACCESS_SCOPE_NOTE,
+  accessScope,
 } from '#/mcp/tooling';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { IAgentPinGateway } from '#/agent/pin/domain/agentPin.gateway';
@@ -203,8 +205,11 @@ export class RancherTool {
       'whatever their role. An agent marked `managedBy: "owner"` is the ' +
       'Ranch assistant: only the Owner can restart, stop or change it, so ' +
       'call no tool that does on it for this person, and say so instead. ' +
-      'Agents the person has no access to are not ' +
-      'listed at all: do not assume there are others.',
+      'For anybody but the Owner this list may be narrowed by access: ' +
+      'agents the person has no access to are not listed at all, so it is ' +
+      'the agents this person can use, never every agent of the ' +
+      'installation. Do not give its length as the number of agents ' +
+      'there are, and do not name or guess at others.',
     parameters: z.object({}),
   })
   async listAgents(
@@ -813,8 +818,10 @@ export class RancherTool {
     title: 'Which agents use a skill',
     template: 'Which agents use the skill «name»?',
     description:
-      'List agents currently using this skill (via their template). Use this ' +
-      'before `redeploy_skill_agents` to preview what will be restarted.',
+      'List agents currently using this skill (via their template), under ' +
+      '`agents`. Use this before `redeploy_skill_agents` to preview what ' +
+      'will be restarted. ' +
+      ACCESS_SCOPE_NOTE,
     parameters: z.object({
       skillId: z.string(),
     }),
@@ -827,9 +834,13 @@ export class RancherTool {
     requireOperator(httpRequest);
     // Only the agents the caller reaches (CLEAN-231): the list names them.
     const reach = await this.access.reachableIds(callerParty(httpRequest));
-    return ok(
-      reach.filter(await this.skills.findDependentAgents(skillId), (a) => a.id),
-    );
+    return ok({
+      agents: reach.filter(
+        await this.skills.findDependentAgents(skillId),
+        (a) => a.id,
+      ),
+      ...accessScope(reach),
+    });
   }
 
   @Tool({
@@ -937,7 +948,10 @@ export class RancherTool {
     effect: 'read',
     title: 'Usage of an agent',
     template: 'How much did the agent «name» cost in the last «30» days?',
-    description: 'Recent token usage records for an agent (default 30 days).',
+    description:
+      'Recent token usage records for an agent (default 30 days). The ' +
+      'usage of the Ranch assistant is the Owner’s to read: for anybody ' +
+      'else the answer says so, with `reason: "owner_only"`.',
     parameters: z.object({
       agentId: z.string(),
       days: z
@@ -954,11 +968,15 @@ export class RancherTool {
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
     requireOperator(httpRequest);
-    if (
-      !(await this.agents.findById(agentId)) ||
-      !(await this.access.reaches(callerParty(httpRequest), agentId))
-    ) {
-      return agentNotFound(httpRequest, agentId);
+    // Reached, and not the assistant for anybody but the Owner: what it
+    // spent is a record about everybody's use of it (CLEAN-268). The refusal
+    // says so to a person who has the assistant; an agent out of reach and
+    // an id that names nothing stay not found.
+    const records = (
+      await this.access.reachableIds(callerParty(httpRequest))
+    ).forRecords();
+    if (!(await this.agents.findById(agentId)) || !records.has(agentId)) {
+      return agentNotFound(httpRequest, agentId, 'records');
     }
     return ok(await this.usage.findRecentForAgent(agentId, days ?? 30));
   }

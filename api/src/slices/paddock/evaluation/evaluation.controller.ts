@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Param, Query, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  Req,
+  NotFoundException,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
@@ -17,6 +26,12 @@ const SOURCE_NOT_FOUND = 'Source evaluation not found';
  * agent is answered as if the evaluation did not exist (CLEAN-231): by the
  * guard where the request names the agent, by `reached` where it names the
  * evaluation.
+ *
+ * The evaluations of the Ranch assistant are the Owner's (CLEAN-268): they
+ * hold what was said to it in a test, what it answered and what the Owner
+ * expects of it. Anybody else is answered the same 404, through the same
+ * two places (`records` on the guard, `AgentReach.forRecords` here), and
+ * the list leaves them out, as `GET /chats` leaves out its conversations.
  */
 @ApiTags('paddock-evaluations')
 @Controller('paddock-evaluations')
@@ -36,15 +51,16 @@ export class PaddockEvaluationController {
     req: Request | undefined,
     notFound: string = EVALUATION_NOT_FOUND,
   ): Promise<void> {
-    const caller = accessCallerOf(req);
-    const reach = await this.access.reachableIds(caller);
+    const reach = (
+      await this.access.reachableIds(accessCallerOf(req))
+    ).forRecords();
     if (reach.unrestricted) return;
     const ev = await this.service.getById(id).catch(() => null);
-    if (ev) await this.access.assertReaches(caller, ev.agentId, notFound);
+    if (ev && !reach.has(ev.agentId)) throw new NotFoundException(notFound);
   }
 
   @Post()
-  @AgentScoped('body.agentId')
+  @AgentScoped('body.agentId', { records: true })
   @ApiOperation({
     summary:
       'Start a paddock evaluation for an agent. Returns the evaluation record immediately; the actual run is asynchronous (poll status).',
@@ -54,7 +70,7 @@ export class PaddockEvaluationController {
   }
 
   @Get()
-  @AgentScoped('query.agentId')
+  @AgentScoped('query.agentId', { records: true })
   @ApiOperation({
     summary:
       'List paddock evaluations of the agents the caller reaches. Filter by agentId / templateId.',
@@ -68,7 +84,9 @@ export class PaddockEvaluationController {
     @Query('limit') limit?: string,
     @Req() req?: Request,
   ) {
-    const reach = await this.access.reachableIds(accessCallerOf(req));
+    const reach = (
+      await this.access.reachableIds(accessCallerOf(req))
+    ).forRecords();
     return reach.filter(
       await this.service.list({
         agentId,

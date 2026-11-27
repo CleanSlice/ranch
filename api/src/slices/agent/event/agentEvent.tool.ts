@@ -3,6 +3,8 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  ACCESS_SCOPE_NOTE,
+  accessScope,
   agentNotFound,
   callerIsOperator,
   CONFIRM_SENTENCE,
@@ -174,7 +176,8 @@ export class AgentEventTool implements IConditionallyListedTool {
       "Ranch's own watch), what Ranch held for the agent at that moment, and " +
       'the outcome — whether it opened an incident, joined one, or was only ' +
       'recorded. Pass agentId to see one agent; call list_agents to turn a ' +
-      'name into an id. For "is it still down" use list_agent_incidents.',
+      'name into an id. For "is it still down" use list_agent_incidents. ' +
+      ACCESS_SCOPE_NOTE,
     parameters: z.object({
       agentId: z
         .string()
@@ -195,15 +198,17 @@ export class AgentEventTool implements IConditionallyListedTool {
     const missing = await this.missingAgent(httpRequest, args.agentId);
     if (missing) return missing;
 
+    const reach = await this.reachOf(httpRequest);
     const page = await this.service.listEvents({
       agentId: args.agentId,
-      agentScope: await this.scopeOf(httpRequest),
+      agentScope: reach.where(),
       since,
       limit: args.limit ?? EVENT_PAGE_DEFAULT,
     });
     return ok({
       events: page.items.map(toToolEvent),
       more: page.nextCursor !== null,
+      ...accessScope(reach, args.agentId),
     });
   }
 
@@ -221,7 +226,8 @@ export class AgentEventTool implements IConditionallyListedTool {
       '(recovered; unconfirmed — only an outside sender ever saw it; ' +
       'stopped; deleted) and whether each notification reached the team ' +
       '(sent, pending, failed = not delivered, skipped = no destination). ' +
-      'state "open" answers "what is down right now".',
+      'state "open" answers "what is down right now". ' +
+      ACCESS_SCOPE_NOTE,
     parameters: z.object({
       agentId: z
         .string()
@@ -251,9 +257,10 @@ export class AgentEventTool implements IConditionallyListedTool {
     const missing = await this.missingAgent(httpRequest, args.agentId);
     if (missing) return missing;
 
+    const reach = await this.reachOf(httpRequest);
     const page = await this.service.listIncidents({
       agentId: args.agentId,
-      agentScope: await this.scopeOf(httpRequest),
+      agentScope: reach.where(),
       state: args.state,
       since,
       limit: args.limit ?? EVENT_PAGE_DEFAULT,
@@ -261,6 +268,7 @@ export class AgentEventTool implements IConditionallyListedTool {
     return ok({
       incidents: page.items.map(toToolIncident),
       more: page.nextCursor !== null,
+      ...accessScope(reach, args.agentId),
     });
   }
 
@@ -456,9 +464,12 @@ export class AgentEventTool implements IConditionallyListedTool {
     return agentNotFound(httpRequest, agentId);
   }
 
-  /** The caller's reach as a filter for the two lists. */
-  private async scopeOf(httpRequest: Request) {
-    return (await this.access.reachableIds(callerParty(httpRequest))).where();
+  /**
+   * The caller's reach: the filter of the two lists (`where()`), and what
+   * tells whether the result has to say that it was narrowed (CLEAN-268).
+   */
+  private reachOf(httpRequest: Request) {
+    return this.access.reachableIds(callerParty(httpRequest));
   }
 
   /** A service's own refusal (400, 409) as a result the model can act on. */

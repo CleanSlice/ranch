@@ -177,6 +177,23 @@ export class AgentAccessService implements IAgentReach {
   }
 
   /**
+   * `reachesExisting` for a route that returns records about the agent
+   * (`AgentReach.forRecords`, CLEAN-268): the assistant is not there for
+   * anybody but the Owner, and leaves through the same 404 as an agent out
+   * of reach.
+   */
+  async readsExisting(
+    caller: IAccessCaller,
+    agentId: string,
+  ): Promise<boolean> {
+    const subject = accessSubject(caller);
+    if (!subject) return true;
+    if (!agentId) return false;
+    const reach = (await this.reachOf(subject)).forRecords();
+    return reach.has(agentId) && (await this.gateway.agentExists(agentId));
+  }
+
+  /**
    * Refuse, as an agent that does not exist, an agent the caller does not
    * reach. `notFound` is the route's own "not found", so the two answers
    * are the same answer (FR-008).
@@ -496,7 +513,10 @@ export class AgentAccessService implements IAgentReach {
     const account = await this.liveAccount(userId);
     if (!account) return null;
     if (!agentId || !(await this.gateway.agentExists(agentId))) return null;
-    return (await this.reaches({ userId: account.id, role: account.role }, agentId))
+    return (await this.reaches(
+      { userId: account.id, role: account.role },
+      agentId,
+    ))
       ? account
       : null;
   }

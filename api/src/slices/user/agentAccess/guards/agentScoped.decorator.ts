@@ -26,6 +26,15 @@ export interface IAgentScope {
    * A function gets the id the request named.
    */
   notFound?: string | ((agentId: string) => string);
+  /**
+   * The route returns records ABOUT the agent, not the agent: its usage, an
+   * evaluation of it, its limit values or load (CLEAN-268). The Ranch
+   * assistant is then answered as not found to anybody but the Owner, like
+   * an agent out of reach (`AgentReach.forRecords`). The tools say why
+   * (`reason: "owner_only"`); a route keeps its 404, as `AgentManageGuard`
+   * does.
+   */
+  records?: boolean;
 }
 
 /**
@@ -40,5 +49,5 @@ export interface IAgentScope {
  */
 export const AgentScoped = (
   source: AgentScopeSources,
-  options: Pick<IAgentScope, 'notFound'> = {},
+  options: Pick<IAgentScope, 'notFound' | 'records'> = {},
 ) => SetMetadata(AGENT_SCOPED_METADATA_KEY, { source, ...options });

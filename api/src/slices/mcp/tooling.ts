@@ -596,13 +596,25 @@ const OWNER_ONLY_PROPERTY = 'ranchOwnerOnlyAgent';
  *    and the kind `agentNotFound` assumes.
  *  - `conversations`: read, replay, summarise, export or reindex what people
  *    said to it.
+ *  - `records`: read what Ranch keeps about it and no person needs in order
+ *    to talk to it: its usage and cost, its request limits and load
+ *    (CLEAN-268).
+ *  - `evaluations`: run, read or change its paddock evaluations and
+ *    scenarios, which hold what was said to it in a test and what the Owner
+ *    expects of it (CLEAN-268).
  */
-export type OwnerOnlyKindTypes = 'manage' | 'conversations';
+export type OwnerOnlyKindTypes =
+  | 'manage'
+  | 'conversations'
+  | 'records'
+  | 'evaluations';
 
 /** The half of the sentence after "Only the Owner can". */
 const OWNER_ONLY_CAN: Record<OwnerOnlyKindTypes, string> = {
   manage: 'restart, stop or change it',
   conversations: 'read its conversations',
+  records: 'read its records',
+  evaluations: 'evaluate it or read its evaluations and scenarios',
 };
 
 /** The Ranch assistant, as much of it as a refusal may say. */
@@ -742,14 +754,96 @@ export const OWNER_ONLY_LEFT_OUT_FIELD = 'notIncluded';
 export function ownerOnlyConversationsLeftOut(
   httpRequest: Request,
 ): string | null {
+  return ownerOnlyLeftOut(httpRequest, 'conversations');
+}
+
+/**
+ * The same sentence for any other kind of thing a list over every agent
+ * left the assistant out of (CLEAN-268): `what` is the plural noun, as the
+ * person would read it — "usage figures", "evaluations", "request limits".
+ * Null for a caller nothing was left out for: the Owner, the assistant
+ * acting for itself, and a person who does not have the assistant.
+ */
+export function ownerOnlyLeftOut(
+  httpRequest: Request,
+  what: string,
+): string | null {
   const agent = ownerOnlyAgent(httpRequest);
   if (!agent) return null;
   const name = agent.name.trim();
   const whose = name ? `${name}, the Ranch assistant,` : 'the Ranch assistant';
   return (
-    `The conversations of ${whose} are not included: only the Owner can ` +
+    `The ${what} of ${whose} are not included: only the Owner can ` +
     'read them. That is an access limit, not an empty list.'
   );
+}
+
+/**
+ * `ownerOnlyLeftOut` as the field a result carries it under, ready to be
+ * spread into the result; nothing when an agent was named (a list of one
+ * agent left nothing out) and nothing for a caller it does not apply to.
+ */
+export function ownerOnlyLeftOutField(
+  httpRequest: Request,
+  what: string,
+  namedAgentId?: string | null,
+): Record<string, string> {
+  const note = namedAgentId ? null : ownerOnlyLeftOut(httpRequest, what);
+  return note ? { [OWNER_ONLY_LEFT_OUT_FIELD]: note } : {};
+}
+
+// ── A result narrowed by access says so (CLEAN-268) ─────────
+//
+// On 2026-11-27 an Admin limited to one agent asked the assistant for the
+// incidents of the last month. The two lists came back empty, correctly:
+// the incidents were on agents that Admin does not reach. The assistant
+// answered "there are no incidents", a fact about the installation that
+// was not one. Nothing in the result said that it covered that person's
+// agents only.
+//
+// So every tool that lists or sums ACROSS agents, and narrows by the
+// caller's access lists, says so in one field when — and only when — the
+// lists narrowed something. It is a different limit from `notIncluded`:
+// that one names an agent the person knows (the assistant) and whose its
+// records are; this one names nothing, because what is out of reach does not
+// exist for this person. The two may stand side by side.
+//
+// The sentence is one constant. It holds no agent name or id and no count,
+// neither of the agents that exist nor of those covered: how many agents a
+// person has is what `list_agents` answers, and a number here would be one
+// more thing to keep true in a dozen tools, and an invitation to subtract.
+
+/** The field a narrowed result carries `ACCESS_SCOPE_TEXT` under. */
+export const ACCESS_SCOPE_FIELD = 'scope';
+
+/** What a result narrowed by the caller's access lists says about itself. */
+export const ACCESS_SCOPE_TEXT =
+  'Only the agents this person can use are covered. That is an access ' +
+  'limit: other agents may have records this result does not show.';
+
+/** The clause for the description of a tool whose result may carry it. */
+export const ACCESS_SCOPE_NOTE =
+  'A result with `scope` covers only the agents this person can use: say ' +
+  'so instead of "there are none".';
+
+/**
+ * The scope field of a result over every agent the caller reaches, ready to
+ * be spread into it: `{ scope }` when the caller's reach is narrowed, `{}`
+ * when it is not — the Owner, the assistant acting for itself, a person
+ * whose lists limit and deny nothing — and `{}` when the call named one
+ * agent, since a list of one agent is not narrowed by anything.
+ *
+ * `reach` is what `AgentAccessService.reachableIds` returned for the party
+ * the call is made for, before anything else was taken out of it: it
+ * already knows whether it hides an agent, so this costs no query. Typed by
+ * shape, because this slice does not import the access slice.
+ */
+export function accessScope(
+  reach: { readonly unrestricted: boolean },
+  namedAgentId?: string | null,
+): Record<string, string> {
+  if (namedAgentId || reach.unrestricted) return {};
+  return { [ACCESS_SCOPE_FIELD]: ACCESS_SCOPE_TEXT };
 }
 
 /** A person, or an agent acting for itself, who lacks the role. */

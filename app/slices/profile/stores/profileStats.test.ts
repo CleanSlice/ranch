@@ -32,7 +32,7 @@ function stats(period: StatsPeriod, conversations: number): IPersonalStats {
     notes: [],
     // Summaries off, as on an installation that produces none: every part
     // read from them is zero or empty.
-    summaries: { enabled: false, summarised: 0, waiting: 0, tooShort: 0 },
+    summaries: { enabled: false, topicsReady: false, summarised: 0, waiting: 0, tooShort: 0 },
     board: {
       conversations: { value: conversations, previous: 0 },
       messages: { value: conversations * 3, previous: 0 },

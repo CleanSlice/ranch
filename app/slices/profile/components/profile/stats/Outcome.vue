@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { STATS_TONES, type IStatsOutcome, type StatsTone } from '#profile/domain';
+import {
+  STATS_TONES,
+  type IStatsOutcome,
+  type IStatsSummaries,
+  type StatsTone,
+} from '#profile/domain';
+import { coverageNotes } from '#profile/utils/coverage';
 import { wholeShare } from '#profile/utils/share';
 import { OUTCOME_LABEL_MIN_PERCENT, stackSegments } from '#profile/utils/stackSegments';
 
@@ -21,8 +27,23 @@ import { OUTCOME_LABEL_MIN_PERCENT, stackSegments } from '#profile/utils/stackSe
  *
  * A language is named by the format module in the console's language; a
  * code it does not know is shown as received.
+ *
+ * The card also says how far the summaries reach: its caption is the
+ * coverage, "summary for 8 of 12", and one line under it says how many
+ * conversations are still waiting for a summary and, apart from them, how
+ * many are too short to get one, which are not a backlog (spec 038, FR-011;
+ * `utils/coverage.ts`). Those are the conversations of the bar's "no
+ * summary" part, by the reason they have none. The line stood under "Topics
+ * and questions" until topics were held back for a vocabulary (the owner's
+ * decision of 2026-11-28): this block is on every page that has summaries,
+ * that one is not, and the coverage is said once.
  */
-const props = defineProps<{ outcome: IStatsOutcome }>();
+const props = defineProps<{
+  outcome: IStatsOutcome;
+  summaries: IStatsSummaries;
+  /** The period's conversations: what the coverage is counted out of. */
+  conversations: number;
+}>();
 
 const format = useFormat();
 
@@ -102,10 +123,23 @@ const languages = computed(() => {
       share: wholeShare(language.conversations, judged) ?? 0,
     }));
 });
+
+/** The line under the block, a sentence at a time. */
+const coverage = computed(() => coverageNotes(props.summaries));
 </script>
 
 <template>
-  <ProfileStatsCard class="stats-rise" :title="$t('stats.outcome.title')">
+  <ProfileStatsCard
+    class="stats-rise"
+    :title="$t('stats.outcome.title')"
+    :caption="
+      $t('stats.summaries.coverage', {
+        summarised: format.number(summaries.summarised),
+        count: format.number(conversations),
+      })
+    "
+    :data-stats-summarised="summaries.summarised"
+  >
     <template v-if="segments.length">
       <ProfileStatsStackBar
         :segments="segments"
@@ -175,5 +209,20 @@ const languages = computed(() => {
       </ul>
     </template>
     <p v-else class="stats-soft" data-stats-outcome-none>{{ $t('stats.outcome.none') }}</p>
+
+    <!-- Literal keys in every branch: `i18n:check` reads a key only where it
+         is written out. -->
+    <template v-if="coverage.length" #note>
+      <template v-for="(line, index) in coverage" :key="line.kind"
+        >{{ index ? ' ' : ''
+        }}<span :data-stats-coverage="line.kind" :data-stats-value="line.count ?? undefined">{{
+          line.kind === 'waiting'
+            ? $t('stats.summaries.waiting', { count: format.number(line.count) }, line.count)
+            : line.kind === 'too-short'
+              ? $t('stats.summaries.too_short', { count: format.number(line.count) }, line.count)
+              : $t('stats.summaries.all_counted')
+        }}</span></template
+      >
+    </template>
   </ProfileStatsCard>
 </template>

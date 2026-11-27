@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { relativeTime } from '#agent/utils/relativeTime';
-import type { IStatsSummaries, IStatsTopic, StatsOutcomeKind } from '#profile/domain';
+import type { IStatsTopic, StatsOutcomeKind } from '#profile/domain';
 import { wholeShare } from '#profile/utils/share';
 import type { StatsPeriod } from '#profile/utils/statsView';
 import { topicPixels } from '#profile/utils/topicPixels';
@@ -9,6 +9,12 @@ import { topicPixels } from '#profile/utils/topicPixels';
  * "Topics and questions" (CLEAN-270): what the period's summarised
  * conversations were about, and for the selected topic the main questions
  * the person asked, who answered, when, and how each ended.
+ *
+ * Drawn only where the installation has a vocabulary
+ * (`summaries.topicsReady`, the owner's decision of 2026-11-28): the
+ * provider leaves the block out otherwise, with nothing in its place. "No
+ * topics yet" below is for an installation that has topics and a period
+ * whose conversations carry none.
  *
  * The order and the cut (eight topics, four questions) are the API's. A
  * topic's bar is scaled to the largest topic; how its pixels are shared
@@ -30,16 +36,14 @@ import { topicPixels } from '#profile/utils/topicPixels';
  * A mark on a question never rests on its colour: resolved, open and
  * "unclear" each have their own word and their own icon.
  *
- * Under the block one line says what is not in it: conversations still
- * waiting for a summary, and, apart from them, conversations too short to
- * get one, which are not a backlog (spec 038, FR-011).
+ * Under a list of topics one line says where a topic comes from. How many
+ * conversations have a summary, wait for one or are too short for one is
+ * said by "How conversations end", which stands on every page that has
+ * summaries: this block does not.
  */
 const props = defineProps<{
   /** Most conversations first, at most eight. */
   topics: IStatsTopic[];
-  summaries: IStatsSummaries;
-  /** The period's conversations: what the coverage is counted out of. */
-  conversations: number;
   /** The period of the view on screen: a new one resets the selection. */
   period: StatsPeriod;
 }>();
@@ -112,42 +116,10 @@ const MARKS: Record<StatsOutcomeKind, { labelKey: string; icon: string; tone: st
     tone: 'none',
   },
 };
-
-/**
- * The line under the block, a sentence at a time. Where the topics come
- * from is said beside a list of them; with no topic the block itself says
- * it. "All counted" only when nothing is left out for either reason, and
- * only when something was counted: over "No topics yet" on an account with
- * no summary at all it would be a sentence about nothing, and the line is
- * then not drawn.
- */
-const notes = computed(() => {
-  const { waiting, tooShort, summarised } = props.summaries;
-  const lines: { hook: string; key: string; count: number | null }[] = [];
-  if (rows.value.length) lines.push({ hook: 'source', key: 'stats.topics.source', count: null });
-  if (waiting > 0) lines.push({ hook: 'waiting', key: 'stats.topics.waiting', count: waiting });
-  if (tooShort > 0) {
-    lines.push({ hook: 'too-short', key: 'stats.topics.too_short', count: tooShort });
-  }
-  if (waiting === 0 && tooShort === 0 && (rows.value.length > 0 || summarised > 0)) {
-    lines.push({ hook: 'all-counted', key: 'stats.topics.all_counted', count: null });
-  }
-  return lines;
-});
 </script>
 
 <template>
-  <ProfileStatsCard
-    class="stats-rise"
-    :title="$t('stats.topics.title')"
-    :caption="
-      $t('stats.summaries.coverage', {
-        summarised: format.number(summaries.summarised),
-        count: format.number(conversations),
-      })
-    "
-    :data-stats-summarised="summaries.summarised"
-  >
+  <ProfileStatsCard class="stats-rise" :title="$t('stats.topics.title')">
     <div v-if="selected" class="stats-tp">
       <div class="min-w-0">
         <ul class="stats-tl" :aria-label="$t('stats.topics.list_label')">
@@ -236,15 +208,10 @@ const notes = computed(() => {
     </div>
     <p v-else class="stats-soft" data-stats-topics-none>{{ $t('stats.topics.none') }}</p>
 
-    <template v-if="notes.length" #note>
-      <template v-for="(line, index) in notes" :key="line.hook"
-        >{{ index ? ' ' : ''
-        }}<span :data-stats-coverage="line.hook" :data-stats-value="line.count ?? undefined">{{
-          line.count === null
-            ? $t(line.key)
-            : $t(line.key, { count: format.number(line.count) }, line.count)
-        }}</span></template
-      >
+    <!-- Where a topic comes from, beside a list of them; with no topic the
+         block's one line says it. -->
+    <template v-if="rows.length" #note>
+      <span data-stats-topics-source>{{ $t('stats.topics.source') }}</span>
     </template>
   </ProfileStatsCard>
 </template>

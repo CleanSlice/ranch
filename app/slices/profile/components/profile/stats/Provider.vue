@@ -28,10 +28,18 @@ import { statsLocation, type StatsPeriod, type StatsScope } from '#profile/utils
  *
  * Topics, outcomes and open questions are read from conversation summaries
  * (CLEAN-270), which an installation may not produce. The answer says so in
- * `summaries.enabled`, and that field alone decides between the three blocks
- * and the one card that stands in for them. A zero decides nothing: with
+ * `summaries.enabled`, and that field alone decides between the blocks and
+ * the one card that stands in for them. A zero decides nothing: with
  * summaries off every count is zero, and with them on a new account's are
  * zero too, and the two are different pages.
+ *
+ * Of those blocks, Topics stands only where the installation has a
+ * vocabulary to choose topics from: `summaries.topicsReady` (the owner's
+ * decision of 2026-11-28; how a vocabulary comes to exist is CLEAN-278).
+ * Where it has none the block is not there, with nothing in its place: no
+ * placeholder and no promise. The outcomes, the models and the open
+ * questions move up by one, and how far the summaries reach is said by "How
+ * conversations end", which is there either way.
  */
 const props = defineProps<{
   scope: StatsScope;
@@ -167,6 +175,16 @@ const mineLocation = computed(() =>
 );
 
 /**
+ * The place of each block after "Who you talk to" in the order the blocks
+ * rise in (`--i` in `stats.css`): one earlier for all of them where the
+ * Topics block is not drawn, so that no beat of the entrance is left empty.
+ */
+function riseOrder(stats: IPersonalStats) {
+  const from = stats.summaries.topicsReady ? 4 : 3;
+  return { outcome: from, models: from + 1, openQuestions: from + 2, help: from + 3 };
+}
+
+/**
  * The cards that stand in while the first answer is on its way, at about the
  * height each block has on a wide screen, so that the page does not jump
  * when the blocks arrive. Added up from the blocks' rules in `stats.css`;
@@ -265,13 +283,14 @@ const PLACEHOLDERS: Record<StatsScope, readonly { block: string; height: number 
             data-stats-block="agents"
             style="--i: 2"
           />
-          <!-- By `summaries.enabled`, never by a zero: three blocks where
+          <!-- By `summaries.enabled`, never by a zero: the blocks where
                summaries are produced, one card where they are not. -->
           <template v-if="heldMine.summaries.enabled">
+            <!-- By `summaries.topicsReady`, never by an empty list: without
+                 a vocabulary the block is not there at all. -->
             <ProfileStatsTopics
+              v-if="heldMine.summaries.topicsReady"
               :topics="heldMine.topics"
-              :summaries="heldMine.summaries"
-              :conversations="heldMine.board.conversations.value"
               :period="heldMine.period"
               data-stats-block="topics"
               style="--i: 3"
@@ -282,13 +301,15 @@ const PLACEHOLDERS: Record<StatsScope, readonly { block: string; height: number 
             <div class="stats-two">
               <ProfileStatsOutcome
                 :outcome="heldMine.outcome"
+                :summaries="heldMine.summaries"
+                :conversations="heldMine.board.conversations.value"
                 data-stats-block="outcome"
-                style="--i: 4"
+                :style="{ '--i': riseOrder(heldMine).outcome }"
               />
               <ProfileStatsModels
                 :models="heldMine.models"
                 data-stats-block="models"
-                style="--i: 5"
+                :style="{ '--i': riseOrder(heldMine).models }"
               />
             </div>
             <ProfileStatsOpenQuestions
@@ -296,7 +317,7 @@ const PLACEHOLDERS: Record<StatsScope, readonly { block: string; height: number 
               :summarised="heldMine.summaries.summarised"
               :period="heldMine.period"
               data-stats-block="open-questions"
-              style="--i: 6"
+              :style="{ '--i': riseOrder(heldMine).openQuestions }"
             />
           </template>
           <template v-else>
@@ -318,7 +339,7 @@ const PLACEHOLDERS: Record<StatsScope, readonly { block: string; height: number 
             :period="heldMine.period"
             :since="since(heldMine.notes, HELP)"
             data-stats-block="help"
-            :style="{ '--i': heldMine.summaries.enabled ? 7 : 5 }"
+            :style="{ '--i': heldMine.summaries.enabled ? riseOrder(heldMine).help : 5 }"
           />
         </div>
       </template>

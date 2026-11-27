@@ -52,10 +52,24 @@ export interface IStatsRange {
  * count that is read from them (here, on the scoreboard, per agent, the
  * outcomes) is zero because nothing was counted, and the lists are empty: a
  * zero says nothing, `enabled` does.
+ *
+ * `topicsReady` is the second switch, for the Topics block alone (the
+ * owner's decision of 2026-11-28): outcomes, tone, languages and open
+ * questions are shown wherever summaries are produced, and topics wait until
+ * the installation has a vocabulary to choose from (CLEAN-278). Here too an
+ * empty list says nothing: "no topic among this period's conversations" and
+ * "no topic is asked for yet" are different pages.
  */
 export interface IStatsSummaries {
   /** Whether the installation produces conversation summaries. */
   enabled: boolean;
+  /**
+   * Whether topics are there to show: summaries are produced and the
+   * installation has a vocabulary. False from an API that does not say, and
+   * always with `enabled` false. While it is false the view carries no
+   * topic: `topics` is empty and no open question has one.
+   */
+  topicsReady: boolean;
   /** Conversations of the period that have a summary. */
   summarised: number;
   /** Without one yet, and will get one: not counted in topics or outcomes. */
@@ -180,7 +194,10 @@ export interface IStatsOpenQuestion {
   agentName: string;
   /** Shown as received. Null when the summary quoted no question. */
   question: string | null;
-  /** The label of the conversation's first topic, as received. Null when none. */
+  /**
+   * The label of the conversation's first topic, as received. Null when
+   * none, and for every question while `summaries.topicsReady` is false.
+   */
   topic: string | null;
   /** The conversation's last message. */
   at: Date | null;

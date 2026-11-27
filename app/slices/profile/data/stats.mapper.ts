@@ -104,6 +104,7 @@ const OUTCOMES: readonly StatsOutcomeKind[] = ['resolved', 'open', 'unknown'];
  */
 export class StatsMapper {
   toPersonal(dto: MyStatsDto): IPersonalStats {
+    const summaries = this.toSummaries(dto.summaries);
     return {
       period: dto.period,
       timeZone: dto.timeZone,
@@ -117,7 +118,7 @@ export class StatsMapper {
       notes: dto.notes
         .map((note) => this.toNote(note))
         .filter((note): note is IStatsNote => note !== null),
-      summaries: this.toSummaries(dto.summaries),
+      summaries,
       board: {
         conversations: { ...dto.board.conversations },
         messages: { ...dto.board.messages },
@@ -133,9 +134,13 @@ export class StatsMapper {
         activeDays: dto.activity.activeDays,
       },
       agents: dto.agents.map((agent) => this.toAgent(agent)),
-      topics: this.toTopics(dto.topics),
+      // No topic anywhere in the view while they are not ready (the owner's
+      // decision of 2026-11-28): the API sends none then, and an older one,
+      // which made a topic of whatever a conversation proposed, sends the
+      // ones the decision holds back.
+      topics: summaries.topicsReady ? this.toTopics(dto.topics) : [],
       outcome: this.toOutcome(dto.outcome),
-      openQuestions: this.toOpenQuestions(dto.openQuestions),
+      openQuestions: this.toOpenQuestions(dto.openQuestions, summaries.topicsReady),
       help: {
         cited: {
           conversations: dto.help.cited.conversations,
@@ -215,9 +220,13 @@ export class StatsMapper {
 
   private toSummaries(dto: unknown): IStatsSummaries {
     const from = fields(dto);
+    // Only an explicit `true` switches the blocks on.
+    const enabled = from.enabled === true;
     return {
-      // Only an explicit `true` switches the three blocks on.
-      enabled: from.enabled === true,
+      enabled,
+      // And only an explicit `true` shows the Topics block: an older API
+      // sends no field. Never without summaries, whatever the field says.
+      topicsReady: enabled && from.topicsReady === true,
       summarised: count(from.summarised),
       waiting: count(from.waiting),
       tooShort: count(from.tooShort),
@@ -300,8 +309,11 @@ export class StatsMapper {
    * the conversation. One that names neither is still an open conversation:
    * it goes to `more`, so that the list and the remainder keep adding up to
    * what the outcomes count as open.
+   *
+   * `withTopics` is `summaries.topicsReady`: without it a question carries
+   * no topic, whatever the answer names for it.
    */
-  private toOpenQuestions(dto: unknown): IStatsOpenQuestions {
+  private toOpenQuestions(dto: unknown, withTopics: boolean): IStatsOpenQuestions {
     const from = fields(dto);
     const items: IStatsOpenQuestion[] = [];
     let unlisted = 0;
@@ -319,7 +331,7 @@ export class StatsMapper {
         agentName: words(item.agentName) ?? '',
         // Null is "open, and no question was quoted": the page says so.
         question: words(item.question),
-        topic: words(item.topic),
+        topic: withTopics ? words(item.topic) : null,
         at: instant(item.at),
       });
     }

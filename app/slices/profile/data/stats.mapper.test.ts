@@ -24,7 +24,7 @@ function dto(): MyStatsDto {
       { figure: 'activity', completeSince: '2026-11-10T22:00:00.000Z' },
       { figure: 'ratings', completeSince: 'not a date' },
     ],
-    summaries: { enabled: true, summarised: 8, waiting: 3, tooShort: 1 },
+    summaries: { enabled: true, topicsReady: true, summarised: 8, waiting: 3, tooShort: 1 },
     board: {
       conversations: { value: 12, previous: 8 },
       messages: { value: 96, previous: 40 },
@@ -186,7 +186,13 @@ describe('StatsMapper.toPersonal: summaries', () => {
   const view = new StatsMapper().toPersonal(dto());
 
   test('the counts of the period pass through, and the resolved share with its whole', () => {
-    expect(view.summaries).toEqual({ enabled: true, summarised: 8, waiting: 3, tooShort: 1 });
+    expect(view.summaries).toEqual({
+      enabled: true,
+      topicsReady: true,
+      summarised: 8,
+      waiting: 3,
+      tooShort: 1,
+    });
     expect(view.board.resolved).toEqual({ resolved: 5, summarised: 8 });
     expect(view.agents.map((agent) => [agent.resolved, agent.summarised])).toEqual([
       [4, 6],
@@ -247,9 +253,65 @@ describe('StatsMapper.toPersonal: summaries', () => {
   });
 });
 
+/**
+ * Topics wait for a vocabulary (CLEAN-270, the owner's decision of
+ * 2026-11-28): the API says in `summaries.topicsReady` whether the
+ * installation has one. The page shows the Topics block by that field alone,
+ * and while it is false no topic is shown anywhere: not in a list, not
+ * beside an open question.
+ */
+describe('StatsMapper.toPersonal: topics that are not ready', () => {
+  const notReady = (value: unknown) =>
+    new StatsMapper().toPersonal(
+      bent((answer) => {
+        if (value === undefined) delete answer.summaries.topicsReady;
+        else answer.summaries.topicsReady = value;
+      }),
+    );
+
+  test('only an explicit `true` says the topics are ready: an older API sends no field', () => {
+    expect(new StatsMapper().toPersonal(dto()).summaries.topicsReady).toBe(true);
+    for (const odd of [undefined, null, false, 'true', 1, {}]) {
+      expect(notReady(odd).summaries.topicsReady).toBe(false);
+    }
+  });
+
+  test('never with summaries off, whatever the field says', () => {
+    const mapped = new StatsMapper().toPersonal(
+      bent((answer) => {
+        answer.summaries.enabled = false;
+        answer.summaries.topicsReady = true;
+      }),
+    );
+    expect(mapped.summaries.enabled).toBe(false);
+    expect(mapped.summaries.topicsReady).toBe(false);
+  });
+
+  // An older API coins topics from every conversation and sends them without
+  // the field. They are what the decision holds back, so they are not shown.
+  test('carries no topic while they are not ready: the list is empty and no open question has one', () => {
+    const mapped = notReady(undefined);
+    expect(mapped.topics).toEqual([]);
+    expect(mapped.openQuestions.items.length).toBe(2);
+    expect(mapped.openQuestions.items.map((item) => item.topic)).toEqual([null, null]);
+    // The rest of what the summaries say is as it came.
+    expect(mapped.openQuestions.items.map((item) => item.chatId)).toEqual(
+      new StatsMapper().toPersonal(dto()).openQuestions.items.map((item) => item.chatId),
+    );
+    expect(mapped.summaries.summarised).toBe(8);
+    expect(mapped.outcome).toEqual(new StatsMapper().toPersonal(dto()).outcome);
+  });
+
+  test('carries them as received once they are ready', () => {
+    const mapped = new StatsMapper().toPersonal(dto());
+    expect(mapped.topics.length).toBe(2);
+    expect(mapped.openQuestions.items.some((item) => item.topic !== null)).toBe(true);
+  });
+});
+
 describe('StatsMapper.toPersonal: summaries off, and an older API', () => {
   const OFF = {
-    summaries: { enabled: false, summarised: 0, waiting: 0, tooShort: 0 },
+    summaries: { enabled: false, topicsReady: false, summarised: 0, waiting: 0, tooShort: 0 },
     resolved: { resolved: 0, summarised: 0 },
     outcome: {
       resolved: 0,
@@ -339,7 +401,13 @@ describe('StatsMapper.toPersonal: summaries off, and an older API', () => {
         answer.topics[0].open = undefined;
       }),
     );
-    expect(mapped.summaries).toEqual({ enabled: true, summarised: 8, waiting: 0, tooShort: 0 });
+    expect(mapped.summaries).toEqual({
+      enabled: true,
+      topicsReady: true,
+      summarised: 8,
+      waiting: 0,
+      tooShort: 0,
+    });
     expect(mapped.board.resolved).toEqual({ resolved: 0, summarised: 0 });
     expect(mapped.outcome.unknown).toBe(0);
     expect(mapped.outcome.sentiment).toEqual({ positive: 2, neutral: 0, mixed: 0, negative: 0 });

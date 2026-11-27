@@ -229,6 +229,49 @@ per-agent per-day table built from the hourly rows by the settle pattern
 (set, not increment) replaces the hourly range scan behind the same reader.
 The response contract does not change. Not built until measured.
 
+**Measured (PR 4, CLEAN-265, 2026-11-27).** `GET /stats/installation` as the
+Owner, medians of 40 calls per period, local Postgres 18 in Docker on
+Windows:
+
+| Installation | 7 days | 30 days | 90 days |
+|--------------|--------|---------|---------|
+| 15 278 conversations, 45 602 hour rows | 6 ms | 7 ms | 10 ms |
+| 1 005 120 conversations, 3 015 264 hour rows | 30 ms | 90 ms | 700 ms (slowest call 1.6 s) |
+| the same million, before the three fixes below | 33 ms | 1.9 s | 10.2 s |
+
+The route is under the 2 seconds of SC-002 at a million conversations. It is
+not within 20% of the small installation, and it cannot be: its cost grows
+with the conversations of the period. People and conversations are distinct
+counts over the period, and the 90-day period of the large database holds
+245 133 conversations to tell apart.
+
+**Why the step named above does not apply.** A distinct count cannot be
+added up from per-day rows: a conversation active on two days would count
+twice, and so would a person. A per-agent per-day table answers sums, which
+this view already reads from day rows (`Usage`, `AgentLoadDay`); it does not
+answer the two figures that cost the time. It was not built.
+
+So the two halves of SC-002 are held by different routes. The 20% half
+applies to the personal route, whose queries are bounded by one person's
+rows: 157 ms with 15 120 conversations in the installation, 139 ms with
+1 005 120 (PR 2). The installation route is held to the 2 seconds.
+
+**What made it slow was not the scan.** Three things, each found only on a
+real database and fixed in `api/src/slices/chat/data/chatActivity.gateway.ts`:
+a bound date compared in the session's time zone (a wrong number, not a slow
+one: 16 244 conversations counted of 16 472 on a session in Europe/Kyiv); a
+hash that spilled to disk under the default `work_mem` of 4 MB (6.3 s for a
+statement whose scan took 0.4 s; 0.3 s with 64 MB); and a generic plan kept
+from the sixth execution on (both statements from 0.6 s to 5.5 s). The rules
+they leave behind are in `docs/statistics.md`, "Counting over a period in
+SQL".
+
+**The next step, named again.** If an installation outgrows this (several
+million conversations a year), a covering partial index
+`("hour") INCLUDE ("agentId","channel","externalUserId","userMessages") WHERE "userMessages" > 0`
+lets both statements read the index alone. Its price is a second write on a
+hot table. Not built until measured.
+
 ## R10. Slices, and who owns what
 
 **Decision.** A new API slice `stats` owns the two routes, the period and

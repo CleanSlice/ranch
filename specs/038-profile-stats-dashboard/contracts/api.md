@@ -62,33 +62,80 @@ The installation, through the agents the caller reaches.
 - **Guards**: `JwtAuthGuard`, `RolesGuard`,
   `@Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)`.
 - **Which agents**: `reachableIds(accessCallerOf(req))`, applied to every
-  figure, totals included (FR-021).
+  figure, totals included (FR-021). The two kinds of figure read it
+  differently:
+  - *Operations figures*: tokens, calls, cost, `daily[]`, `agents[]`,
+    `projection30d`, `health.incidents[]` and `health.refusals[]`. The
+    caller's plain reach, the one the admin usage overview applies, so the
+    two agree about a period (FR-037).
+  - *Conversation figures*: `board.people`, `quality[]` (its conversations
+    and its ratings) and `channels[]`. The reach less the agents only the
+    Owner manages, `reach.without(await permission.ownerOnlyIds(caller))`,
+    which is the scope chat history reads with (CLEAN-236; CLEAN-263 and
+    CLEAN-267 say the same of every chat tool). These figures carry no text,
+    but they are built from what people said to the Ranch assistant, and
+    that is the Owner's. `reach.ownerOnly` names the agents taken out,
+    because whoever leaves an agent out owes the caller the reason. The
+    same set is the second lock on the rows that come back and decides
+    which agents may have a row in `quality[]`.
 
 | Query | Values | Default |
 |-------|--------|---------|
 | `period` | `7` \| `30` \| `90` | `30` |
+
+Shipped as PR 4 (CLEAN-265) before PR 3, so `quality[]` goes out without
+`open` and `summarised`; PR 3 adds the two fields.
 
 **Response**
 
 | Field | Meaning |
 |-------|---------|
 | `period`, `range { from, to, previousFrom }` | UTC days |
-| `reach { limited, agents }` | whether the caller sees a part of the installation, and how many agents |
+| `reach { limited, agents, ownerOnly[] }` | whether the caller sees a part of the installation, and how many agents they reach. `ownerOnly` holds the names, as the agents list shows them, of the reached agents whose conversations are left out of the conversation figures; empty for the Owner, for a trusted party, and for a caller who does not reach the assistant. `limited` and `agents` are of the plain reach and do not change with it |
 | `notes[]` | as above |
 | `board.tokens { input, output }` | |
 | `board.calls { value, previous }` | |
 | `board.cost { value, previous, unpriced[] }` | USD from the product's price list; `unpriced` names the models left out of it |
-| `board.people { value, previous }` | distinct chat identities that wrote, agent-to-agent traffic excluded |
+| `board.people { value, previous }` | distinct chat identities that wrote. A share-link visitor is one of them (each visitor has one identity); the `internal` channel and `peer:` identities, which are agent-to-agent traffic, are left out |
 | `daily[]` | one per day, oldest first: `{ date, cost, byModel[] { model, tokens } }` |
 | `models[]` | `{ model, priced }` for the legend |
-| `agents[]` | `{ agentId, name, removed, model, tokens, calls, cost }` by cost, descending; `cost` null when the agent's model has no price; `removed` true when the agent no longer exists |
-| `projection30d` | priced cost of the period ÷ its days × 30 |
-| `health.incidents[]` | `{ number, agentName, open, reason, openedAt, closedAt }` opened in the period or still open, newest first |
+| `agents[]` | `{ agentId, name, removed, model, tokens, calls, cost, partial }` by cost, descending, an agent with no price after the priced ones. `model` is the one that took most of the agent's tokens in the period. `cost` is USD over the agent's priced models, null when none of its models has a price. `partial` is true when the agent also ran a model with no price, so `cost` covers only the rest. `removed` is true when the agent no longer exists |
+| `projection30d` | a number or null: the priced cost of the period's finished UTC days ÷ their number × 30. Today is left out of both, because its row is still being added to: counting it read up to one day in the period low, a seventh on the 7-day view. Days before the first usage row among the rows read (this period and the previous one) are left out too. Null while no such day is finished, and null when no model with a price ran in those days: the sum of unpriced models is 0, which is not a pace, and the page would print "≈ $0.00 in 30 days" above rows that all say "no price". A priced model that cost exactly 0 projects 0 |
+| `health.incidents[]` | `{ number, agentName, open, reason, openedAt, closedAt }` opened in the period or still open, newest first, at most `INCIDENTS_SHOWN` of them (`installationStats.service.ts`, where the cap has its reason) |
+| `health.incidentsTotal` | how many there are, the ones the cap left out included, so a cut list never reads as "that was all" |
 | `health.refusals[]` | `{ agentId, name, refused }` where `refused > 0` |
-| `quality[]` | `{ agentId, name, conversations, open, summarised, down, rated }` |
-| `channels[]` | `{ channel, conversations }` with `channel` one of `console`, `telegram`, `slack`, `share`, `other` |
+| `quality[]` | `{ agentId, name, conversations, down, rated }`, most conversations first. `conversations` are those a person wrote in during the period; `down` and `rated` are every rating made in the period on conversations of the agents counted here (see *Which agents*), so `rated` can exceed what `conversations` suggests. `open` and `summarised` come with PR 3 |
+| `channels[]` | `{ channel, conversations }`, channels with at least one conversation, most first. `channel` is `console` for a stored `bridle`, or `share` when the identity starts with `share-`; `telegram`; `slack`; anything else `other` |
 
 No field carries a person's name, identity, question or message (FR-021).
+
+**How the two counts are read.** People and conversations are distinct
+counts over `ChatActivityHour`, made in the database by two statements that
+run side by side, each in its own transaction with a 30 s timeout
+(`api/src/slices/chat/data/chatActivity.gateway.ts`, which carries the
+measured numbers). At most two of these statements run at once in the API
+process (`AGGREGATE_CONCURRENCY`, one view's pair) and later ones wait their
+turn in order of arrival, so that a few operators switching periods cannot
+hold the whole Prisma pool while chat and sign-in wait for a connection; the
+30 s count from a statement's own turn, not from its time in that queue.
+Three things in them are there because a real database showed them and no
+unit spec could:
+
+- Every bound moment is written `($n::timestamptz AT TIME ZONE 'UTC')`.
+  `hour` is a `timestamp` without zone holding UTC; a `Date` bound into
+  `$queryRaw` arrives as `timestamptz`, and Postgres then compares by reading
+  the column in the session's zone. On a session in Europe/Kyiv a 7-day
+  period began two hours late and nothing failed. A spec asserts that no
+  comparison of `hour` is left with a bare parameter.
+- `set_config('work_mem', '64MB', true)`. The count hashes one entry per
+  conversation of the period, and under the server default of 4 MB a 90-day
+  period at a million conversations spilled to disk.
+- `set_config('plan_cache_mode', 'force_custom_plan', true)`. The statement
+  is prepared once per connection, and from its sixth execution Postgres may
+  keep one plan for any dates; the one it kept was the slow one.
+
+Both settings are local to the transaction (`is_local = true`), so the
+server's own values and every other query keep what they had.
 
 **Errors**: 401 without a token; 403 for a User; 400 for a bad `period`.
 

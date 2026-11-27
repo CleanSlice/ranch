@@ -16,11 +16,15 @@ import type { Request } from 'express';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import { accessCallerOf } from '#/user/agentAccess/guards';
 import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
+import { ChangesAssistantIngredient } from '#/agent/assistantBuild/guards';
+import { AssistantBuildService } from '#/agent/assistantBuild/domain/assistantBuild.service';
+import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { ISkillGateway, ISkillData } from './domain';
 import { SkillOrderService } from './domain/skillOrder.service';
 import { isUniqueNameViolation } from './domain/skillErrors';
 import {
   CreateSkillDto,
+  SkillDto,
   UpdateSkillDto,
   SearchSkillsDto,
   ImportSkillDto,
@@ -40,14 +44,16 @@ export class SkillController {
     private github: GithubSearch,
     private order: SkillOrderService,
     private access: AgentAccessService,
+    private build: AssistantBuildService,
   ) {}
 
   @Get()
   @ApiOperation({
     summary: 'List all skills, in the library order (sortOrder, then name)',
   })
-  findAll() {
-    return this.gateway.findAll();
+  @ApiOkResponse({ type: [SkillDto] })
+  async findAll() {
+    return this.build.mark('skill', await this.gateway.findAll());
   }
 
   // The three static routes below sit above `:id` on purpose: NestJS matches
@@ -111,12 +117,15 @@ export class SkillController {
   @ApiOperation({
     summary: 'Import a skill from any GitHub URL (folder or SKILL.md)',
   })
-  async importFromUrl(@Body() dto: ImportSkillUrlDto) {
+  async importFromUrl(
+    @Body() dto: ImportSkillUrlDto,
+    @Req() req?: Request & { user?: IAuthTokenPayload },
+  ) {
     const { repo, skillPath, bundle } = await this.github.fetchBundleFromUrl(
       dto.url,
     );
     const slug = dto.name ?? deriveSlug(skillPath);
-    return this.upsertSkill(slug, dto.overwrite === true, {
+    return this.upsertSkill(req, slug, dto.overwrite === true, {
       title: bundle.title,
       body: bundle.body,
       description: bundle.description,
@@ -127,10 +136,13 @@ export class SkillController {
 
   @Post('import')
   @ApiOperation({ summary: 'Import a skill from GitHub into the local DB' })
-  async importFromGithub(@Body() dto: ImportSkillDto) {
+  async importFromGithub(
+    @Body() dto: ImportSkillDto,
+    @Req() req?: Request & { user?: IAuthTokenPayload },
+  ) {
     const bundle = await this.github.fetchBundle(dto.repo, dto.path);
     const slug = dto.name ?? deriveSlug(dto.path);
-    return this.upsertSkill(slug, dto.overwrite === true, {
+    return this.upsertSkill(req, slug, dto.overwrite === true, {
       title: bundle.title,
       body: bundle.body,
       description: bundle.description,
@@ -140,6 +152,7 @@ export class SkillController {
   }
 
   private async upsertSkill(
+    req: (Request & { user?: IAuthTokenPayload }) | undefined,
     slug: string,
     overwrite: boolean,
     data: {
@@ -170,6 +183,11 @@ export class SkillController {
       });
     }
     if (existing && overwrite) {
+      // An import that overwrites finds its target by slug, never by id: a
+      // skill the Ranch assistant ships is the Owner's to replace
+      // (CLEAN-271), and this is the write that would do it without ever
+      // naming it. 403 ASSISTANT_BUILT_FROM, nothing written.
+      await this.build.assertMayChange(req?.user, 'skill', existing.id);
       return this.gateway.update(existing.id, {
         title: data.title,
         body: data.body,
@@ -183,10 +201,11 @@ export class SkillController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get skill by ID' })
+  @ApiOkResponse({ type: SkillDto })
   async findById(@Param('id') id: string) {
     const record = await this.gateway.findById(id);
     if (!record) throw new NotFoundException('Skill not found');
-    return record;
+    return this.build.markOne('skill', record);
   }
 
   @Get(':id/agents')
@@ -213,8 +232,10 @@ export class SkillController {
   }
 
   @Put(':id')
+  @ChangesAssistantIngredient('skill', 'id')
   @ApiOperation({
-    summary: 'Update a skill (409 SKILL_EXISTS when a new name is taken)',
+    summary:
+      'Update a skill (409 SKILL_EXISTS when a new name is taken). A skill the Ranch assistant’s template ships is the Owner’s to change or delete: 403 ASSISTANT_BUILT_FROM for anybody else (CLEAN-271).',
   })
   update(@Param('id') id: string, @Body() dto: UpdateSkillDto) {
     return this.nameTakenAs409(dto.name, () => this.gateway.update(id, dto));
@@ -247,6 +268,7 @@ export class SkillController {
   }
 
   @Delete(':id')
+  @ChangesAssistantIngredient('skill', 'id')
   @ApiOperation({ summary: 'Delete a skill' })
   remove(@Param('id') id: string) {
     return this.gateway.delete(id);

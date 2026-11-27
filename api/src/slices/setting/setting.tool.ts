@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   CONFIRM_SENTENCE,
+  OWNER_ONLY_REASON,
   callerIsOperator,
+  callerIsOwner,
   confirmed,
   ok,
   requireOperator,
@@ -16,7 +18,9 @@ import {
   IInfraConfigGateway,
   ISettingGateway,
   findSettingDefinition,
+  isOwnerOnlySettingGroup,
   nearestSettingDefinition,
+  OWNER_ONLY_SETTING_TEXT,
   settingKey,
   type ISettingData,
 } from './domain';
@@ -117,6 +121,11 @@ export class SettingTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
     const { group, name } = args;
+    // The bookkeeping of the assistant's template is the Owner's
+    // (CLEAN-271): deleting it makes the next start reseed the template.
+    if (isOwnerOnlySettingGroup(group) && !callerIsOwner(httpRequest)) {
+      return ok({ error: OWNER_ONLY_SETTING_TEXT, reason: OWNER_ONLY_REASON });
+    }
     const existing = await this.settings.findByKey(group, name);
     if (!existing) return ok(notFound(group, name));
     const refusal = confirmed(

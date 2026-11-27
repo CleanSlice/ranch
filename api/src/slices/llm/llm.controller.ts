@@ -9,9 +9,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
+import { ChangesAssistantIngredient } from '#/agent/assistantBuild/guards';
+import { AssistantBuildService } from '#/agent/assistantBuild/domain/assistantBuild.service';
 import { ILlmGateway, ILlmHealthGateway } from './domain';
 import {
   CreateLlmCredentialDto,
+  LlmCredentialDto,
   UpdateLlmCredentialDto,
   LlmHealthCheckResultDto,
 } from './dtos';
@@ -22,20 +25,23 @@ export class LlmController {
   constructor(
     private gateway: ILlmGateway,
     private health: ILlmHealthGateway,
+    private build: AssistantBuildService,
   ) {}
 
   @Get()
   @ApiOperation({ summary: 'List all LLM credentials' })
-  findAll() {
-    return this.gateway.findAll();
+  @ApiOkResponse({ type: [LlmCredentialDto] })
+  async findAll() {
+    return this.build.mark('llmCredential', await this.gateway.findAll());
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get LLM credential by ID' })
+  @ApiOkResponse({ type: LlmCredentialDto })
   async findById(@Param('id') id: string) {
     const record = await this.gateway.findById(id);
     if (!record) throw new NotFoundException('LLM credential not found');
-    return record;
+    return this.build.markOne('llmCredential', record);
   }
 
   @Post()
@@ -45,12 +51,17 @@ export class LlmController {
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update an LLM credential' })
+  @ChangesAssistantIngredient('llmCredential', 'id')
+  @ApiOperation({
+    summary:
+      'Update an LLM credential. The credential the Ranch assistant runs on is the Owner’s to change or delete: 403 ASSISTANT_BUILT_FROM for anybody else (CLEAN-271).',
+  })
   update(@Param('id') id: string, @Body() dto: UpdateLlmCredentialDto) {
     return this.gateway.update(id, dto);
   }
 
   @Delete(':id')
+  @ChangesAssistantIngredient('llmCredential', 'id')
   @ApiOperation({ summary: 'Delete an LLM credential' })
   remove(@Param('id') id: string) {
     return this.gateway.delete(id);

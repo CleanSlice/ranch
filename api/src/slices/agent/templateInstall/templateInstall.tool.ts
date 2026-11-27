@@ -3,6 +3,8 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  BUILT_FROM_NOTE,
+  builtFromRefusal,
   callerIsOperator,
   ok,
   requireOperator,
@@ -137,7 +139,8 @@ export class TemplateInstallTool implements IConditionallyListedTool {
       'attached, what stayed unresolved and any warnings — the template is ' +
       'ready for create_agent afterwards. Run ' +
       'preview_template_install_from_git first. For a zip on your computer ' +
-      "use the console's Install page; a tool call cannot carry a file.",
+      "use the console's Install page; a tool call cannot carry a file. " +
+      BUILT_FROM_NOTE,
     parameters: gitInstallParameters.extend({
       secrets: z
         .record(z.string())
@@ -160,12 +163,31 @@ export class TemplateInstallTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
-    const result = await this.installs.installFromGit(
-      args.gitUrl,
-      args.gitRef,
-      args.params ?? {},
-      args.secrets ?? {},
-    );
+    // The manifest names the template it replaces, so which template this
+    // writes is known only once the repository is read. The service asks
+    // back before it writes anything (CLEAN-271): an install whose manifest
+    // carries the id of the assistant's template would replace every file
+    // of it and what it attaches.
+    let refused: ToolResult | null = null;
+    let result;
+    try {
+      result = await this.installs.installFromGit(
+        args.gitUrl,
+        args.gitRef,
+        args.params ?? {},
+        args.secrets ?? {},
+        (plan) => {
+          refused = builtFromRefusal(httpRequest, 'template', plan.templateId);
+          for (const id of plan.createsMcpServerIds) {
+            refused ??= builtFromRefusal(httpRequest, 'mcpServer', id);
+          }
+          if (refused) throw new Error('refused before anything was written');
+        },
+      );
+    } catch (e) {
+      if (refused) return refused;
+      throw e;
+    }
     // The install result names ids and counts only, never the secrets it
     // consumed; stripping is belt and braces should that ever change.
     return ok(stripSecrets(result));

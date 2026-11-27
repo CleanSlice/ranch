@@ -70,13 +70,15 @@ const guarded = () => appRoutes().filter((row) => !row.isPublic);
 describe('every route asks for a role', () => {
   it('registers the guards globally, in the order they depend on each other', () => {
     // JwtAuthGuard sets req.user, RolesGuard reads its role, AgentManageGuard
-    // and AgentAccessGuard (CLEAN-231) read who it is. A different order is
-    // a guard reading nothing.
+    // and AgentAccessGuard (CLEAN-231) read who it is, and so does
+    // AssistantBuildGuard (CLEAN-271). A different order is a guard reading
+    // nothing.
     expect(appGlobalGuards()).toEqual([
       'JwtAuthGuard',
       'RolesGuard',
       'AgentManageGuard',
       'AgentAccessGuard',
+      'AssistantBuildGuard',
     ]);
   });
 
@@ -151,6 +153,11 @@ describe('every route asks for a role', () => {
         // their role (CLEAN-240). An Admin sets it for single Users only.
         'GET /assistant-access',
         'PUT /assistant-access/roles/:role',
+        // Creating the template the Ranch assistant is made from: what the
+        // assistant is built from is the Owner's (CLEAN-271). The writes to
+        // an existing ingredient keep their Admin role and are refused per
+        // resource (`@ChangesAssistantIngredient`, assistantBuildRoutes.spec).
+        'POST /rancher/template',
       ].sort(),
     );
   });

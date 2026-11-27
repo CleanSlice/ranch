@@ -1,6 +1,7 @@
 export * from './setting.types';
 export { ISettingGateway } from './setting.gateway';
 export * from './settingCatalog';
+export * from './ownerOnlySettings';
 export {
   IInfraConfigGateway,
   type WorkflowProviderTypes,

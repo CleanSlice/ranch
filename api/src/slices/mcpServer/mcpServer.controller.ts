@@ -16,8 +16,10 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { ChangesAssistantIngredient } from '#/agent/assistantBuild/guards';
+import { AssistantBuildService } from '#/agent/assistantBuild/domain/assistantBuild.service';
 import { IMcpServerGateway } from './domain';
-import { CreateMcpServerDto, UpdateMcpServerDto } from './dtos';
+import { CreateMcpServerDto, McpServerDto, UpdateMcpServerDto } from './dtos';
 import { McpToolSummaryDto } from './dtos/mcpToolSummary.dto';
 import { McpRegistryService } from '#/mcp/services/mcp-registry.service';
 import { JwtAuthGuard, Roles, RolesGuard } from '#/user/auth/guards';
@@ -31,13 +33,15 @@ export class McpServerController {
   constructor(
     private gateway: IMcpServerGateway,
     private registry: McpRegistryService,
+    private build: AssistantBuildService,
   ) {}
 
   @Get()
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
   @ApiOperation({ summary: 'List all MCP servers registered in this Ranch.' })
-  findAll() {
-    return this.gateway.findAll();
+  @ApiOkResponse({ type: [McpServerDto] })
+  async findAll() {
+    return this.build.mark('mcpServer', await this.gateway.findAll());
   }
 
   // Before `:id`, or Express reads "tools" as an id.
@@ -67,10 +71,11 @@ export class McpServerController {
   @Get(':id')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
   @ApiOperation({ summary: 'Get an MCP server by id.' })
+  @ApiOkResponse({ type: McpServerDto })
   async findById(@Param('id') id: string) {
     const server = await this.gateway.findById(id);
     if (!server) throw new NotFoundException('MCP server not found');
-    return server;
+    return this.build.markOne('mcpServer', server);
   }
 
   @Post()
@@ -82,7 +87,11 @@ export class McpServerController {
 
   @Patch(':id')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
-  @ApiOperation({ summary: 'Update an MCP server.' })
+  @ChangesAssistantIngredient('mcpServer', 'id')
+  @ApiOperation({
+    summary:
+      'Update an MCP server. A server the Ranch assistant is handed (attached to its template, or one of the built-ins every agent gets) receives its calls, and the Ranch server its token: 403 ASSISTANT_BUILT_FROM for anybody but the Owner, here and on DELETE (CLEAN-271).',
+  })
   async update(@Param('id') id: string, @Body() dto: UpdateMcpServerDto) {
     const existing = await this.gateway.findById(id);
     if (!existing) throw new NotFoundException('MCP server not found');
@@ -100,6 +109,7 @@ export class McpServerController {
 
   @Delete(':id')
   @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @ChangesAssistantIngredient('mcpServer', 'id')
   @ApiOperation({
     summary:
       'Delete an MCP server. Built-in entries (e.g. the Ranch MCP itself) cannot be deleted — only disabled.',

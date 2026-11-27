@@ -5,7 +5,9 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   ACCESS_SCOPE_NOTE,
+  BUILT_FROM_NOTE,
   CONFIRM_SENTENCE,
+  builtFromRefusal,
   accessScope,
   callerIsOperator,
   confirmed,
@@ -289,7 +291,8 @@ export class LlmTool implements IConditionallyListedTool {
       'label, status (active/disabled) or capabilities, or replace the key. ' +
       'Only the fields passed change. Returns the row without the key. ' +
       'Agents already running keep the old values until restarted ' +
-      '(restart_agent).',
+      '(restart_agent). ' +
+      BUILT_FROM_NOTE,
     parameters: z.object({
       id: z.string().describe('Credential id, from list_llms'),
       provider: z.string().optional(),
@@ -329,6 +332,15 @@ export class LlmTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const existing = await this.llms.findById(id);
     if (!existing) return ok({ error: NOT_FOUND });
+    // The model, the address behind the provider and the key the assistant
+    // runs on are what it thinks with (CLEAN-271).
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'llmCredential',
+      id,
+      plainName(existing),
+    );
+    if (builtFrom) return builtFrom;
     // Only what was passed: prisma would treat an explicit undefined as
     // "leave alone" anyway, but the `changed` list below must be honest.
     const data = Object.fromEntries(
@@ -365,6 +377,8 @@ export class LlmTool implements IConditionallyListedTool {
       'and will fail to start until update_agent points them at another; ' +
       'the tool names them before asking. The key is gone for good — there ' +
       'is no other copy. ' +
+      BUILT_FROM_NOTE +
+      ' ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       id: z.string().describe('Credential id, from list_llms'),
@@ -382,6 +396,13 @@ export class LlmTool implements IConditionallyListedTool {
     const { id } = args;
     const credential = await this.llms.findById(id);
     if (!credential) return ok({ error: NOT_FOUND });
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'llmCredential',
+      id,
+      plainName(credential),
+    );
+    if (builtFrom) return builtFrom;
 
     // Name the agents that would be orphaned in the confirmation itself, so
     // the person says yes to the real consequence, not to an id.
@@ -498,6 +519,11 @@ function describe(c: ILlmCredentialData) {
   };
 }
 
+/** The credential as a person names it: its label, else provider/model. */
+function plainName(c: ILlmCredentialData): string {
+  return c.label ?? `${c.provider}/${c.model}`;
+}
+
 function displayName(c: ILlmCredentialData): string {
-  return `«${c.label ?? `${c.provider}/${c.model}`}»`;
+  return `«${plainName(c)}»`;
 }

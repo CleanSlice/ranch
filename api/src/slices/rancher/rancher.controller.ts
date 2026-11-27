@@ -52,11 +52,14 @@ export class RancherController {
     return rancherStatusFor(status, { reaches, manages });
   }
 
+  // Owner only since CLEAN-271: this creates the template the Ranch
+  // assistant is made from and seeds its instructions. What the assistant is
+  // built from is the Owner's, before the assistant exists as much as after.
   @Post('template')
-  @Roles(UserRoleTypes.Owner, UserRoleTypes.Admin)
+  @Roles(UserRoleTypes.Owner)
   @ApiOperation({
     summary:
-      'Create the special Rancher template (idempotent). Returns the existing one if already created.',
+      'Create the special Rancher template (idempotent). Returns the existing one if already created. Owner only: it is what the Ranch assistant is built from (CLEAN-271).',
   })
   ensureTemplate() {
     return this.rancherService.ensureTemplate();

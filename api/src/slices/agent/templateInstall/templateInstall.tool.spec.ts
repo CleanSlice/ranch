@@ -213,6 +213,8 @@ describe('TemplateInstallTool — install_template_from_git', () => {
       'main',
       { language: 'ru' },
       { MCP_RANCH_AUTH: SECRET },
+      // The rule about which template an install may replace (CLEAN-271).
+      expect.any(Function),
     );
     expect(text).toContain('"templateId": "support-bot"');
     expect(text).toContain('"filesUploaded": 4');
@@ -244,6 +246,7 @@ describe('TemplateInstallTool — install_template_from_git', () => {
       undefined,
       {},
       {},
+      expect.any(Function),
     );
   });
 });

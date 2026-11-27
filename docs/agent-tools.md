@@ -624,7 +624,7 @@ What a restart assembles (`AgentDeployService.restartAgent`,
 | Its knowledge bases and their documents | what `query_knowledge` retrieves into its turns | the Owner |
 | `rancher.seeded_hash` | a changed hash makes the next API start wipe and reseed the Rancher template | the Owner (the `rancher` setting group) |
 | `agent_defaults.image` | the image `RancherService.ensureTemplate` gives the Rancher template when the Owner generates it; read nowhere else | the Owner (that one key) |
-| The settings every pod is built with: `integrations.*` (hub address and key, bucket, S3 endpoint and keys, `ranch_api_url`, secret provider), `infrastructure.*` | env of every pod | **an Admin still**: see "Left open" below |
+| The settings every pod is built with: `integrations.*` (hub address and key, bucket, S3 endpoints and keys, `ranch_api_url`, secret provider), `infrastructure.*` (where the manifest is posted), `knowledge.*`, `a2a.*` | env of every pod, and the API's own work for the agent | an Admin writes them, for every agent but the assistant: see "The settings it is deployed from" below |
 
 Which resources those are is read off the rows at the moment of the call
 (`AssistantBuildService.ingredients`, `agent/assistantBuild`): the
@@ -714,12 +714,55 @@ credential for every agent, the assistant included, is the Owner's to edit
 or delete; so is a template or a skill the assistant shares with ordinary
 agents, and the built-in servers for the whole Ranch.
 
-**Left open.** The `integrations` and `infrastructure` settings are still
-an Admin's, and several of them decide what the assistant loads or where its
-token goes: `s3_bucket` / `s3_endpoint` (the workspace it pulls),
-`ranch_api_url` and `bridle_url` (where it sends its Owner token and whom
-it takes messages from), `secret_provider`. Closing them takes the Settings
-area away from Admins and is a product decision, not made here.
+**The settings it is deployed from.** An Admin runs the installation from
+the Settings pages and keeps doing so. Several of those settings decide what
+the assistant loads and where its token goes, so the assistant is deployed
+from the values **the Owner approved**, not from the live ones
+(`AssistantSettingService`, `setting/domain/settingScope.ts`):
+
+- The groups are `integrations`, `infrastructure`, `knowledge`,
+  `agent_defaults` and `a2a` (`APPROVED_SETTING_GROUPS`): every group read
+  while a pod is deployed or while the API works for an agent. Whole groups,
+  so a key added to one is covered the day it is added.
+- There is no copy of the settings. A person's write goes through
+  `ISettingGateway.writeBy`; when it is not the Owner's and the group is one
+  of those, the value the setting HAD is kept in `AssistantSettingPin`, in
+  the same transaction and the same stored form. No row means approved =
+  live, which is every installation at the migration and every setting only
+  the Owner touched. The Owner's write removes the row; so does a value that
+  comes back to the approved one. Nothing is initialised when an assistant
+  is created or promoted.
+- Settings have one reader, `ISettingGateway`, and every read is made in one
+  of three states carried by `AsyncLocalStorage`: **approved** for work done
+  for the assistant (`servingAssistant(true, …)`: its deploy, restart, stop,
+  env preview, and every HTTP request that carries its token or names its
+  id in a route parameter, the query or the body), **live** for work that
+  said it is for another agent or for none (an ordinary agent's deploy,
+  every other HTTP request), and **undeclared** for work that said nothing
+  (the hub's socket handlers, scheduled jobs), which reads approved. Code
+  that forgot to say whom it works for fails towards the Owner.
+- The Owner sees what is kept back: `GET /rancher/settings`,
+  `get_assistant_settings`, `settingsDrift` on the Owner's
+  `GET /rancher/status` and `get_rancher_status`, and a notice on the
+  Rancher page. A key, what happened (changed, added, removed), who and
+  when; never a value. `POST /rancher/settings/apply` and
+  `apply_settings_to_assistant` (`owner`, `confirm`) make the live values the
+  approved ones for exactly the list the Owner was shown: each row carries a
+  `version`, the tool an `applyToken`, and a list that changed since is
+  refused whole (409 `SETTINGS_CHANGED`). An Admin is told under the form:
+  "The Ranch assistant keeps the values the Owner approved; this change
+  applies to other agents."
+
+What stays live, and what that means:
+
+| Live | Effect on the assistant |
+|---|---|
+| The hub's check of a runtime's key reads the API's own `BRIDLE_API_KEY` env, not the setting | None from the setting. `integrations.bridle_api_key` is only what a pod is GIVEN; a changed value keeps other agents from connecting until they restart |
+| `aws/s3/S3Repository` builds its client once per process from the settings it read first | Chat attachments and knowledge files use that client for every agent. It is not the assistant's workspace, template or secrets, which connect per call and are served approved. A changed bucket reaches it only after an API restart, and then in the state of whoever reads first |
+| Work that declares nothing, while a setting is kept back | Reads the approved value: the hub's handlers and scheduled jobs follow an Admin's change to these groups only after the Owner applied it. Availability for other agents, never a redirect of the assistant |
+| An Admin reads every setting's value (`GET /settings`) | Includes `integrations.bridle_api_key`. Where that equals the API's `BRIDLE_API_KEY`, whoever holds it can connect to the hub as any agent's runtime, the assistant's included, and receive what is sent to it. Not closed here: the Settings forms are filled from those values |
+| The platform's own writes (`upsert` on the gateway: seeded defaults, a migration flag) | Not a person's, so nothing is kept back for them |
+
 Template-scoped paddock scenarios are tests, not ingredients.
 
 `mcp/assistantBuiltFrom.spec.ts` calls every write tool through the real
@@ -751,6 +794,7 @@ written once and no tool or route changes it.
 | Tool file (under `api/src/slices/`) | Audience | The console route it mirrors |
 |---|---|---|
 | `agent/agent/agentAdmin.tool.ts` | `admin`; `manage-agent` for the six tools that name one agent; `person` for `pin_agent` (`PUT`/`DELETE agents/:id/pin`: User) | `agents`: Owner, Admin; `PUT`/`DELETE agents/:id`, restart, stop, start: `@ManagesAgent` |
+| `agent/assistantBuild/assistantSetting.tool.ts` | `owner` | `GET /rancher/settings`, `POST /rancher/settings/apply`: Owner |
 | `agent/agentChannel/agentChannel.tool.ts` | `manage-agent` | `agents/:id/channels`: Owner, Admin, `@ManagesAgent` |
 | `agent/event/agentEvent.tool.ts` | `admin`; `owner` for `set_notification_destination`, `send_test_notification`, `remove_notification_destination` | `agent-events`, `agent-incidents`, reading the destination: Admin. Setting, testing, removing it: Owner |
 | `agent/file/file.tool.ts` | `manage-agent` | `agents/:agentId/files`: Admin by default, `@ManagesAgent` |
@@ -1151,6 +1195,13 @@ puts the block back (it is idempotent and `make init` runs it).
   filed in `assistantBuiltFrom.spec.ts` and `assistantBuildRoutes.spec.ts`.
   A write that finds its target by a name or a manifest asks about the row
   it found.
+- Does the code read a setting? Then it reads through `ISettingGateway`,
+  never the table, and the work it belongs to says whom it is for
+  (`servingAssistant` / `servingAgentId`, or an HTTP request, which the
+  interceptor declares). `assistantSettings.spec.ts` fails on a file that
+  reads `prisma.setting`, on a deploy step that reads undeclared, and on a
+  deploy that reads a group outside `APPROVED_SETTING_GROUPS`. Does it
+  write one for a person? Then through `writeSettingBy`.
 - Does the tool list, name or use an agent's colleagues? Then it takes the
   caller's view from `PeerAccessService` (see "Whose colleague"), answers a
   hidden connection as one that does not exist, and a masked one without its

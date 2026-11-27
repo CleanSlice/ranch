@@ -252,9 +252,14 @@ mayChange(caller, resource) =
 Tools answer `reason: "owner_only"` in one sentence; routes keep their role
 and answer 403 `ASSISTANT_BUILT_FROM`. Reads are unchanged. Creating a
 resource is not a change; binding it to the assistant is a write to the
-assistant's template or row. `canManage` itself is unchanged. The
-`integrations` and `infrastructure` settings, which shape every pod, stay
-with Admins: an open decision, recorded in docs/agent-tools.md.
+assistant's template or row. `canManage` itself is unchanged.
+
+The settings that shape every pod (`integrations`, `infrastructure`,
+`knowledge`, `agent_defaults`, `a2a`) stay an Admin's to write. The
+assistant is deployed from the values the Owner approved: a setting somebody
+else changed keeps its previous value for the assistant until the Owner
+applies it (`POST /rancher/settings/apply`, Owner only, bound to the list the
+Owner was shown). How, and what stays live, is in docs/agent-tools.md.
 
 ## 6. A role on every route
 

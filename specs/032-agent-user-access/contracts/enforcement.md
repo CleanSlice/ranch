@@ -238,6 +238,16 @@ Pinned by `api/src/slices/mcp/narrowedLists.spec.ts` and
   its id whatever base the path named; it answers 404 for a source of
   another base now, so the base the rule is asked about is the one written.
 - `GET` lists and details of the five kinds carry `assistantDependency`.
+  For anybody but the Owner the secret of an ingredient (`apiKey`,
+  `authValue`) is a fixed placeholder there, in `GET /agents/:id/env` and in
+  `GET /agents/:id/mcps` read by a person.
+- `GET /rancher/settings` and `POST /rancher/settings/apply` are
+  `@Roles(Owner)`: the settings kept back from the assistant, and applying
+  them. `PUT /settings/agent_defaults/image` is the Owner's too.
+- A fifth global piece, an interceptor this time
+  (`AssistantSettingInterceptor`): every HTTP request declares how it reads
+  settings, approved when it carries the assistant's token or names its id
+  in a parameter, the query or the body, live otherwise.
 
 Pinned by `api/src/slices/agent/assistantBuild/guards/assistantBuildRoutes.spec.ts`
 and `api/src/slices/mcp/assistantBuiltFrom.spec.ts`.

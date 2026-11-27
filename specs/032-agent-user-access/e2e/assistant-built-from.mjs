@@ -27,6 +27,12 @@
 // editing for the other one of its kind. As the Owner: no line anywhere,
 // and everything edits.
 //
+// The settings the assistant is deployed from: an Admin changes one, every
+// other agent gets it, the assistant keeps the value the Owner approved.
+// The API says which are kept back, to the Owner only and never with a
+// value; the Settings page tells the Admin in one line; the Rancher page
+// shows the Owner what differs and applies it on a confirmation.
+//
 // The app console has none of these pages: it lists agents and talks to
 // them. Nothing there to check; assistant-pages.mjs walks what it has.
 //
@@ -342,6 +348,102 @@ section('The tools, as an Admin: one sentence, `reason: "owner_only"`, nothing w
   check((await fingerprint()) === before, 'afterwards the Owner reads every ingredient exactly as before');
 }
 
+// ------------------------------------------- settings the assistant runs on
+const KEPT = { group: 'integrations', name: 's3_endpoint_agent', value: 'https://e2e-271-changed.access-e2e.test' };
+const KEPT_LINE = 'The Ranch assistant keeps the values the Owner approved; this change applies to other agents.';
+const keptPath = `/settings/${KEPT.group}/${KEPT.name}`;
+const keptBefore = await api(keptPath, { as: OWNER });
+/** An Admin changes a setting the assistant's pod is built from. */
+const adminChangesSetting = () =>
+  api(keptPath, { method: 'PUT', body: { value: KEPT.value, valueType: 'string' }, as: ADMIN_USER });
+/** The Owner applies the list exactly as the API lists it now. */
+async function applyShown() {
+  const shown = (await api('/rancher/settings', { as: OWNER })).body?.drift ?? [];
+  if (shown.length === 0) return { status: 200 };
+  return api('/rancher/settings/apply', {
+    method: 'POST',
+    body: { shown: shown.map(({ group, name, version }) => ({ group, name, version })) },
+    as: OWNER,
+  });
+}
+/** Back to what it was before this script, written by the Owner: nothing is kept back afterwards. */
+async function restoreSetting() {
+  if (keptBefore.status === 200) {
+    await api(keptPath, { method: 'PUT', body: { value: keptBefore.body.value, valueType: keptBefore.body.valueType ?? 'string' }, as: OWNER });
+  } else {
+    await api(keptPath, { method: 'DELETE', as: OWNER });
+  }
+  await applyShown();
+}
+
+section('API: the assistant is deployed from the settings the Owner approved');
+{
+  await applyShown();
+  const clean = await api('/rancher/settings', { as: OWNER });
+  check(clean.status === 200 && clean.body?.drift?.length === 0, `GET /rancher/settings as the Owner, nothing changed: an empty list (${clean.status})`);
+
+  const changed = await adminChangesSetting();
+  check(changed.status === 200, `PUT ${keptPath} as the Admin: ${changed.status}, the Settings area is still theirs`);
+  const live = await api(keptPath, { as: ADMIN_USER });
+  check(live.body?.value === KEPT.value, 'the live value is the Admin’s: every other agent is deployed from it');
+
+  const drift = await api('/rancher/settings', { as: OWNER });
+  const row = (drift.body?.drift ?? []).find((d) => d.group === KEPT.group && d.name === KEPT.name);
+  check(
+    drift.body?.drift?.length === 1 && row && ['changed', 'added'].includes(row.change) && typeof row.changedByName === 'string',
+    `GET /rancher/settings as the Owner: that one key, what happened and who (${row?.change} by ${row?.changedByName})`,
+  );
+  check(!JSON.stringify(drift.raw).includes('e2e-271-changed'), 'and no value in the body');
+  const status = await api('/rancher/status', { as: OWNER });
+  check(
+    (status.body?.settingsDrift ?? []).some((d) => d.name === KEPT.name) && !JSON.stringify(status.body.settingsDrift).includes('e2e-271-changed'),
+    'GET /rancher/status as the Owner carries it too, without a value',
+  );
+  const adminStatus = await api('/rancher/status', { as: ADMIN_USER });
+  check(adminStatus.status === 200 && !('settingsDrift' in (adminStatus.body ?? {})), 'GET /rancher/status as the Admin: no such field');
+  const read = await api('/rancher/settings', { as: ADMIN_USER });
+  const apply = await api('/rancher/settings/apply', { method: 'POST', body: { shown: [] }, as: ADMIN_USER });
+  check(read.status === 403 && apply.status === 403, `GET /rancher/settings and POST …/apply as the Admin: 403 (${read.status}, ${apply.status})`);
+  check((await api('/rancher/settings', { as: OWNER })).body?.drift?.length === 1, 'and the Admin’s attempt applied nothing');
+
+  // The Owner applies what they were shown: a list read before the Admin
+  // changed the setting again is refused, and nothing moves.
+  {
+    const looked = (await api('/rancher/settings', { as: OWNER })).body.drift.map(({ group, name, version }) => ({ group, name, version }));
+    await api(keptPath, { method: 'PUT', body: { value: `${KEPT.value}/swapped`, valueType: 'string' }, as: ADMIN_USER });
+    const stale = await api('/rancher/settings/apply', { method: 'POST', body: { shown: looked }, as: OWNER });
+    check(
+      stale.status === 409 && stale.raw?.code === 'SETTINGS_CHANGED',
+      `POST …/apply with the list as it was before the Admin changed the setting again: 409 SETTINGS_CHANGED (${stale.status})`,
+    );
+    check((await api('/rancher/settings', { as: OWNER })).body?.drift?.length === 1, 'and nothing was applied');
+    await adminChangesSetting();
+  }
+
+  // The Owner writing the setting is the approval.
+  const owners = await api(keptPath, { method: 'PUT', body: { value: KEPT.value, valueType: 'string' }, as: OWNER });
+  check(owners.status === 200 && (await api('/rancher/settings', { as: OWNER })).body?.drift?.length === 0, 'the Owner writes the same setting: nothing is kept back any more');
+  await restoreSetting();
+
+  const mcp = await mcpAs(await tokenFor(ADMIN_USER));
+  const listed = await mcp.list();
+  check(!listed.includes('apply_settings_to_assistant') && !listed.includes('get_assistant_settings'), 'the two tools are not listed for an Admin');
+  await mcp.close();
+  const ownersMcp = await mcpAs(await tokenFor(OWNER));
+  const ownersList = await ownersMcp.list();
+  check(ownersList.includes('apply_settings_to_assistant') && ownersList.includes('get_assistant_settings'), 'and are listed for the Owner');
+  await adminChangesSetting();
+  const said = await ownersMcp.call('get_assistant_settings', {});
+  check(said.text.includes(`${KEPT.group}.${KEPT.name}`) && !said.text.includes('e2e-271-changed'), 'get_assistant_settings as the Owner names the key, not the value');
+  const applyToken = JSON.parse(said.text).applyToken;
+  const asked = await ownersMcp.call('apply_settings_to_assistant', { applyToken });
+  check(/confirm/i.test(asked.text) && (await api('/rancher/settings', { as: OWNER })).body?.drift?.length === 1, 'apply_settings_to_assistant asks first and applies nothing without a confirmation');
+  const wrong = await ownersMcp.call('apply_settings_to_assistant', { applyToken: 'not-the-list', confirm: true });
+  check(/settings_changed/.test(wrong.text) && (await api('/rancher/settings', { as: OWNER })).body?.drift?.length === 1, 'and a confirmation for another list is refused');
+  await ownersMcp.close();
+  // Left changed by the Admin: the console sections below start from it.
+}
+
 // ------------------------------------------------------------- the console
 const browser = await launch();
 try {
@@ -510,8 +612,25 @@ try {
       check(!(await hasNote(page)) && (await page.locator('button:has-text("Delete ")').count()) > 0, 'an ordinary base: no line, its documents can be deleted');
       clean(problems, 'the knowledge pages');
 
+      section(`Management console, ${width} px, as an Admin: Settings`);
+      await open(page, '/settings/storage', async () => (await count(page, '[data-settings-kept-back]')) > 0);
+      {
+        const said = ((await page.locator('[data-settings-kept-back]').first().textContent()) ?? '').replace(/\s+/g, ' ').trim();
+        check(said === KEPT_LINE, `Storage: the line under the form ("${said}")`);
+        check(await has(page, 'Save changes'), 'and Save changes is still theirs');
+        check(await fits(page), 'nothing overflows the page');
+        await page.locator('[data-settings-kept-back]').first().scrollIntoViewIfNeeded();
+        await shot(page, `admin-settings-storage-${width}`);
+      }
+      await open(page, '/settings/bridle', async () => (await count(page, '[data-settings-kept-back]')) > 0);
+      check((await count(page, '[data-settings-kept-back]')) > 0, 'Bridle: the line is there too');
+      await open(page, '/settings/organization', () => has(page, 'Save changes'));
+      check((await count(page, '[data-settings-kept-back]')) === 0, 'Organization: no line, the assistant is not served that setting');
+      clean(problems, 'the Settings pages');
+
       section(`Management console, ${width} px, as an Admin: the Rancher page`);
       await open(page, '/rancher', async () => (await bodyText(page)).includes('Rancher'));
+      check((await count(page, '[data-settings-drift]')) === 0, 'nothing about the settings kept back from the assistant: that is the Owner’s');
       if ((await count(page, '[data-template-owner-only]')) > 0) {
         check(!(await has(page, 'Generate template')), 'the template step: no Generate template, and the reason in its place');
         await page.locator('[data-template-owner-only]').first().scrollIntoViewIfNeeded();
@@ -551,11 +670,36 @@ try {
       await open(page, '/skills', async () => (await bodyText(page)).includes(R.skill.name));
       check((await bodyText(page)).includes(R.skill.name), 'the skills list holds its skill, with Edit like any other');
       clean(problems, 'the Owner’s pages');
+
+      section(`Management console, ${width} px, as the Owner: the settings kept back from the assistant`);
+      await adminChangesSetting();
+      await open(page, '/settings/storage', () => has(page, 'Save changes'));
+      check((await count(page, '[data-settings-kept-back]')) === 0, 'Settings, Storage: no line for the Owner, whose change is the approval');
+      await open(page, '/rancher', async () => (await count(page, '[data-settings-drift]')) > 0);
+      {
+        const notice = ((await page.locator('[data-settings-drift]').first().innerText()) ?? '').replace(/\s+/g, ' ');
+        check(notice.includes(`${KEPT.group}.${KEPT.name}`) && /by access-admin/.test(notice), `the notice names the setting and who changed it ("${notice.slice(0, 150)}…")`);
+        check(!notice.includes('e2e-271-changed'), 'and shows no value');
+        check(await fits(page), 'nothing overflows the page');
+        await shot(page, `owner-rancher-settings-drift-${width}`);
+        await page.locator('[data-action="apply-settings"]').click();
+        await page.locator('[role="alertdialog"], [role="dialog"]').first().waitFor({ state: 'visible', timeout: 10000 });
+        await sleep(600);
+        await shot(page, `owner-rancher-settings-confirm-${width}`);
+        check((await api('/rancher/settings', { as: OWNER })).body?.drift?.length === 1, 'the button asks first: nothing applied yet');
+        await page.locator('[role="alertdialog"] button, [role="dialog"] button').filter({ hasText: /^\s*Apply settings\s*$/ }).first().click();
+        const gone = await until(async () => (await count(page, '[data-settings-drift]')) === 0, { timeout: 15000 });
+        check(gone, 'confirmed: the notice is gone');
+        check((await api('/rancher/settings', { as: OWNER })).body?.drift?.length === 0, 'and the API keeps nothing back any more');
+      }
+      clean(problems, 'the Rancher page, as the Owner');
+      await restoreSetting();
       await context.close();
     }
   }
 } finally {
   await browser.close();
+  await restoreSetting().catch(() => undefined);
   // Back to the fixtures: the allowed writes above changed a few descriptions.
   try {
     execFileSync(process.execPath, [resolve(HERE, 'seed.mjs')], { stdio: 'ignore' });

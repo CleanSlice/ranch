@@ -30,6 +30,10 @@
   --good: #3fb67b;
   --warn: #d4a24c;
   --none: #5b5262;
+  /* A fourth, which the prototype did not have: summarised, and the summary
+     could not tell. Hatched, so that beside "none" it differs by more than a
+     shade of grey. A background, not a colour. */
+  --unclear: repeating-linear-gradient(135deg, #8b8196 0 3px, #5b5262 3px 6px);
   /* Sequential copper, the five steps of the activity calendar. */
   --s0: rgba(255, 255, 255, 0.06);
   --s1: #4a2f22;
@@ -638,6 +642,11 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* One of the two can draw nothing ("Who answers you" without a model): the
+   card that is left takes the row instead of half of it. */
+[data-profile-stats] .stats-two > :only-child {
+  grid-column: 1 / -1;
+}
 
 /* "No price": a dashed outline and the words, never the colour alone. */
 [data-profile-stats] .stats-noprice,
@@ -920,8 +929,9 @@
   display: inline-block;
   vertical-align: -1px;
 }
-/* A column that is not counted yet holds a dash; the words are under the
-   table, once. */
+/* A cell with no share to show holds a dash: an agent without a summarised
+   conversation, or every agent where summaries are not produced. The words
+   for the second are under the table, once. */
 [data-profile-stats] .stats-q .stats-q__pending {
   color: var(--stats-dim);
 }
@@ -931,6 +941,341 @@
 [data-profile-stats] .stats-q .stats-q__hot {
   color: #ef8a7a;
   font-weight: 600;
+}
+
+/* ── conversation summaries (CLEAN-270) ── */
+
+/* A sentence or two where a block has nothing to draw: the "summaries off"
+   card, no topics yet, no open questions. */
+[data-profile-stats] .stats-soft {
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed var(--stats-ln2);
+  border-radius: 14px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  overflow-wrap: break-word;
+}
+[data-profile-stats] .stats-soft b {
+  color: var(--foreground);
+  font-weight: 500;
+}
+/* A mark before a single sentence. */
+[data-profile-stats] .stats-soft--line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+[data-profile-stats] .stats-soft--line svg {
+  flex: none;
+}
+[data-profile-stats] .stats-lg + .stats-soft {
+  margin-top: 12px;
+}
+/* The name of a setting, as an operator types it. Long and without a space:
+   it may break anywhere rather than push the card wider than a phone. */
+[data-profile-stats] .stats-code {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+}
+
+/* ── topics and questions ── */
+[data-profile-stats] .stats-tp {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 20px;
+}
+[data-profile-stats] .stats-tl {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+[data-profile-stats] .stats-trow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(34px, auto);
+  align-items: center;
+  gap: 4px 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  text-align: left;
+}
+[data-profile-stats] .stats-trow:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+[data-profile-stats] .stats-trow__name {
+  overflow: hidden;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-profile-stats] .stats-trow__count {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-align: right;
+}
+/* The pixels are 6 px wide where there is room and narrower where there is
+   not: all of a topic's pixels stay in the row, so the proportion it draws
+   is the whole one. */
+[data-profile-stats] .stats-pix {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 2px;
+  min-width: 0;
+  height: 8px;
+}
+[data-profile-stats] .stats-pix i {
+  flex: 0 1 6px;
+  min-width: 0;
+  height: 8px;
+  border-radius: 2px;
+}
+/* Resolved is the full colour, left open the same colour thinned, and what
+   a summary could not tell an outline with nothing in it. In the row and in
+   the legend under the list alike. */
+[data-profile-stats] .stats-pix i,
+[data-profile-stats] .stats-pix__key {
+  background: var(--c2);
+}
+[data-profile-stats] i.stats-pix__open {
+  background: rgba(201, 161, 228, 0.35);
+}
+[data-profile-stats] i.stats-pix__unclear {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--c0);
+}
+[data-profile-stats] .stats-trow--sel {
+  background: rgba(245, 161, 107, 0.07);
+}
+[data-profile-stats] .stats-trow--sel .stats-trow__name {
+  color: var(--foreground);
+  font-weight: 600;
+}
+[data-profile-stats] .stats-trow--sel .stats-pix i {
+  background: var(--primary);
+}
+[data-profile-stats] .stats-trow--sel i.stats-pix__open {
+  background: rgba(245, 161, 107, 0.38);
+}
+[data-profile-stats] .stats-trow--sel i.stats-pix__unclear {
+  background: none;
+  box-shadow: inset 0 0 0 1px rgba(245, 161, 107, 0.55);
+}
+[data-profile-stats] .stats-tl__legend {
+  margin-top: 10px;
+}
+[data-profile-stats] .stats-qs {
+  min-width: 0;
+  padding-left: 18px;
+  border-left: 1px dashed var(--stats-ln2);
+}
+[data-profile-stats] .stats-qs__title {
+  margin: 0 0 3px;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+[data-profile-stats] .stats-qs__meta {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--stats-dim);
+}
+[data-profile-stats] .stats-qlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* `.stats-q` is the quality table's: a topic's question is `.stats-tq`. */
+[data-profile-stats] .stats-tq {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--stats-hair);
+}
+[data-profile-stats] .stats-tq:first-child {
+  border-top: 0;
+}
+[data-profile-stats] .stats-tq__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-profile-stats] .stats-tq__text b {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+[data-profile-stats] .stats-tq__text small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--stats-dim);
+}
+/* How a question ended: a word and an icon of its own for each, the colour
+   last. */
+[data-profile-stats] .stats-pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border: 1px solid var(--stats-ln);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+[data-profile-stats] .stats-pill--good {
+  border-color: rgba(63, 182, 123, 0.45);
+  color: #7fd6a6;
+}
+[data-profile-stats] .stats-pill--warn {
+  border-color: rgba(212, 162, 76, 0.5);
+  color: #e6bf73;
+}
+[data-profile-stats] .stats-pill--none {
+  color: var(--stats-dim);
+}
+/* One under the other on a narrow screen, as in the prototype, and also
+   from 1024 px, where the pass takes its 400 px beside this column, until
+   the column is wide enough for two again. */
+@media (max-width: 700px), (min-width: 1024px) and (max-width: 1179px) {
+  [data-profile-stats] .stats-tp {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-profile-stats] .stats-qs {
+    padding: 14px 0 0;
+    border-top: 1px dashed var(--stats-ln2);
+    border-left: 0;
+  }
+}
+
+/* ── how conversations end ── */
+/* Two tones to a row in half a row, as in the prototype; four where the
+   card has the row, one where it is narrower than two. */
+[data-profile-stats] .stats-sent {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+[data-profile-stats] .stats-sent li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--stats-hair);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+[data-profile-stats] .stats-sent b {
+  font-family: DotGothic16, 'Geist Mono', monospace;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.1;
+}
+[data-profile-stats] .stats-sent small {
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+[data-profile-stats] .stats-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+[data-profile-stats] .stats-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--stats-ln);
+  border-radius: 999px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+/* ── open questions ── */
+[data-profile-stats] .stats-oq {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+[data-profile-stats] .stats-oq__row {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--stats-hair);
+}
+[data-profile-stats] .stats-oq__row:first-child {
+  padding-top: 2px;
+  border-top: 0;
+}
+[data-profile-stats] .stats-oq__row .stats-av {
+  flex: none;
+}
+[data-profile-stats] .stats-oq__text {
+  flex: 1;
+  min-width: 0;
+}
+/* A question is one line in the prototype, cut with an ellipsis. Two here:
+   on a phone one line shows a few words, and nothing hovers there. The
+   whole of it is in the title of the element. */
+[data-profile-stats] .stats-oq__text b {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+/* The console's own line where no question was quoted: plainly not one. */
+[data-profile-stats] .stats-oq__text .stats-oq__unquoted {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+[data-profile-stats] .stats-oq__text small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--stats-dim);
+  overflow-wrap: anywhere;
+}
+/* `.stats-go` brings the margin it has under an empty card's text. */
+[data-profile-stats] .stats-oq__row .stats-go {
+  flex: none;
+  margin-top: 0;
+}
+/* On a phone the link goes under the question, in line with it, and the
+   question gets the width. 42 px is the avatar and the gap after it. */
+@media (max-width: 479px) {
+  [data-profile-stats] .stats-oq__row {
+    flex-wrap: wrap;
+  }
+  [data-profile-stats] .stats-oq__text {
+    flex-basis: calc(100% - 42px);
+  }
+  [data-profile-stats] .stats-oq__row .stats-go {
+    margin-left: 42px;
+  }
 }
 
 /* ── empty and failed ── */
@@ -1082,6 +1427,7 @@
   [data-profile-stats] .stats-lg i,
   [data-profile-stats] .stats-chart svg,
   [data-profile-stats] .stats-rk__bar,
+  [data-profile-stats] .stats-pix i,
   [data-profile-stats-tip] .stats-tip__row i {
     forced-color-adjust: none;
   }

@@ -2,15 +2,29 @@ import type { StatsPeriod } from '../utils/statsView';
 
 // The personal period view (CLEAN-258): what `GET /me/stats` answers for one
 // person and one period, as the profile's Statistics tab reads it. Counts,
-// names and times only: nothing that was written.
+// names and times, and since CLEAN-270 one thing that was written: the main
+// question of a summarised conversation, as its summary worded it, shown to
+// the person who asked it and to nobody else.
 //
 // Instants are `Date` here, parsed once in the mapper. A calendar day stays
 // the `YYYY-MM-DD` string the API sent: it is a day in the viewer's zone, and
 // reading it into a `Date` would apply this browser's zone a second time
 // (see `utils/calendarGrid.ts`).
 
-/** The figures whose history can start inside the period. */
-export type StatsNoteFigure = 'activity' | 'ratings' | 'citations' | 'handovers';
+/**
+ * The figures of a person's view, as the API names them: the ones whose
+ * history can start inside the period, and since CLEAN-270 `outcomes` and
+ * `topics`. Those two are read where the summaries are kept and have no
+ * first record, so the API never sends a note for them and no block looks
+ * for one: how much of a period they cover is said exactly, by `summaries`.
+ */
+export type StatsNoteFigure =
+  | 'activity'
+  | 'ratings'
+  | 'citations'
+  | 'handovers'
+  | 'outcomes'
+  | 'topics';
 
 /** A figure and the same figure of the period before. */
 export interface IStatsCompared {
@@ -31,6 +45,32 @@ export interface IStatsRange {
   previousFrom: Date;
 }
 
+/**
+ * Conversation summaries in this installation and in the period (CLEAN-270).
+ *
+ * `enabled` is the one thing the page branches on. With summaries off every
+ * count that is read from them (here, on the scoreboard, per agent, the
+ * outcomes) is zero because nothing was counted, and the lists are empty: a
+ * zero says nothing, `enabled` does.
+ */
+export interface IStatsSummaries {
+  /** Whether the installation produces conversation summaries. */
+  enabled: boolean;
+  /** Conversations of the period that have a summary. */
+  summarised: number;
+  /** Without one yet, and will get one: not counted in topics or outcomes. */
+  waiting: number;
+  /** Without one, and too short to get one as they stand. Not a backlog. */
+  tooShort: number;
+}
+
+/** A resolved share and what it is a share of. */
+export interface IStatsResolved {
+  resolved: number;
+  /** Conversations with a summary. Zero is "no share to show", not 0%. */
+  summarised: number;
+}
+
 export interface IStatsBoard {
   /** Conversations the person wrote in. */
   conversations: IStatsCompared;
@@ -38,6 +78,8 @@ export interface IStatsBoard {
   messages: IStatsCompared;
   /** Agents that answered, out of the agents the person reaches now. */
   agents: { value: number; reachable: number };
+  /** Conversations the summaries call resolved, out of the summarised. */
+  resolved: IStatsResolved;
 }
 
 export interface IStatsDay {
@@ -60,9 +102,95 @@ export interface IStatsAgent {
   /** The person's own messages to this agent in the period. */
   messages: number;
   conversations: number;
+  /** Of those conversations, the ones a summary calls resolved. */
+  resolved: number;
+  /** Of those conversations, the ones that have a summary. */
+  summarised: number;
   /** As received. Null when the agent has none. */
   model: string | null;
   lastMessageAt: Date | null;
+}
+
+/**
+ * How a summarised conversation ended. `unknown` is a real answer: the
+ * summary could not tell. It is neither resolved nor an open question.
+ */
+export type StatsOutcomeKind = 'resolved' | 'open' | 'unknown';
+
+/** A main question of one conversation under a topic. */
+export interface IStatsTopicQuestion {
+  chatId: string;
+  agentId: string;
+  /** As received. */
+  agentName: string;
+  /** The person's question as the summary worded it. Shown as received. */
+  question: string;
+  /** The conversation's last message. */
+  at: Date | null;
+  outcome: StatsOutcomeKind;
+}
+
+export interface IStatsTopic {
+  id: string;
+  /** In the language of the request, as the API chose it. Shown as received. */
+  label: string;
+  /** Summarised conversations of the period that carry the topic. */
+  conversations: number;
+  resolved: number;
+  /** With `resolved` it can be less than `conversations`: the rest is unknown. */
+  open: number;
+  /** At most four, newest first. Empty when no summary quoted a question. */
+  questions: IStatsTopicQuestion[];
+}
+
+/** The tones a summary can give a conversation. */
+export const STATS_TONES = ['positive', 'neutral', 'mixed', 'negative'] as const;
+export type StatsTone = (typeof STATS_TONES)[number];
+
+export interface IStatsLanguage {
+  /** ISO 639-1, as the summary judged it. */
+  code: string;
+  /** Summarised conversations in that language. */
+  conversations: number;
+}
+
+/**
+ * How the period's conversations ended. The four counts are parts of the
+ * period's conversations and add up to them while summaries are on.
+ */
+export interface IStatsOutcome {
+  resolved: number;
+  open: number;
+  /** Summarised, and the summary could not tell. */
+  unknown: number;
+  /** No summary: waiting for one, or too short for one. */
+  notSummarised: number;
+  /** Among the summarised; can add up to less than them. */
+  sentiment: Record<StatsTone, number>;
+  /** Among the summarised, most first. */
+  languages: IStatsLanguage[];
+}
+
+/** A conversation the summaries call left open. */
+export interface IStatsOpenQuestion {
+  /** With `agentId`, what "Continue" opens. */
+  chatId: string;
+  agentId: string;
+  /** As received. */
+  agentName: string;
+  /** Shown as received. Null when the summary quoted no question. */
+  question: string | null;
+  /** The label of the conversation's first topic, as received. Null when none. */
+  topic: string | null;
+  /** The conversation's last message. */
+  at: Date | null;
+}
+
+export interface IStatsOpenQuestions {
+  /** The newest four, newest first. */
+  items: IStatsOpenQuestion[];
+  /** How many more the period has: with `items` it is `outcome.open`. */
+  more: number;
 }
 
 /**
@@ -116,13 +244,25 @@ export interface IPersonalStats {
   timeZone: string;
   range: IStatsRange;
   notes: IStatsNote[];
+  summaries: IStatsSummaries;
   board: IStatsBoard;
   activity: IStatsActivity;
   /** By the person's messages, most first. */
   agents: IStatsAgent[];
+  /** At most eight, most conversations first. Empty with summaries off. */
+  topics: IStatsTopic[];
+  outcome: IStatsOutcome;
+  openQuestions: IStatsOpenQuestions;
   help: IStatsHelp;
   models: IStatsModels;
 }
+
+/**
+ * The setting that schedules the summary batch, by the name an operator
+ * finds it under. Named once: the "summaries off" card and the line under
+ * the installation's quality table both read it from here.
+ */
+export const SUMMARY_INTERVAL_VARIABLE = 'CHAT_INSIGHT_INTERVAL_SEC';
 
 // The installation period view (CLEAN-265): what `GET /stats/installation`
 // answers for the agents the viewer reaches and one period. Counts, sums,
@@ -243,8 +383,10 @@ export interface IInstallationHealth {
 }
 
 /**
- * How one agent's conversations went. The share left open is not here yet:
- * it is read from conversation summaries, which this view does not carry.
+ * How one agent's conversations went. The share left open is `open` out of
+ * `summarised`; both are zero when the installation produces no summaries
+ * (`IInstallationStats.summaries.enabled`), which is "not counted" and not
+ * "none left open".
  */
 export interface IInstallationQuality {
   agentId: string;
@@ -253,6 +395,10 @@ export interface IInstallationQuality {
   /** Ratings that were down, out of `rated`. */
   down: number;
   rated: number;
+  /** Summarised conversations the summary calls left open. */
+  open: number;
+  /** Of `conversations`, the ones that have a summary. */
+  summarised: number;
 }
 
 /** The channels the console words itself; any other is shown as received. */
@@ -269,6 +415,8 @@ export interface IInstallationStats {
   range: IStatsRange;
   reach: IInstallationReach;
   notes: IInstallationNote[];
+  /** Whether summaries are produced: what the open share of `quality` is read from. */
+  summaries: { enabled: boolean };
   board: IInstallationBoard;
   /** One entry per UTC day of the period, oldest first, today last. */
   daily: IInstallationDay[];
@@ -282,7 +430,7 @@ export interface IInstallationStats {
    */
   projection30d: number | null;
   health: IInstallationHealth;
-  /** Most conversations first. */
+  /** Most conversations first; the table orders them (`utils/qualityRows.ts`). */
   quality: IInstallationQuality[];
   /** Most conversations first; a channel nobody wrote on is absent. */
   channels: IInstallationChannel[];

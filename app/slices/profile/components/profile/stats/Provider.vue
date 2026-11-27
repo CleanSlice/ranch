@@ -25,12 +25,24 @@ import { statsLocation, type StatsPeriod, type StatsScope } from '#profile/utils
  * period and keeps no copy. What it does keep is which period of each scope
  * was last on screen: while another one is on its way, that view stays,
  * dimmed, so the page does not jump to placeholders and back at every switch.
+ *
+ * Topics, outcomes and open questions are read from conversation summaries
+ * (CLEAN-270), which an installation may not produce. The answer says so in
+ * `summaries.enabled`, and that field alone decides between the three blocks
+ * and the one card that stands in for them. A zero decides nothing: with
+ * summaries off every count is zero, and with them on a new account's are
+ * zero too, and the two are different pages.
  */
 const props = defineProps<{
   scope: StatsScope;
   period: StatsPeriod;
   /** The signed-in person's initials, as the pass shows them. */
   initials: string;
+  /**
+   * The owner or an administrator, by the rule that offers the scope switch:
+   * the "summaries off" card tells them what switches summaries on.
+   */
+  operator: boolean;
 }>();
 
 const store = useProfileStatsStore();
@@ -232,6 +244,7 @@ const PLACEHOLDERS: Record<StatsScope, readonly { block: string; height: number 
         >
           <ProfileStatsBoard
             :board="heldMine.board"
+            :summaries-enabled="heldMine.summaries.enabled"
             :period="heldMine.period"
             :since="since(heldMine.notes, ACTIVITY)"
             data-stats-block="board"
@@ -246,21 +259,66 @@ const PLACEHOLDERS: Record<StatsScope, readonly { block: string; height: number 
           <ProfileStatsAgents
             v-if="heldMine.agents.length"
             :agents="heldMine.agents"
+            :summaries-enabled="heldMine.summaries.enabled"
             :period="heldMine.period"
             :initials="initials"
             data-stats-block="agents"
             style="--i: 2"
           />
-          <!-- Beside "How conversations end" once summaries are shown; until
-               then it has the row to itself. -->
-          <ProfileStatsModels :models="heldMine.models" data-stats-block="models" style="--i: 3" />
+          <!-- By `summaries.enabled`, never by a zero: three blocks where
+               summaries are produced, one card where they are not. -->
+          <template v-if="heldMine.summaries.enabled">
+            <ProfileStatsTopics
+              :topics="heldMine.topics"
+              :summaries="heldMine.summaries"
+              :conversations="heldMine.board.conversations.value"
+              :period="heldMine.period"
+              data-stats-block="topics"
+              style="--i: 3"
+            />
+            <!-- Side by side; one under the other under 640 px. "Who answers
+                 you" draws nothing when no message has a model, and
+                 `.stats-two` then gives the whole row to the card left. -->
+            <div class="stats-two">
+              <ProfileStatsOutcome
+                :outcome="heldMine.outcome"
+                data-stats-block="outcome"
+                style="--i: 4"
+              />
+              <ProfileStatsModels
+                :models="heldMine.models"
+                data-stats-block="models"
+                style="--i: 5"
+              />
+            </div>
+            <ProfileStatsOpenQuestions
+              :questions="heldMine.openQuestions"
+              :summarised="heldMine.summaries.summarised"
+              :period="heldMine.period"
+              data-stats-block="open-questions"
+              style="--i: 6"
+            />
+          </template>
+          <template v-else>
+            <ProfileStatsSummariesOff
+              :operator="operator"
+              data-stats-block="summaries-off"
+              style="--i: 3"
+            />
+            <!-- With no "How conversations end" beside it, it has the row. -->
+            <ProfileStatsModels
+              :models="heldMine.models"
+              data-stats-block="models"
+              style="--i: 4"
+            />
+          </template>
           <ProfileStatsHelp
             :help="heldMine.help"
             :conversations="heldMine.board.conversations.value"
             :period="heldMine.period"
             :since="since(heldMine.notes, HELP)"
             data-stats-block="help"
-            style="--i: 4"
+            :style="{ '--i': heldMine.summaries.enabled ? 7 : 5 }"
           />
         </div>
       </template>
@@ -347,6 +405,7 @@ const PLACEHOLDERS: Record<StatsScope, readonly { block: string; height: number 
             />
             <ProfileStatsQuality
               :quality="heldInstallation.quality"
+              :summaries-enabled="heldInstallation.summaries.enabled"
               :period="heldInstallation.period"
               data-stats-block="quality"
               style="--i: 4"

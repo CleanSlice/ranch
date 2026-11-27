@@ -52,6 +52,14 @@ describe('agentInitials', () => {
     expect(agentInitials('  nes   dennis  ', 'id')).toBe('ND');
   });
 
+  test('an initial is a whole character, not half of one', () => {
+    // An emoji is two UTF-16 units: the first unit alone is a broken glyph.
+    expect(agentInitials('🤖 Helper', 'id')).toBe('🤖H');
+    expect(agentInitials('🦊', 'id')).toBe('🦊');
+    expect(agentInitials('data 🧪lab', 'id')).toBe('D🧪');
+    expect(agentInitials('', '🤖-7f2c')).toBe('🤖');
+  });
+
   test('a blank name falls back to the id, and a blank id to a question mark', () => {
     expect(agentInitials('', 'agent-7f2c')).toBe('A');
     expect(agentInitials(undefined, 'xyz')).toBe('X');

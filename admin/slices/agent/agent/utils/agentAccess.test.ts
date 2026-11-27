@@ -1,13 +1,46 @@
 import { describe, expect, test } from 'bun:test';
 import {
   OWNER_MANAGED_TEXT,
+  builtFromText,
   canManageAgent,
   canPinAgent,
   isOwnerRole,
   notAvailableText,
   ownerOnlyAssistant,
+  ownerOnlyIngredient,
   ownerOnlyLeftOutText,
 } from './agentAccess';
+
+describe('what the assistant is built from (CLEAN-271)', () => {
+  const ingredient = { assistantDependency: true };
+  const plain = { assistantDependency: false };
+
+  test('an Admin looks at an ingredient of the assistant and does not change it', () => {
+    expect(ownerOnlyIngredient('Admin', ingredient)).toBe(true);
+    expect(ownerOnlyIngredient('User', ingredient)).toBe(true);
+    expect(ownerOnlyIngredient(null, ingredient)).toBe(true);
+  });
+
+  test('the Owner changes everything', () => {
+    expect(ownerOnlyIngredient('Owner', ingredient)).toBe(false);
+  });
+
+  test('a resource the assistant does not use is an Admin’s as before', () => {
+    expect(ownerOnlyIngredient('Admin', plain)).toBe(false);
+    // An older API build sends no mark: nothing is locked by the console.
+    expect(ownerOnlyIngredient('Admin', {})).toBe(false);
+    expect(ownerOnlyIngredient('Admin', null)).toBe(false);
+  });
+
+  test('the line names the assistant to a viewer who has it', () => {
+    expect(builtFromText('Rancher')).toBe(
+      'Part of what Rancher, the Ranch assistant, is built from: only the Owner can change it.',
+    );
+    expect(builtFromText('  ')).toBe(
+      'Part of what the Ranch assistant is built from: only the Owner can change it.',
+    );
+  });
+});
 
 const ranchAdmin = { isAdmin: true };
 const ordinary = { isAdmin: false };

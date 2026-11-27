@@ -6,6 +6,7 @@ import { groupMeta } from '#skill/domain/skill.groups';
 import { formatTokens } from '#skill/utils/formatTokens';
 import { skillFolder } from '#skill/utils/slugify';
 import { shareOfLibrary } from '#skill/utils/summary';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 const props = defineProps<{
   skill: ISkillData | null;
@@ -18,6 +19,10 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ delete: [skill: ISkillData] }>();
+
+// A skill the Ranch assistant ships: read here, changed by the Owner
+// (CLEAN-271). One line in place of Delete; the other button opens it.
+const { locked, note } = useBuiltFrom(() => props.skill);
 
 const meta = computed(() => groupMeta(props.skill?.group));
 const folder = computed(() => (props.skill ? skillFolder(props.skill.name) : ''));
@@ -109,18 +114,21 @@ watch(
       </div>
 
       <SkillPanelDeleteInline
-        v-if="confirming"
+        v-if="confirming && !locked"
         :slug="skill.name"
         :templates="skill.templates"
         :deleting="deleting"
         @keep="confirming = false"
         @confirm="emit('delete', skill)"
       />
-      <footer v-else class="flex items-center gap-2 border-t pt-4">
-        <Button as-child>
-          <NuxtLink :to="`/skills/${skill.id}/edit`">Edit skill</NuxtLink>
-        </Button>
-        <Button variant="ghost" class="text-destructive" data-action="start-delete" @click="confirming = true">Delete</Button>
+      <footer v-else class="flex flex-col gap-3 border-t pt-4">
+        <AccessNote v-if="locked" data-built-from>{{ note }}</AccessNote>
+        <div class="flex items-center gap-2">
+          <Button :variant="locked ? 'outline' : 'default'" as-child>
+            <NuxtLink :to="`/skills/${skill.id}/edit`">{{ locked ? 'View skill' : 'Edit skill' }}</NuxtLink>
+          </Button>
+          <Button v-if="!locked" variant="ghost" class="text-destructive" data-action="start-delete" @click="confirming = true">Delete</Button>
+        </div>
       </footer>
     </template>
 

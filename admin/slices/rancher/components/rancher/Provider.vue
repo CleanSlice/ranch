@@ -344,7 +344,16 @@ async function onDeploy() {
             <IconCircle v-else class="size-4 text-muted-foreground" />
           </div>
         </CardHeader>
-        <CardContent v-if="!stepDone.template" class="flex flex-col gap-2">
+        <!-- The template the assistant is made from is the Owner's to
+             create, as the agent is (CLEAN-271). -->
+        <CardContent
+          v-if="!stepDone.template && !isOwner"
+          class="text-sm text-muted-foreground"
+          data-template-owner-only
+        >
+          Only the Owner can generate the template the Ranch assistant is built from.
+        </CardContent>
+        <CardContent v-else-if="!stepDone.template" class="flex flex-col gap-2">
           <div>
             <Button
               :disabled="!stepDone.llm || !stepDone.s3 || generatingTemplate"

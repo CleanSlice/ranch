@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import type { IMcpServerData } from '#mcpServer/stores/mcpServer';
 import { IconDotsVertical, IconShield, IconTrash } from '@tabler/icons-vue';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 const mcpServerStore = useMcpServerStore();
+// A server the Ranch assistant is handed is the Owner's to change
+// (CLEAN-271): for anybody else the row opens it to look at, with no Delete.
+const { lockedFor } = useBuiltFrom();
 
 const { data: items, pending } = await useAsyncData(
   'admin-mcp-servers',
@@ -100,9 +104,9 @@ async function onRemove() {
             <TableCell @click.stop>
               <div class="flex justify-end gap-2">
                 <Button size="sm" variant="outline" as-child>
-                  <NuxtLink :to="`/mcps/${m.id}`">Edit</NuxtLink>
+                  <NuxtLink :to="`/mcps/${m.id}`">{{ lockedFor(m) ? 'View' : 'Edit' }}</NuxtLink>
                 </Button>
-                <DropdownMenu>
+                <DropdownMenu v-if="!lockedFor(m)">
                   <DropdownMenuTrigger as-child>
                     <Button size="sm" variant="ghost" class="size-8 p-0">
                       <span class="sr-only">Open menu</span>

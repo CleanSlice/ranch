@@ -9,6 +9,7 @@ import {
 import { formatDate } from '#common/utils/format';
 import TemplateTile from '../Tile.vue';
 import TemplateListActions from './Actions.vue';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 /**
  * One template in the table view (CLEAN-130): the same facts as the card,
@@ -23,6 +24,8 @@ const props = defineProps<{
 }>();
 
 defineEmits<{ restart: []; remove: [] }>();
+
+const { locked } = useBuiltFrom(() => props.template);
 
 const cpu = computed(() => cpuLabel(props.template.defaultResources.cpu));
 const memory = computed(() => memoryLabel(props.template.defaultResources.memory));
@@ -67,6 +70,7 @@ const capabilities = computed(() =>
     <TableCell class="text-right" @click.stop>
       <TemplateListActions
         :template-id="template.id"
+        :locked="locked"
         @restart="$emit('restart')"
         @remove="$emit('remove')"
       />

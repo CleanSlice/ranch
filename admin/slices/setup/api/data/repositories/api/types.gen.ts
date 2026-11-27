@@ -69,6 +69,28 @@ export type CreateApiKeyDto = {
   expiresAt?: string;
 };
 
+export type LlmCredentialDto = {
+  id: string;
+  provider: string;
+  model: string;
+  fallbackModel?: {
+    [key: string]: unknown;
+  };
+  label?: {
+    [key: string]: unknown;
+  };
+  apiKey: string;
+  status: "active" | "disabled";
+  supportsChat: boolean;
+  supportsEmbedding: boolean;
+  /**
+   * True when the Ranch assistant is built from this resource (CLEAN-271): only the Owner can change it, and a console shows it read-only to anybody else.
+   */
+  assistantDependency: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CreateLlmCredentialDto = {
   provider: string;
   model: string;
@@ -97,6 +119,38 @@ export type LlmHealthCheckResultDto = {
   provider: string;
   model: string;
   error?: string;
+};
+
+export type TemplateDto = {
+  id: string;
+  name: string;
+  description: string;
+  image: string;
+  defaultConfig: {
+    [key: string]: unknown;
+  };
+  defaultResources: {
+    [key: string]: unknown;
+  };
+  defaultKnowledgeIds: Array<string>;
+  /**
+   * IDs of skills attached to this template.
+   */
+  skillIds: Array<string>;
+  /**
+   * Documents MCP tool names agents of this template may list and call; null means every tool (CLEAN-209).
+   */
+  toolAllowlist: Array<string> | null;
+  /**
+   * IDs of MCP servers attached to this template.
+   */
+  mcpServerIds: Array<string>;
+  /**
+   * True when the Ranch assistant is built from this resource (CLEAN-271): only the Owner can change it, and a console shows it read-only to anybody else.
+   */
+  assistantDependency: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type CreateTemplateDto = {
@@ -1296,6 +1350,26 @@ export type AgentLoadDto = {
   apiReplicas: number;
 };
 
+export type McpServerDto = {
+  id: string;
+  name: string;
+  description: string | null;
+  url: string;
+  transport: "streamableHttp" | "sse";
+  authType: "none" | "bearer" | "header" | "oauth";
+  authValue: string | null;
+  oauthClientId: string | null;
+  enabled: boolean;
+  builtIn: boolean;
+  templateIds: Array<string>;
+  /**
+   * True when the Ranch assistant is built from this resource (CLEAN-271): only the Owner can change it, and a console shows it read-only to anybody else.
+   */
+  assistantDependency: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type McpToolSummaryDto = {
   name: string;
   topic: string | null;
@@ -1373,6 +1447,10 @@ export type KnowledgeListItemDto = {
    * Whether people an agent answers may open and download the documents of this base that were cited to them. Closed until the keeper opens it; never per source.
    */
   readerAccess: "closed" | "open";
+  /**
+   * True when the Ranch assistant is built from this resource (CLEAN-271): only the Owner can change it, and a console shows it read-only to anybody else.
+   */
+  assistantDependency: boolean;
   createdAt: string;
   updatedAt: string;
   sourcesCount: number;
@@ -1622,6 +1700,71 @@ export type AddFromArchiveResultDto = {
   jobId: string;
 };
 
+/**
+ * Library group on the admin Skills page
+ */
+export enum SkillGroup {
+  API = "api",
+  ROUTING = "routing",
+  SPEC_LOOKUP = "spec-lookup",
+  ANSWER_FORMAT = "answer-format",
+  RUNTIME = "runtime",
+}
+
+export type SkillTemplateRefDto = {
+  id: string;
+  name: string;
+};
+
+export type SkillDto = {
+  id: string;
+  name: string;
+  title: string;
+  description?: {
+    [key: string]: unknown;
+  };
+  /**
+   * Markdown body of the skill (SKILL.md)
+   */
+  body: string;
+  /**
+   * Sibling files mounted alongside SKILL.md
+   */
+  files: Array<Array<unknown>>;
+  /**
+   * Number of sibling files besides SKILL.md
+   */
+  filesCount: number;
+  /**
+   * Origin URL if imported
+   */
+  source?: {
+    [key: string]: unknown;
+  };
+  /**
+   * Library group on the admin Skills page
+   */
+  group?: SkillGroup | null;
+  /**
+   * Shared display order of the Skills page. Changes nothing for agents or templates.
+   */
+  sortOrder: number;
+  /**
+   * ceil(body.length / 4), shown as "≈ N tokens"
+   */
+  tokenEstimate: number;
+  /**
+   * Templates that ship this skill (read-only here)
+   */
+  templates: Array<SkillTemplateRefDto>;
+  /**
+   * True when the Ranch assistant is built from this resource (CLEAN-271): only the Owner can change it, and a console shows it read-only to anybody else.
+   */
+  assistantDependency: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type SkillOrderItemDto = {
   id: string;
   /**
@@ -1688,17 +1831,6 @@ export type ImportSkillDto = {
    */
   overwrite?: boolean;
 };
-
-/**
- * Library group on the admin Skills page; null clears it
- */
-export enum SkillGroup {
-  API = "api",
-  ROUTING = "routing",
-  SPEC_LOOKUP = "spec-lookup",
-  ANSWER_FORMAT = "answer-format",
-  RUNTIME = "runtime",
-}
 
 export type CreateSkillDto = {
   /**
@@ -4161,8 +4293,11 @@ export type LlmControllerFindAllData = {
 };
 
 export type LlmControllerFindAllResponses = {
-  200: unknown;
+  200: Array<LlmCredentialDto>;
 };
+
+export type LlmControllerFindAllResponse =
+  LlmControllerFindAllResponses[keyof LlmControllerFindAllResponses];
 
 export type LlmControllerCreateData = {
   body: CreateLlmCredentialDto;
@@ -4198,8 +4333,11 @@ export type LlmControllerFindByIdData = {
 };
 
 export type LlmControllerFindByIdResponses = {
-  200: unknown;
+  200: LlmCredentialDto;
 };
+
+export type LlmControllerFindByIdResponse =
+  LlmControllerFindByIdResponses[keyof LlmControllerFindByIdResponses];
 
 export type LlmControllerUpdateData = {
   body: UpdateLlmCredentialDto;
@@ -4238,8 +4376,11 @@ export type TemplateControllerFindAllData = {
 };
 
 export type TemplateControllerFindAllResponses = {
-  200: unknown;
+  200: Array<TemplateDto>;
 };
+
+export type TemplateControllerFindAllResponse =
+  TemplateControllerFindAllResponses[keyof TemplateControllerFindAllResponses];
 
 export type TemplateControllerCreateData = {
   body: CreateTemplateDto;
@@ -4275,8 +4416,11 @@ export type TemplateControllerFindByIdData = {
 };
 
 export type TemplateControllerFindByIdResponses = {
-  200: unknown;
+  200: TemplateDto;
 };
+
+export type TemplateControllerFindByIdResponse =
+  TemplateControllerFindByIdResponses[keyof TemplateControllerFindByIdResponses];
 
 export type TemplateControllerUpdateData = {
   body: UpdateTemplateDto;
@@ -5813,8 +5957,11 @@ export type McpServerControllerFindAllData = {
 };
 
 export type McpServerControllerFindAllResponses = {
-  200: unknown;
+  200: Array<McpServerDto>;
 };
+
+export type McpServerControllerFindAllResponse =
+  McpServerControllerFindAllResponses[keyof McpServerControllerFindAllResponses];
 
 export type McpServerControllerCreateData = {
   body: CreateMcpServerDto;
@@ -5864,8 +6011,11 @@ export type McpServerControllerFindByIdData = {
 };
 
 export type McpServerControllerFindByIdResponses = {
-  200: unknown;
+  200: McpServerDto;
 };
+
+export type McpServerControllerFindByIdResponse =
+  McpServerControllerFindByIdResponses[keyof McpServerControllerFindByIdResponses];
 
 export type McpServerControllerUpdateData = {
   body: UpdateMcpServerDto;
@@ -6251,8 +6401,11 @@ export type SkillControllerFindAllData = {
 };
 
 export type SkillControllerFindAllResponses = {
-  200: unknown;
+  200: Array<SkillDto>;
 };
+
+export type SkillControllerFindAllResponse =
+  SkillControllerFindAllResponses[keyof SkillControllerFindAllResponses];
 
 export type SkillControllerCreateData = {
   body: CreateSkillDto;
@@ -6385,8 +6538,11 @@ export type SkillControllerFindByIdData = {
 };
 
 export type SkillControllerFindByIdResponses = {
-  200: unknown;
+  200: SkillDto;
 };
+
+export type SkillControllerFindByIdResponse =
+  SkillControllerFindByIdResponses[keyof SkillControllerFindByIdResponses];
 
 export type SkillControllerUpdateData = {
   body: UpdateSkillDto;

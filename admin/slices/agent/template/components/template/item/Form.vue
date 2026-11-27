@@ -8,6 +8,8 @@ const props = defineProps<{
   initialValues?: ICreateTemplateData;
   submitLabel?: string;
   submitting?: boolean;
+  /** Shown to look at, not to change: no Save (CLEAN-271). The caller disables the fields. */
+  readOnly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -163,7 +165,7 @@ function onSubmit(): void {
       </CardContent>
     </Card>
 
-    <div class="flex items-center gap-3">
+    <div v-if="!readOnly" class="flex items-center gap-3">
       <Button type="submit" :disabled="submitting">
         {{ submitting ? 'Saving…' : (submitLabel ?? 'Create template') }}
       </Button>

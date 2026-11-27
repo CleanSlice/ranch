@@ -140,6 +140,70 @@ export const CreateApiKeyDtoSchema = {
   required: ["name", "scopes"],
 } as const;
 
+export const LlmCredentialDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    provider: {
+      type: "string",
+      example: "anthropic",
+    },
+    model: {
+      type: "string",
+      example: "claude-sonnet-4-6",
+    },
+    fallbackModel: {
+      type: "object",
+    },
+    label: {
+      type: "object",
+    },
+    apiKey: {
+      type: "string",
+    },
+    status: {
+      type: "string",
+      example: "active",
+      enum: ["active", "disabled"],
+    },
+    supportsChat: {
+      type: "boolean",
+      default: true,
+    },
+    supportsEmbedding: {
+      type: "boolean",
+      default: false,
+    },
+    assistantDependency: {
+      type: "boolean",
+      description:
+        "True when the Ranch assistant is built from this resource (CLEAN-271): only the Owner can change it, and a console shows it read-only to anybody else.",
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: [
+    "id",
+    "provider",
+    "model",
+    "apiKey",
+    "status",
+    "supportsChat",
+    "supportsEmbedding",
+    "assistantDependency",
+    "createdAt",
+    "updatedAt",
+  ],
+} as const;
+
 export const CreateLlmCredentialDtoSchema = {
   type: "object",
   properties: {
@@ -238,6 +302,87 @@ export const LlmHealthCheckResultDtoSchema = {
     },
   },
   required: ["ok", "latencyMs", "provider", "model"],
+} as const;
+
+export const TemplateDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+    },
+    image: {
+      type: "string",
+    },
+    defaultConfig: {
+      type: "object",
+    },
+    defaultResources: {
+      type: "object",
+    },
+    defaultKnowledgeIds: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    skillIds: {
+      description: "IDs of skills attached to this template.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    toolAllowlist: {
+      nullable: true,
+      description:
+        "Documents MCP tool names agents of this template may list and call; null means every tool (CLEAN-209).",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    mcpServerIds: {
+      description: "IDs of MCP servers attached to this template.",
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    assistantDependency: {
+      type: "boolean",
+      description:
+        "True when the Ranch assistant is built from this resource (CLEAN-271): only the Owner can change it, and a console shows it read-only to anybody else.",
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "description",
+    "image",
+    "defaultConfig",
+    "defaultResources",
+    "defaultKnowledgeIds",
+    "skillIds",
+    "toolAllowlist",
+    "mcpServerIds",
+    "assistantDependency",
+    "createdAt",
+    "updatedAt",
+  ],
 } as const;
 
 export const CreateTemplateDtoSchema = {
@@ -2797,6 +2942,82 @@ export const AgentLoadDtoSchema = {
   ],
 } as const;
 
+export const McpServerDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+    },
+    description: {
+      type: "string",
+      nullable: true,
+    },
+    url: {
+      type: "string",
+    },
+    transport: {
+      type: "string",
+      enum: ["streamableHttp", "sse"],
+    },
+    authType: {
+      type: "string",
+      enum: ["none", "bearer", "header", "oauth"],
+    },
+    authValue: {
+      type: "string",
+      nullable: true,
+    },
+    oauthClientId: {
+      type: "string",
+      nullable: true,
+    },
+    enabled: {
+      type: "boolean",
+    },
+    builtIn: {
+      type: "boolean",
+    },
+    templateIds: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    assistantDependency: {
+      type: "boolean",
+      description:
+        "True when the Ranch assistant is built from this resource (CLEAN-271): only the Owner can change it, and a console shows it read-only to anybody else.",
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "description",
+    "url",
+    "transport",
+    "authType",
+    "authValue",
+    "oauthClientId",
+    "enabled",
+    "builtIn",
+    "templateIds",
+    "assistantDependency",
+    "createdAt",
+    "updatedAt",
+  ],
+} as const;
+
 export const McpToolSummaryDtoSchema = {
   type: "object",
   properties: {
@@ -2958,6 +3179,11 @@ export const KnowledgeListItemDtoSchema = {
       description:
         "Whether people an agent answers may open and download the documents of this base that were cited to them. Closed until the keeper opens it; never per source.",
     },
+    assistantDependency: {
+      type: "boolean",
+      description:
+        "True when the Ranch assistant is built from this resource (CLEAN-271): only the Owner can change it, and a console shows it read-only to anybody else.",
+    },
     createdAt: {
       format: "date-time",
       type: "string",
@@ -2991,6 +3217,7 @@ export const KnowledgeListItemDtoSchema = {
     "instanceError",
     "migrationState",
     "readerAccess",
+    "assistantDependency",
     "createdAt",
     "updatedAt",
     "sourcesCount",
@@ -3580,6 +3807,123 @@ export const AddFromArchiveResultDtoSchema = {
   required: ["detected", "started", "jobId"],
 } as const;
 
+export const SkillGroupSchema = {
+  type: "string",
+  enum: ["api", "routing", "spec-lookup", "answer-format", "runtime"],
+  description: "Library group on the admin Skills page",
+} as const;
+
+export const SkillTemplateRefDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+      example: "Product Advisor",
+    },
+  },
+  required: ["id", "name"],
+} as const;
+
+export const SkillDtoSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+      example: "devops",
+    },
+    title: {
+      type: "string",
+      example: "DevOps engineer",
+    },
+    description: {
+      type: "object",
+    },
+    body: {
+      type: "string",
+      description: "Markdown body of the skill (SKILL.md)",
+    },
+    files: {
+      description: "Sibling files mounted alongside SKILL.md",
+      example: [
+        {
+          path: "references/security.md",
+          content: "# Security…",
+        },
+      ],
+      type: "array",
+      items: {
+        type: "array",
+      },
+    },
+    filesCount: {
+      type: "number",
+      description: "Number of sibling files besides SKILL.md",
+    },
+    source: {
+      type: "object",
+      description: "Origin URL if imported",
+    },
+    group: {
+      nullable: true,
+      description: "Library group on the admin Skills page",
+      allOf: [
+        {
+          $ref: "#/components/schemas/SkillGroup",
+        },
+      ],
+    },
+    sortOrder: {
+      type: "number",
+      description:
+        "Shared display order of the Skills page. Changes nothing for agents or templates.",
+    },
+    tokenEstimate: {
+      type: "number",
+      description: 'ceil(body.length / 4), shown as "≈ N tokens"',
+    },
+    templates: {
+      description: "Templates that ship this skill (read-only here)",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/SkillTemplateRefDto",
+      },
+    },
+    assistantDependency: {
+      type: "boolean",
+      description:
+        "True when the Ranch assistant is built from this resource (CLEAN-271): only the Owner can change it, and a console shows it read-only to anybody else.",
+    },
+    createdAt: {
+      format: "date-time",
+      type: "string",
+    },
+    updatedAt: {
+      format: "date-time",
+      type: "string",
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "title",
+    "body",
+    "files",
+    "filesCount",
+    "sortOrder",
+    "tokenEstimate",
+    "templates",
+    "assistantDependency",
+    "createdAt",
+    "updatedAt",
+  ],
+} as const;
+
 export const SkillOrderItemDtoSchema = {
   type: "object",
   properties: {
@@ -3698,12 +4042,6 @@ export const ImportSkillDtoSchema = {
     },
   },
   required: ["repo", "path"],
-} as const;
-
-export const SkillGroupSchema = {
-  type: "string",
-  enum: ["api", "routing", "spec-lookup", "answer-format", "runtime"],
-  description: "Library group on the admin Skills page; null clears it",
 } as const;
 
 export const CreateSkillDtoSchema = {

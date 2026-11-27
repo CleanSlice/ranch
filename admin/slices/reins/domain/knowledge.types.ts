@@ -73,6 +73,8 @@ export interface IKnowledge {
   instanceError: string | null;
   migrationState: MigrationState;
   readerAccess: ReaderAccess;
+  /** The Ranch assistant is built from it: read-only to anybody but the Owner (CLEAN-271). */
+  assistantDependency: boolean;
   /** Present on list entries — context for choosing a base. */
   sourcesCount?: number;
   totalSizeBytes?: number;

@@ -19,6 +19,7 @@ const t = (
   skillIds: [],
   mcpServerIds: [],
   toolAllowlist: null,
+  assistantDependency: false,
   createdAt,
   updatedAt: createdAt,
 });

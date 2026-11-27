@@ -34,6 +34,8 @@ export class LlmMapper {
       status: str(o.status),
       supportsChat: o.supportsChat === true,
       supportsEmbedding: o.supportsEmbedding === true,
+      // An older API build sends none: nothing is locked.
+      assistantDependency: o.assistantDependency === true,
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
     };

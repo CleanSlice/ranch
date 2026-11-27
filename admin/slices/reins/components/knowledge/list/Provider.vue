@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import type { IKnowledge } from '#reins/stores/knowledge';
 import { formatDateTime } from '#common/utils/format';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 const store = useKnowledgeStore();
+// A base the Ranch assistant retrieves from is the Owner's to delete
+// (CLEAN-271).
+const { lockedFor } = useBuiltFrom();
 const confirmStore = useConfirmStore();
 
 const search = ref('');
@@ -129,6 +133,7 @@ async function onRemove(item: IKnowledge) {
                   <NuxtLink :to="`/knowledges/${item.id}`">Open</NuxtLink>
                 </Button>
                 <Button
+                  v-if="!lockedFor(item)"
                   size="sm"
                   variant="ghost"
                   class="text-destructive"

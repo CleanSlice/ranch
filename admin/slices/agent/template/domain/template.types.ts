@@ -17,6 +17,8 @@ export interface ITemplateData {
   mcpServerIds: string[];
   /** Documents MCP tool names agents of this template get; null = every tool (CLEAN-209). */
   toolAllowlist: string[] | null;
+  /** The Ranch assistant is built from it: read-only to anybody but the Owner (CLEAN-271). */
+  assistantDependency: boolean;
   version?: string;
   createdAt: string;
   updatedAt: string;

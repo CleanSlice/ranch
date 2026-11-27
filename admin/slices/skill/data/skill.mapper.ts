@@ -43,6 +43,8 @@ export class SkillMapper {
       sortOrder: int(o.sortOrder),
       tokenEstimate: int(o.tokenEstimate),
       templates: this.toTemplateRefs(o.templates),
+      // An older API build sends none: nothing is locked.
+      assistantDependency: o.assistantDependency === true,
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
     };

@@ -10,6 +10,7 @@ import {
 import { formatDate } from '#common/utils/format';
 import TemplateTile from '../Tile.vue';
 import TemplateListActions from './Actions.vue';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 /**
  * One template in the cards view (CLEAN-130): who it is, what it gives an
@@ -22,6 +23,8 @@ const props = defineProps<{
 }>();
 
 defineEmits<{ restart: []; remove: [] }>();
+
+const { locked } = useBuiltFrom(() => props.template);
 
 const cpu = computed(() => cpuLabel(props.template.defaultResources.cpu));
 const memory = computed(() => memoryLabel(props.template.defaultResources.memory));
@@ -50,6 +53,7 @@ const tag = computed(() => imageTag(props.template.image));
       </div>
       <TemplateListActions
         :template-id="template.id"
+        :locked="locked"
         class="-mr-1.5 -mt-1"
         @restart="$emit('restart')"
         @remove="$emit('remove')"

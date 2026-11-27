@@ -147,6 +147,8 @@ export class KnowledgeMapper {
           ? (o.migrationState as MigrationState)
           : 'done',
       readerAccess: o.readerAccess === 'open' ? 'open' : 'closed',
+      // An older API build sends none: nothing is locked.
+      assistantDependency: o.assistantDependency === true,
       sourcesCount:
         typeof o.sourcesCount === 'number' ? o.sourcesCount : undefined,
       totalSizeBytes:

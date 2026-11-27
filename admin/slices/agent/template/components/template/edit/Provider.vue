@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ICreateTemplateData } from '#template/stores/template';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 const props = defineProps<{ id: string }>();
 
@@ -18,6 +19,10 @@ const [{ data: template, pending }, { data: knowledges }] = await Promise.all([
     knowledgeStore.fetchStatus(),
   ),
 ]);
+
+// Reached by its address by somebody who is not the Owner, the template the
+// Ranch assistant is built from is shown, not edited (CLEAN-271).
+const { locked, note } = useBuiltFrom(template);
 
 async function onSubmit(values: ICreateTemplateData): Promise<void> {
   submitting.value = true;
@@ -39,11 +44,15 @@ function onCancel(): void {
 
     <template v-else-if="template">
       <div>
-        <h1 class="text-2xl font-semibold">Edit template</h1>
+        <h1 class="text-2xl font-semibold">{{ locked ? 'Template' : 'Edit template' }}</h1>
         <p class="text-sm text-muted-foreground">{{ template.name }}</p>
       </div>
 
+      <AccessNote v-if="locked" data-built-from>{{ note }}</AccessNote>
+
+      <fieldset :disabled="locked" class="contents">
       <TemplateItemForm
+        :read-only="locked"
         :knowledges="knowledges ?? []"
         :knowledge-service-enabled="knowledgeStore.enabled"
         :initial-values="{
@@ -59,6 +68,7 @@ function onCancel(): void {
         @submit="onSubmit"
         @cancel="onCancel"
       />
+      </fieldset>
     </template>
 
     <div v-else class="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">

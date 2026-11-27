@@ -8,7 +8,15 @@ import { until } from '@vueuse/core';
 import AgentFileTree from '#agentFile/components/agentFile/Tree.vue';
 import AgentFileViewer from './Viewer.vue';
 
-const props = defineProps<{ id: string }>();
+const props = defineProps<{
+  id: string;
+  /**
+   * Files to read, not to write (CLEAN-271): the template the Ranch
+   * assistant is built from, for anybody but the Owner. No upload, no save;
+   * the tree and the content stay.
+   */
+  readOnly?: boolean;
+}>();
 
 const store = useTemplateFileStore();
 const confirmStore = useConfirmStore();
@@ -196,6 +204,7 @@ await useAsyncData(`admin-template-files-${props.id}`, async () => {
           @change="onFolderPicked"
         />
         <Button
+          v-if="!readOnly"
           size="sm"
           variant="outline"
           :disabled="uploading"
@@ -250,6 +259,7 @@ await useAsyncData(`admin-template-files-${props.id}`, async () => {
           :load-error="contentError"
           :save-error="saveError"
           :dirty="dirty"
+          :read-only="readOnly"
           @update:content="(v: string) => (content = v)"
           @save="onSave"
         />

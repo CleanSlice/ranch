@@ -71,6 +71,40 @@ export function notAvailableText(viewerRole: string | null | undefined): string 
     : 'It does not exist, or it is not yours to read.';
 }
 
+// ── What the assistant is built from (CLEAN-271) ────────────────
+//
+// The assistant is the Owner's alone, and so is everything its pod is put
+// together from at the next restart: its template and that template's
+// files, the skills and tool servers the template attaches, the model
+// credential and the knowledge bases its row names. The API marks each such
+// resource `assistantDependency` on its lists and details, and refuses
+// anybody else's write with 403 `ASSISTANT_BUILT_FROM`. A page shows such a
+// resource read-only, with one line, and offers no control that would be
+// refused.
+
+/**
+ * Whether `resource` is one this viewer may look at and not change: one the
+ * assistant is built from, for anybody but the Owner.
+ */
+export function ownerOnlyIngredient(
+  viewerRole: string | null | undefined,
+  resource: { assistantDependency?: boolean } | null | undefined,
+): boolean {
+  return !isOwnerRole(viewerRole) && resource?.assistantDependency === true;
+}
+
+/**
+ * "Part of what Rancher, the Ranch assistant, is built from: only the Owner
+ * can change it." `name` is the assistant's, empty for a viewer who does not
+ * have it.
+ */
+export function builtFromText(name: string): string {
+  const whose = name.trim()
+    ? `${name.trim()}, the Ranch assistant,`
+    : 'the Ranch assistant';
+  return `Part of what ${whose} is built from: only the Owner can change it.`;
+}
+
 /**
  * Whether a pin is offered on an agent (CLEAN-269). A pin keeps an agent at
  * the top of the viewer's own lists; the Ranch assistant is the first row of

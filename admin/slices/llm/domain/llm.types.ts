@@ -10,6 +10,8 @@ export interface ILlmCredentialData {
   status: string;
   supportsChat: boolean;
   supportsEmbedding: boolean;
+  /** The Ranch assistant is built from it: read-only to anybody but the Owner (CLEAN-271). */
+  assistantDependency: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -119,9 +119,19 @@ export class UsageGateway extends IUsageGateway {
     return records.map((r) => this.mapper.toEntity(r));
   }
 
-  async findRange(from: Date, to: Date): Promise<IUsageData[]> {
+  async findRange(
+    from: Date,
+    to: Date,
+    agentIds?: readonly string[],
+  ): Promise<IUsageData[]> {
+    // No agent is not every agent: without this an empty list would read
+    // the whole range.
+    if (agentIds && agentIds.length === 0) return [];
     const records = await this.prisma.usage.findMany({
-      where: { date: { gte: from, lt: to } },
+      where: {
+        date: { gte: from, lt: to },
+        ...(agentIds ? { agentId: { in: [...agentIds] } } : {}),
+      },
       orderBy: [{ date: 'desc' }, { model: 'asc' }],
     });
     return records.map((r) => this.mapper.toEntity(r));

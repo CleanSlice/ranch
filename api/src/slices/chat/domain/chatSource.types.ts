@@ -6,6 +6,8 @@
  * specs/020-chat-sources/contracts/sources.md.
  */
 
+import { IChatAgentScope } from './chat.types';
+
 /** A source as the runtime names it in its `sources` event (and as a tool
  * result carries it). `id` is the Ranch Source id. */
 export type IChatSourceInput =
@@ -75,6 +77,64 @@ export interface IRecordSourcesInput {
 export interface IChatSourceViewer {
   clientId: string;
   isAdmin: boolean;
+}
+
+// ── What a statistics view reads (CLEAN-258, docs/statistics.md) ──
+
+/**
+ * The citations of one chat identity with `createdAt` in `[from, to]`, both
+ * ends included. `agentScope` is what `AgentReach.where()` hands back: the
+ * agents the person reaches. Absent, no agent is left out.
+ */
+export interface ICitationRange {
+  clientId: string;
+  from: Date;
+  to: Date;
+  agentScope?: IChatAgentScope;
+}
+
+/** One answer that cited at least one source: whose it was and when. */
+export interface ICitedAnswer {
+  agentId: string;
+  messageId: string;
+  /** When its first source was recorded. */
+  at: Date;
+}
+
+/**
+ * Citations counted as the rows name their source: the base's id and its
+ * name as it was when cited, or the web. A base renamed inside the range
+ * arrives as two groups with one `knowledgeId`.
+ */
+export interface ICitationGroup {
+  kind: ChatSourceKinds;
+  knowledgeId: string | null;
+  knowledgeName: string | null;
+  citations: number;
+  lastCitedAt: Date;
+}
+
+/** How often one source was cited: a knowledge base, or the web. */
+export interface ICitedSource {
+  /** The base's name, or `WEB_SOURCE_NAME` for every web page together. */
+  name: string;
+  citations: number;
+}
+
+/** The name every web citation is counted under. */
+export const WEB_SOURCE_NAME = 'web';
+
+/** What `ChatSourceService.citedForClient` answers. */
+export interface ICitedForClient {
+  /**
+   * One entry per answer that came with sources, oldest first. A citation
+   * names its agent and its moment, not its conversation (the row has no
+   * key to one, and outlives it), so whoever counts conversations matches
+   * these against the hours the conversations were active in.
+   */
+  answers: { agentId: string; at: Date }[];
+  /** Every source that can be named, most cited first, equal ones by name. */
+  sources: ICitedSource[];
 }
 
 /** The most entries one bubble may cite; more is a runaway, not an answer. */

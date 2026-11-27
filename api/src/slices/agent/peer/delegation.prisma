@@ -50,4 +50,6 @@ model AgentDelegation {
   durationMs    Int?
 
   @@index([agentId, startedAt])
+  // Hand-overs made while answering one person, over a period (CLEAN-258).
+  @@index([clientId, startedAt])
 }

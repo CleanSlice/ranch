@@ -1,7 +1,9 @@
 import {
+  DEFAULT_PERIOD,
   PERIODS,
   bucketByDay,
   installationRange,
+  isPeriod,
   localDay,
   personalRange,
   resolveZone,
@@ -124,6 +126,33 @@ const CASES: {
     },
   },
 ];
+
+describe('isPeriod', () => {
+  it('knows the three periods and the one a view opens with', () => {
+    expect(PERIODS.filter(isPeriod)).toEqual([7, 30, 90]);
+    expect(DEFAULT_PERIOD).toBe(30);
+    expect(isPeriod(DEFAULT_PERIOD)).toBe(true);
+  });
+
+  it('refuses every other number, and a period written as text', () => {
+    for (const value of [
+      0,
+      1,
+      14,
+      31,
+      365,
+      -7,
+      7.5,
+      NaN,
+      '30',
+      null,
+      undefined,
+      [7],
+    ]) {
+      expect([value, isPeriod(value)]).toEqual([value, false]);
+    }
+  });
+});
 
 describe('PERIODS', () => {
   it('offers 7, 30 and 90 days', () => {

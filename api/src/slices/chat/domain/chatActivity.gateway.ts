@@ -1,4 +1,5 @@
 import { IActivityBucket } from './activityBuckets';
+import { IChatAgentScope, IPersonActivityHour } from './chat.types';
 
 /** Which conversations a settle run takes. */
 export interface IChatSettleGate {
@@ -68,4 +69,22 @@ export abstract class IChatActivityGateway {
 
   /** Delete the hours that began before `date`. Returns how many. */
   abstract pruneBefore(date: Date): Promise<number>;
+
+  /**
+   * One person's hours on one channel, for a statistics view (CLEAN-258):
+   * every row whose hour starts in `[from, to]`, both ends included, oldest
+   * first. `agentScope` keeps it to the agents the person reaches; without
+   * it no agent is left out.
+   *
+   * Bounded by the person and the range, never by the history: it is one
+   * range of the index on `[externalUserId, channel, hour]`. The widest view
+   * asks for 180 days (a 90-day period and the one before it).
+   */
+  abstract findHoursForPerson(
+    externalUserId: string,
+    channel: string,
+    from: Date,
+    to: Date,
+    agentScope?: IChatAgentScope,
+  ): Promise<IPersonActivityHour[]>;
 }

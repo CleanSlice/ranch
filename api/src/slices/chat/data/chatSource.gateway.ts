@@ -3,6 +3,9 @@ import { ChatMessageSource } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import {
   IChatSourceGateway,
+  ICitationGroup,
+  ICitationRange,
+  ICitedAnswer,
   ICreateChatMessageSource,
   IChatMessageSourceData,
 } from '../domain';
@@ -73,6 +76,78 @@ export class ChatSourceGateway extends IChatSourceGateway {
     // so a route cannot read another agent's citation by guessing ids.
     return record && record.agentId === agentId ? toEntity(record) : null;
   }
+
+  async findCitedAnswers(range: ICitationRange): Promise<ICitedAnswer[]> {
+    // One group per answer, however many sources it cited: the rows of one
+    // bubble share its message id (and its agent, which `upsertMany` holds
+    // them to).
+    const groups = await this.prisma.chatMessageSource.groupBy({
+      by: ['agentId', 'messageId'],
+      where: rangeWhere(range),
+      _min: { createdAt: true },
+    });
+    const answers: ICitedAnswer[] = [];
+    for (const group of groups) {
+      // A group is at least one row, so it has a first one; the type says
+      // "or null" because an aggregate over nothing has none.
+      const at = group._min.createdAt;
+      if (at) {
+        answers.push({
+          agentId: group.agentId,
+          messageId: group.messageId,
+          at,
+        });
+      }
+    }
+    return answers.sort((a, b) => a.at.getTime() - b.at.getTime());
+  }
+
+  async countCitationsBySource(
+    range: ICitationRange,
+  ): Promise<ICitationGroup[]> {
+    const groups = await this.prisma.chatMessageSource.groupBy({
+      by: ['kind', 'knowledgeId', 'knowledgeName'],
+      where: rangeWhere(range),
+      _count: { _all: true },
+      _max: { createdAt: true },
+    });
+    const counted: ICitationGroup[] = [];
+    for (const group of groups) {
+      const lastCitedAt = group._max.createdAt;
+      if (!lastCitedAt) continue;
+      counted.push({
+        kind: group.kind === 'web' ? 'web' : 'knowledge',
+        knowledgeId: group.knowledgeId,
+        knowledgeName: group.knowledgeName,
+        citations: group._count._all,
+        lastCitedAt,
+      });
+    }
+    return counted;
+  }
+
+  async firstCreatedAt(): Promise<Date | null> {
+    // No index leads with `createdAt`, so this reads the table once. It is
+    // asked once in an installation's life, at the boot that first sees the
+    // citations figure (FigureRegistry), not when a page is viewed.
+    const found = await this.prisma.chatMessageSource.aggregate({
+      _min: { createdAt: true },
+    });
+    return found._min.createdAt;
+  }
+}
+
+/**
+ * One person's citations in a range: an equality and a range, which is the
+ * index on [clientId, createdAt], and the agents the person reaches when
+ * their lists hide some.
+ */
+function rangeWhere(range: ICitationRange) {
+  return {
+    clientId: range.clientId,
+    createdAt: { gte: range.from, lte: range.to },
+    ...(range.agentScope ? { agentId: range.agentScope } : {}),
+  };
 }
 
 function toEntity(r: ChatMessageSource): IChatMessageSourceData {

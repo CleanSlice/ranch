@@ -68,6 +68,10 @@ const EXPECTED_USER_ROUTES = [
   'DELETE /me/chats/:id/feedback/:messageId',
   'GET /me/chats/:id/feedback',
   'GET /me/chats/:id/export',
+  // Their own statistics (CLEAN-258), read by the Statistics tab of the
+  // profile in the user console. The person is the token's and no parameter
+  // names another; only conversations with agents they reach are counted.
+  'GET /me/stats',
   // The MCP endpoints, open to every authenticated bearer (@AnyBearer in
   // app.module.ts). What a User may list and call there is decided per tool,
   // by its audience; toolAudience.spec.ts pins that.

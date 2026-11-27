@@ -51,6 +51,9 @@ model ChatSession {
   // and the index holds them together, so a run does not walk half a year of
   // conversations to find nothing.
   @@index([activityRebuiltAt, lastMessageAt])
+  // One person's conversations, newest first: the statistics of a period
+  // start from the conversations that person wrote in (CLEAN-258).
+  @@index([externalUserId, channel, lastMessageAt])
 }
 
 model ChatFeedback {
@@ -65,4 +68,9 @@ model ChatFeedback {
   createdAt DateTime    @default(now())
 
   @@unique([sessionId, messageId, authorId])
+  // Ratings over a period (CLEAN-258): one person's, and an installation's.
+  // Read where they are, by time; they are not copied into a counter, since
+  // a rating can be changed or withdrawn.
+  @@index([authorId, createdAt])
+  @@index([createdAt])
 }

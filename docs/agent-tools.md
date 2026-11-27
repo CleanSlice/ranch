@@ -425,6 +425,7 @@ written once and no tool or route changes it.
 | `reins/knowledge/knowledgeDocuments.tool.ts` | `agent` | none: the documents of the calling agent's bases |
 | `setting/setting.tool.ts` | `admin` | `settings`: no role stated |
 | `skill/skill.tool.ts` | `admin` | `skills`: no role stated |
+| `stats/stats.tool.ts` | `person` | `me/stats`: User. The person's own statistics; there is no argument that names a person |
 | `upgrade/upgrade.tool.ts` | `admin` | `upgrade`: Owner, Admin |
 | `usage/usage.tool.ts` | `admin` | `usage/overview`: no role stated |
 | `user/agentAccess/agentAccess.tool.ts` | `admin` | `users/:id/agent-access`: Admin. Who may read and change whose access, and the ceiling, are the service's, the same for both |
@@ -517,6 +518,7 @@ its tables.
 | the 35 `manage-agent` tools | through `manageable` |
 | `list_agent_limits`, `list_skill_agents`, `get_usage_overview`, `llm_usage`, `list_paddock_evaluations`, `list_paddock_scenarios` | filtered; usage totals are of the reached agents |
 | `list_chats`, `list_agent_events`, `list_agent_incidents` | `agentScope` in the query; an `agentId` argument is checked |
+| `get_my_stats` (`person`) | the statistics of the person the call is made for, over the agents that person reaches now: a conversation with an agent taken away is in no figure, and a colleague the person does not reach is counted but not named |
 | `agent_usage`, the four share-link tools, `sync_chats`, `start_mcp_oauth`, `run_paddock_evaluation`, `list_agent_paddock_scenarios`, `create_paddock_scenario`, `generate_paddock_scenarios` | the agent id is checked |
 | `get_chat`, `get_chat_messages`, `summarize_chat`, `export_chat`, the paddock evaluation tools by id, `get` / `update` / `delete_paddock_scenario` | the record's agent is checked |
 | `delete_llm` | names the agents that would lose their model only when the caller reaches them; the rest are counted |

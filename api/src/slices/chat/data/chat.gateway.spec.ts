@@ -1098,3 +1098,299 @@ describe('ChatGateway feedback', () => {
     expect(await gw.listFeedbackByAuthor('c1', 'u2')).toHaveLength(1);
   });
 });
+
+// ── What a period view reads (CLEAN-258) ──────────────────────
+
+type AgentScope = { in?: string[]; notIn?: string[] };
+
+const inScope = (agentId: string, scope: AgentScope | undefined) =>
+  (scope?.in === undefined || scope.in.includes(agentId)) &&
+  (scope?.notIn === undefined || !scope.notIn.includes(agentId));
+
+/** A condition the fake does not know fails the test; it never matches all. */
+const onlyKnown = (where: Row, known: string[]) => {
+  const unknown = Object.keys(where).filter((k) => !known.includes(k));
+  if (unknown.length) {
+    throw new Error(`the fake cannot answer: ${unknown.join(', ')}`);
+  }
+};
+
+/**
+ * Conversations and ratings as the period reads ask for them, with each
+ * condition applied as Postgres applies it. `authorId` can be NULL, and a
+ * NULL is equal to nothing: such a rating is nobody's.
+ */
+function makePeriodStub(sessions: Row[] = [], ratings: Row[] = []) {
+  const agentOf = (sessionId: unknown) =>
+    sessions.find((s) => s.id === sessionId)?.agentId as string | undefined;
+
+  const ratingMatches = (
+    r: Row,
+    where: {
+      authorId: string;
+      createdAt: { gte: Date; lte: Date };
+      session?: { agentId: AgentScope };
+    },
+  ) => {
+    onlyKnown(where, ['authorId', 'createdAt', 'session']);
+    if (where.session) onlyKnown(where.session, ['agentId']);
+    const at = (r.createdAt as Date).getTime();
+    if (r.authorId === null || r.authorId !== where.authorId) return false;
+    if (at < where.createdAt.gte.getTime()) return false;
+    if (at > where.createdAt.lte.getTime()) return false;
+    if (!where.session) return true;
+    // A rating always has its conversation (a foreign key), so the join
+    // drops nothing by itself.
+    const agentId = agentOf(r.sessionId);
+    return agentId !== undefined && inScope(agentId, where.session.agentId);
+  };
+
+  const chatSession = {
+    findMany: jest.fn(
+      async ({
+        where,
+        select,
+      }: {
+        where: { id: { in: string[] }; agentId?: AgentScope };
+        select: Record<string, boolean>;
+      }) => {
+        onlyKnown(where, ['id', 'agentId']);
+        return sessions
+          .filter(
+            (s) =>
+              where.id.in.includes(s.id as string) &&
+              inScope(s.agentId as string, where.agentId),
+          )
+          .map((s) =>
+            Object.fromEntries(Object.keys(select).map((k) => [k, s[k]])),
+          );
+      },
+    ),
+  };
+
+  const chatFeedback = {
+    groupBy: jest.fn(
+      async ({
+        by,
+        where,
+      }: {
+        by: string[];
+        where: Parameters<typeof ratingMatches>[1];
+        _count: { _all: true };
+      }) => {
+        if (by.join() !== 'rating') throw new Error(`grouped by ${by.join()}`);
+        const counts = new Map<number, number>();
+        for (const r of ratings.filter((row) => ratingMatches(row, where))) {
+          const rating = r.rating as number;
+          counts.set(rating, (counts.get(rating) ?? 0) + 1);
+        }
+        return [...counts].map(([rating, n]) => ({
+          rating,
+          _count: { _all: n },
+        }));
+      },
+    ),
+    findFirst: jest.fn(
+      async ({
+        orderBy,
+        select,
+      }: {
+        orderBy: { createdAt: 'asc' };
+        select: Record<string, boolean>;
+      }) => {
+        if (orderBy.createdAt !== 'asc') throw new Error('not oldest first');
+        const [first] = [...ratings].sort(
+          (a, b) =>
+            (a.createdAt as Date).getTime() - (b.createdAt as Date).getTime(),
+        );
+        if (!first) return null;
+        return Object.fromEntries(
+          Object.keys(select).map((k) => [k, first[k]]),
+        );
+      },
+    ),
+  };
+
+  const prisma = { chatSession, chatFeedback };
+  const gw = new ChatGateway(
+    prisma as unknown as ConstructorParameters<typeof ChatGateway>[0],
+    new ChatMapper(),
+  );
+  return { gw, prisma };
+}
+
+describe('ChatGateway.findSessionsByIds', () => {
+  const session = (id: string, agentId: string, iso: string): Row => ({
+    id,
+    agentId,
+    lastMessageAt: new Date(iso),
+    preview: 'what the person wrote',
+    summary: 'a summary',
+  });
+
+  it('returns each named conversation with its agent and last message time, and nothing that was said', async () => {
+    const { gw, prisma } = makePeriodStub([
+      session('c1', 'agent-1', '2026-11-26T09:15:00Z'),
+      session('c2', 'agent-2', '2026-11-27T08:00:00Z'),
+      session('c3', 'agent-1', '2026-11-20T08:00:00Z'),
+    ]);
+
+    const found = await gw.findSessionsByIds(['c2', 'c1', 'c-gone']);
+
+    expect(found.sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+      {
+        id: 'c1',
+        agentId: 'agent-1',
+        lastMessageAt: new Date('2026-11-26T09:15:00Z'),
+      },
+      {
+        id: 'c2',
+        agentId: 'agent-2',
+        lastMessageAt: new Date('2026-11-27T08:00:00Z'),
+      },
+    ]);
+    expect(prisma.chatSession.findMany.mock.calls[0][0].select).toEqual({
+      id: true,
+      agentId: true,
+      lastMessageAt: true,
+    });
+  });
+
+  it('leaves out a conversation with an agent outside the scope', async () => {
+    const { gw } = makePeriodStub([
+      session('c1', 'agent-1', '2026-11-26T09:15:00Z'),
+      session('c2', 'agent-2', '2026-11-27T08:00:00Z'),
+    ]);
+
+    expect(
+      (await gw.findSessionsByIds(['c1', 'c2'], { in: ['agent-1'] })).map(
+        (s) => s.id,
+      ),
+    ).toEqual(['c1']);
+    expect(
+      (await gw.findSessionsByIds(['c1', 'c2'], { notIn: ['agent-1'] })).map(
+        (s) => s.id,
+      ),
+    ).toEqual(['c2']);
+  });
+
+  it('asks nothing when no conversation is named', async () => {
+    const { gw, prisma } = makePeriodStub();
+
+    expect(await gw.findSessionsByIds([])).toEqual([]);
+    expect(prisma.chatSession.findMany).not.toHaveBeenCalled();
+  });
+
+  it('asks in parts of at most 1000 ids, each id once', async () => {
+    const ids = Array.from({ length: 2500 }, (_, i) => `c${i}`);
+    const { gw, prisma } = makePeriodStub(
+      ids.map((id) => session(id, 'agent-1', '2026-11-26T09:15:00Z')),
+    );
+
+    const found = await gw.findSessionsByIds([...ids, ...ids.slice(0, 10)]);
+
+    expect(found).toHaveLength(2500);
+    const asked = prisma.chatSession.findMany.mock.calls.map(
+      ([args]) => args.where.id.in.length,
+    );
+    expect(asked).toEqual([1000, 1000, 500]);
+  });
+});
+
+describe('ChatGateway.countFeedbackByAuthor', () => {
+  const FROM = new Date('2026-11-20T22:00:00Z');
+  const TO = new Date('2026-11-27T10:30:00Z');
+  const SESSIONS: Row[] = [
+    { id: 'c1', agentId: 'agent-1' },
+    { id: 'c2', agentId: 'agent-2' },
+  ];
+  const rating = (
+    sessionId: string,
+    value: number,
+    iso: string,
+    authorId: string | null = 'u1',
+  ): Row => ({ sessionId, rating: value, createdAt: new Date(iso), authorId });
+
+  it('counts the author’s ratings up and down inside the range, both ends included', async () => {
+    const { gw } = makePeriodStub(SESSIONS, [
+      rating('c1', 1, '2026-11-20T22:00:00Z'),
+      rating('c1', 1, '2026-11-25T09:00:00Z'),
+      rating('c2', -1, '2026-11-27T10:30:00Z'),
+      // Before the range and after it.
+      rating('c1', 1, '2026-11-20T21:59:59Z'),
+      rating('c1', -1, '2026-11-27T10:30:01Z'),
+      // Somebody else's, and one that is nobody's.
+      rating('c1', -1, '2026-11-25T09:00:00Z', 'u2'),
+      rating('c1', -1, '2026-11-25T09:00:00Z', null),
+    ]);
+
+    expect(await gw.countFeedbackByAuthor('u1', FROM, TO)).toEqual({
+      up: 2,
+      down: 1,
+    });
+  });
+
+  it('counts only ratings in conversations with agents inside the scope', async () => {
+    const { gw } = makePeriodStub(SESSIONS, [
+      rating('c1', 1, '2026-11-25T09:00:00Z'),
+      rating('c2', -1, '2026-11-25T09:00:00Z'),
+      rating('c2', -1, '2026-11-26T09:00:00Z'),
+    ]);
+
+    expect(
+      await gw.countFeedbackByAuthor('u1', FROM, TO, { in: ['agent-1'] }),
+    ).toEqual({ up: 1, down: 0 });
+    expect(
+      await gw.countFeedbackByAuthor('u1', FROM, TO, { notIn: ['agent-1'] }),
+    ).toEqual({ up: 0, down: 2 });
+    expect(await gw.countFeedbackByAuthor('u1', FROM, TO, { in: [] })).toEqual({
+      up: 0,
+      down: 0,
+    });
+  });
+
+  it('answers zeros when the author rated nothing', async () => {
+    const { gw } = makePeriodStub(SESSIONS, []);
+
+    expect(await gw.countFeedbackByAuthor('u1', FROM, TO)).toEqual({
+      up: 0,
+      down: 0,
+    });
+  });
+
+  // [authorId, createdAt] is the index: an equality and a range. With no
+  // list of agents the conversation is not joined at all.
+  it('asks by author and time alone when there is no list of agents', async () => {
+    const { gw, prisma } = makePeriodStub(SESSIONS, []);
+
+    await gw.countFeedbackByAuthor('u1', FROM, TO);
+
+    expect(prisma.chatFeedback.groupBy).toHaveBeenCalledWith({
+      by: ['rating'],
+      where: { authorId: 'u1', createdAt: { gte: FROM, lte: TO } },
+      _count: { _all: true },
+    });
+  });
+});
+
+describe('ChatGateway.firstFeedbackAt', () => {
+  it('is the time of the earliest rating there is', async () => {
+    const { gw } = makePeriodStub(
+      [],
+      [
+        { createdAt: new Date('2026-06-02T10:00:00Z'), rating: 1 },
+        { createdAt: new Date('2026-03-14T08:30:00Z'), rating: -1 },
+      ],
+    );
+
+    expect(await gw.firstFeedbackAt()).toEqual(
+      new Date('2026-03-14T08:30:00Z'),
+    );
+  });
+
+  it('is null while nobody has rated anything', async () => {
+    const { gw } = makePeriodStub();
+
+    expect(await gw.firstFeedbackAt()).toBeNull();
+  });
+});

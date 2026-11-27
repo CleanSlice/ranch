@@ -15,6 +15,21 @@
 export const PERIODS = [7, 30, 90] as const;
 export type Period = (typeof PERIODS)[number];
 
+/**
+ * The period a view opens with when none is asked for (spec 038,
+ * contracts/api.md): the 30 days the usage overview of the consoles shows.
+ */
+export const DEFAULT_PERIOD: Period = 30;
+
+/**
+ * Whether `value` is a period a view can be asked for. For a value that
+ * did not come through a validated DTO: a tool argument is whatever the
+ * model wrote. The number itself, not text that reads like one.
+ */
+export function isPeriod(value: unknown): value is Period {
+  return (PERIODS as readonly unknown[]).includes(value);
+}
+
 /** The zone of every installation figure, and the fallback for a personal one. */
 export const UTC_ZONE = 'UTC';
 

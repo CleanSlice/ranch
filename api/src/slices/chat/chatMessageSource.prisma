@@ -30,5 +30,7 @@ model ChatMessageSource {
   @@unique([messageId, n])
   @@index([sourceId])
   @@index([agentId, sessionKey])
-  @@index([clientId])
+  // By person, and by person over a period (CLEAN-258: "answers that came
+  // with sources" in the profile statistics). One index serves both.
+  @@index([clientId, createdAt])
 }

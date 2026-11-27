@@ -163,4 +163,26 @@ describe('UsageGateway.findRange', () => {
 
     expect(rows.map((r) => r.agentName)).toEqual(['Support Bot', null]);
   });
+
+  // A person's view needs the days of the few agents they wrote to
+  // (CLEAN-258), not of every agent of the installation.
+  it('reads the named agents only when it is given some', async () => {
+    const from = new Date('2026-08-01T00:00:00.000Z');
+    const to = new Date('2026-09-01T00:00:00.000Z');
+    const { gateway, usage } = harness([record()]);
+
+    await gateway.findRange(from, to, ['a1', 'a2']);
+
+    expect(usage.findMany).toHaveBeenCalledWith({
+      where: { date: { gte: from, lt: to }, agentId: { in: ['a1', 'a2'] } },
+      orderBy: [{ date: 'desc' }, { model: 'asc' }],
+    });
+  });
+
+  it('asks nothing for an empty list of agents: no agent is not every agent', async () => {
+    const { gateway, usage } = harness([record()]);
+
+    expect(await gateway.findRange(new Date(0), new Date(), [])).toEqual([]);
+    expect(usage.findMany).not.toHaveBeenCalled();
+  });
 });

@@ -1,12 +1,25 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { AgentLimitService } from '#/agent/limit/domain';
+import { IDelegationGateway } from '#/agent/peer/domain/delegation.gateway';
+import { IChatGateway } from '#/chat/domain/chat.gateway';
+import { ChatSourceService } from '#/chat/domain/chatSource.service';
 import { IUsageGateway } from '#/usage/domain';
 import { FigureRegistry } from '../figureRegistry';
 import { activityFigure } from './activity';
+import { citationsFigure } from './citations';
+import { handoversFigure } from './handovers';
+import { ratingsFigure } from './ratings';
 import { refusalsFigure } from './refusals';
 import { spendFigure } from './spend';
 
-export { activityFigure, refusalsFigure, spendFigure };
+export {
+  activityFigure,
+  citationsFigure,
+  handoversFigure,
+  ratingsFigure,
+  refusalsFigure,
+  spendFigure,
+};
 
 /**
  * The list of figures. Adding one is a file in this folder and a line here
@@ -24,11 +37,18 @@ export class StatFigures implements OnModuleInit {
     private readonly registry: FigureRegistry,
     private readonly limits: AgentLimitService,
     private readonly usage: IUsageGateway,
+    private readonly chats: IChatGateway,
+    private readonly sources: ChatSourceService,
+    private readonly delegations: IDelegationGateway,
   ) {}
 
   onModuleInit(): void {
     this.registry.register(activityFigure);
     this.registry.register(refusalsFigure(this.limits));
     this.registry.register(spendFigure(this.usage));
+    // What "How agents helped" shows a person (CLEAN-258).
+    this.registry.register(ratingsFigure(this.chats));
+    this.registry.register(citationsFigure(this.sources));
+    this.registry.register(handoversFigure(this.delegations));
   }
 }

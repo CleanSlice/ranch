@@ -343,3 +343,179 @@ describe('ChatActivityGateway.pruneBefore', () => {
     ]);
   });
 });
+
+// ── One person's hours over a range (CLEAN-258) ───────────────
+
+type AgentScope = { in?: string[]; notIn?: string[] };
+
+interface IPersonHoursArgs {
+  where: {
+    externalUserId: string;
+    channel: string;
+    hour: { gte: Date; lte: Date };
+    agentId?: AgentScope;
+  };
+  select: Record<string, boolean>;
+  orderBy: { hour: 'asc' | 'desc' };
+}
+
+/**
+ * The table as `findHoursForPerson` asks it. Each condition is applied the
+ * way Postgres applies it, a condition this fake does not know fails the
+ * test instead of matching everything, and only the selected columns come
+ * back, as from Prisma. None of the columns compared here can be NULL.
+ */
+function makePersonStub(rows: Row[]) {
+  const findMany = jest.fn(
+    async ({ where, select, orderBy }: IPersonHoursArgs) => {
+      const known = ['externalUserId', 'channel', 'hour', 'agentId'];
+      const unknown = Object.keys(where).filter((k) => !known.includes(k));
+      if (unknown.length) {
+        throw new Error(`the fake cannot answer: ${unknown.join(', ')}`);
+      }
+      const scope = where.agentId;
+      const matched = rows.filter((r) => {
+        const at = (r.hour as Date).getTime();
+        const agentId = r.agentId as string;
+        return (
+          r.externalUserId === where.externalUserId &&
+          r.channel === where.channel &&
+          at >= where.hour.gte.getTime() &&
+          at <= where.hour.lte.getTime() &&
+          (scope?.in === undefined || scope.in.includes(agentId)) &&
+          (scope?.notIn === undefined || !scope.notIn.includes(agentId))
+        );
+      });
+      const direction = orderBy.hour === 'asc' ? 1 : -1;
+      matched.sort(
+        (a, b) =>
+          direction * ((a.hour as Date).getTime() - (b.hour as Date).getTime()),
+      );
+      return matched.map((r) =>
+        Object.fromEntries(Object.keys(select).map((key) => [key, r[key]])),
+      );
+    },
+  );
+  const prisma = { chatActivityHour: { findMany } };
+  const gateway = new ChatActivityGateway(
+    prisma as unknown as ConstructorParameters<typeof ChatActivityGateway>[0],
+  );
+  return { gateway, findMany };
+}
+
+describe('ChatActivityGateway.findHoursForPerson', () => {
+  const hourRow = (sessionId: string, iso: string, over: Row = {}): Row => ({
+    sessionId,
+    agentId: 'agent-1',
+    channel: 'bridle',
+    externalUserId: 'user-1',
+    hour: new Date(iso),
+    userMessages: 2,
+    agentMessages: 3,
+    ...over,
+  });
+
+  const FROM = new Date('2026-11-20T22:00:00Z');
+  const TO = new Date('2026-11-27T10:30:00Z');
+
+  it('returns that person’s hours on that channel inside the range, both ends included, oldest first', async () => {
+    const { gateway } = makePersonStub([
+      hourRow('c1', '2026-11-27T10:00:00Z'),
+      hourRow('c1', '2026-11-20T22:00:00Z'),
+      // An hour too early, and one that has not begun.
+      hourRow('c1', '2026-11-20T21:00:00Z'),
+      hourRow('c1', '2026-11-27T11:00:00Z'),
+      // Somebody else, and the same person on another channel.
+      hourRow('c2', '2026-11-25T09:00:00Z', { externalUserId: 'user-2' }),
+      hourRow('c3', '2026-11-25T09:00:00Z', { channel: 'telegram' }),
+    ]);
+
+    const rows = await gateway.findHoursForPerson('user-1', 'bridle', FROM, TO);
+
+    expect(rows).toEqual([
+      {
+        sessionId: 'c1',
+        agentId: 'agent-1',
+        hour: new Date('2026-11-20T22:00:00Z'),
+        userMessages: 2,
+        agentMessages: 3,
+      },
+      {
+        sessionId: 'c1',
+        agentId: 'agent-1',
+        hour: new Date('2026-11-27T10:00:00Z'),
+        userMessages: 2,
+        agentMessages: 3,
+      },
+    ]);
+  });
+
+  it('keeps to the agents of an allowed list', async () => {
+    const { gateway } = makePersonStub([
+      hourRow('c1', '2026-11-25T09:00:00Z', { agentId: 'agent-1' }),
+      hourRow('c2', '2026-11-25T09:00:00Z', { agentId: 'agent-2' }),
+    ]);
+
+    const rows = await gateway.findHoursForPerson(
+      'user-1',
+      'bridle',
+      FROM,
+      TO,
+      { in: ['agent-2'] },
+    );
+
+    expect(rows.map((r) => r.agentId)).toEqual(['agent-2']);
+  });
+
+  it('leaves out the agents of a denied list', async () => {
+    const { gateway } = makePersonStub([
+      hourRow('c1', '2026-11-25T09:00:00Z', { agentId: 'agent-1' }),
+      hourRow('c2', '2026-11-25T09:00:00Z', { agentId: 'agent-2' }),
+    ]);
+
+    const rows = await gateway.findHoursForPerson(
+      'user-1',
+      'bridle',
+      FROM,
+      TO,
+      { notIn: ['agent-2'] },
+    );
+
+    expect(rows.map((r) => r.agentId)).toEqual(['agent-1']);
+  });
+
+  it('returns nothing for an account that reaches no agent', async () => {
+    const { gateway } = makePersonStub([hourRow('c1', '2026-11-25T09:00:00Z')]);
+
+    expect(
+      await gateway.findHoursForPerson('user-1', 'bridle', FROM, TO, {
+        in: [],
+      }),
+    ).toEqual([]);
+  });
+
+  // The index is [externalUserId, channel, hour]: two equalities and a
+  // range, which is all this asks besides the agents. Anything else in the
+  // condition would be a filter over rows the index could not narrow.
+  it('asks only what the person’s index answers, and names no agent when there is no list', async () => {
+    const { gateway, findMany } = makePersonStub([]);
+
+    await gateway.findHoursForPerson('user-1', 'bridle', FROM, TO);
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        externalUserId: 'user-1',
+        channel: 'bridle',
+        hour: { gte: FROM, lte: TO },
+      },
+      select: {
+        sessionId: true,
+        agentId: true,
+        hour: true,
+        userMessages: true,
+        agentMessages: true,
+      },
+      orderBy: { hour: 'asc' },
+    });
+  });
+});

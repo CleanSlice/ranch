@@ -35,6 +35,8 @@ import { McpOauthTool } from '#/mcpServer/oauth/mcpOauth.tool';
 import { PaddockEvaluationTool } from '#/paddock/evaluation/evaluation.tool';
 import { PaddockScenarioTool } from '#/paddock/scenario/scenario.tool';
 import { RancherTool } from '#/rancher/rancher.tool';
+import { statsHarness } from '#/stats/domain/__fixtures__/personalStats';
+import { StatsTool } from '#/stats/stats.tool';
 import { UsageTool } from '#/usage/usage.tool';
 import { IUsageGateway } from '#/usage/domain';
 import { IAgentGateway as AgentGatewayToken } from '#/agent/agent/domain';
@@ -344,6 +346,87 @@ const llmTool = new LlmTool(
   } as unknown as ModuleRef,
 );
 
+// A person's own statistics (CLEAN-258). The limited Admin and the Owner
+// each have the same history: a conversation with every one of the three
+// agents an hour ago, an answer of each that cited that agent's knowledge
+// base (the hidden agent's the most), a rating in each, and hand-overs to
+// the hidden agent as a peer. The stand-ins behind the service apply the
+// agents they are asked for the way the queries do, and the lists are the
+// real ones, so what the Admin gets back is what the scope let through.
+const HIDDEN_BASE = `base-of-${HIDDEN_NAME}`;
+const HIDDEN_MODEL = `model-of-${HIDDEN_NAME}`;
+const AN_HOUR_AGO = new Date(
+  Math.floor(Date.now() / 3_600_000) * 3_600_000 - 3_600_000,
+).toISOString();
+// The chat identity of each: the Owner's conversations are kept under
+// `admin`, an Admin's under their own id.
+const STATS_PEOPLE = [
+  { userId: ADMIN.id, clientId: ADMIN.id },
+  { userId: OWNER.id, clientId: 'admin' },
+];
+const { service: personalStats } = statsHarness(
+  {
+    agents: [
+      { id: A, name: 'alpha', model: 'model-of-alpha' },
+      { id: B, name: 'bravo', model: 'model-of-bravo' },
+      { id: HIDDEN, name: HIDDEN_NAME, model: HIDDEN_MODEL },
+    ],
+    hours: STATS_PEOPLE.flatMap(({ clientId }) =>
+      AGENTS.map((a) => ({
+        sessionId: `chat-${clientId}-${a.id}`,
+        agentId: a.id,
+        externalUserId: clientId,
+        hour: AN_HOUR_AGO,
+        userMessages: a.id === HIDDEN ? 9 : 2,
+        agentMessages: 2,
+      })),
+    ),
+    ratings: STATS_PEOPLE.flatMap(({ userId, clientId }) =>
+      AGENTS.map((a) => ({
+        authorId: userId,
+        sessionId: `chat-${clientId}-${a.id}`,
+        rating: 1 as const,
+        at: AN_HOUR_AGO,
+      })),
+    ),
+    citations: STATS_PEOPLE.flatMap(({ clientId }) =>
+      AGENTS.flatMap((a) =>
+        // Three sources in the hidden agent's answer, one in the others'.
+        Array.from({ length: a.id === HIDDEN ? 3 : 1 }, () => ({
+          clientId,
+          agentId: a.id,
+          messageId: `answer-${clientId}-${a.id}`,
+          base: `base-of-${a.name}`,
+          at: AN_HOUR_AGO,
+        })),
+      ),
+    ),
+    handovers: STATS_PEOPLE.flatMap(({ clientId }) => [
+      // A reached agent asked the hidden one, twice: it served this person
+      // as "a colleague".
+      ...[1, 2].map(() => ({
+        clientId,
+        agentId: A,
+        peerAgentId: HIDDEN,
+        peerName: HIDDEN_NAME,
+        status: 'answered' as const,
+        at: AN_HOUR_AGO,
+      })),
+      // And the hidden agent asked a reached one.
+      {
+        clientId,
+        agentId: HIDDEN,
+        peerAgentId: B,
+        peerName: 'bravo',
+        status: 'answered' as const,
+        at: AN_HOUR_AGO,
+      },
+    ]),
+  },
+  access,
+);
+const statsTool = new StatsTool(personalStats);
+
 // ── Who is asking ─────────────────────────────────────────────
 
 /** The Ranch admin agent's request, made for a person. */
@@ -605,6 +688,7 @@ const LISTS: Record<string, (req: Request) => Promise<unknown>> = {
   llm_usage: (req) => llmTool.llmUsage({ id: 'llm-1' }, null, req),
   list_paddock_evaluations: (req) => paddockEvaluations.list({}, null, req),
   list_paddock_scenarios: (req) => paddockScenarios.list({}, null, req),
+  get_my_stats: (req) => statsTool.getMyStats({}, null, req),
 };
 
 describe('tools that list, as a limited Admin', () => {
@@ -636,6 +720,66 @@ describe('tools that list, as a limited Admin', () => {
       ).totals.callCount;
     expect(await totalsOf(asOwner())).toBe(15);
     expect(await totalsOf(asAdmin())).toBe(10);
+  });
+
+  it('get_my_stats: the hidden agent is in no number and no list of the person’s own statistics', async () => {
+    interface IStats {
+      board: {
+        conversations: { value: number };
+        messages: { value: number };
+        agents: { value: number; reachable: number };
+      };
+      agents: { agentId: string }[];
+      help: {
+        cited: { conversations: number; sources: { name: string }[] };
+        handovers: {
+          total: number;
+          topPeer: { name: string; count: number } | null;
+        };
+        ratings: { up: number };
+      };
+      models: { items: { model: string; messages: number }[] };
+    }
+    const statsOf = async (req: Request) =>
+      JSON.parse(await said(() => LISTS.get_my_stats(req))) as IStats;
+
+    const mine = await statsOf(asAdmin());
+    expect(mine.board.conversations.value).toBe(2);
+    expect(mine.board.messages.value).toBe(4);
+    expect(mine.board.agents).toEqual({ value: 2, reachable: 2 });
+    expect(mine.agents.map((a) => a.agentId).sort()).toEqual([A, B]);
+    expect(mine.help.cited.conversations).toBe(2);
+    expect(mine.help.cited.sources.map((s) => s.name)).toEqual([
+      'base-of-alpha',
+      'base-of-bravo',
+    ]);
+    expect(mine.help.ratings.up).toBe(2);
+    // The hand-over the hidden agent made is not theirs to count. The two
+    // made to it are, under the name the chat gave it.
+    expect(mine.help.handovers).toMatchObject({
+      total: 2,
+      topPeer: { name: 'A colleague', count: 2 },
+    });
+    expect(mine.models.items.map((m) => m.model).sort()).toEqual([
+      'model-of-alpha',
+      'model-of-bravo',
+    ]);
+    const text = JSON.stringify(mine);
+    expect(text).not.toContain(HIDDEN_BASE);
+    expect(text).not.toContain(HIDDEN_MODEL);
+
+    // The Owner reaches all three, and the same history shows whole.
+    const whole = await statsOf(asOwner());
+    expect(whole.board.conversations.value).toBe(3);
+    expect(whole.board.messages.value).toBe(13);
+    expect(whole.board.agents).toEqual({ value: 3, reachable: 3 });
+    expect(whole.agents[0].agentId).toBe(HIDDEN);
+    expect(whole.help.cited.sources[0].name).toBe(HIDDEN_BASE);
+    expect(whole.help.handovers).toMatchObject({
+      total: 3,
+      topPeer: { name: HIDDEN_NAME, count: 2 },
+    });
+    expect(whole.models.items[0].model).toBe(HIDDEN_MODEL);
   });
 
   it('list_paddock_scenarios keeps the scenarios of templates', async () => {

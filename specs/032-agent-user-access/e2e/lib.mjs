@@ -80,6 +80,32 @@ export const AGENTS = {
 export const TEMPLATE = { name: 'access-e2e', description: 'Fixture template for the acting-party checks', image: 'access-e2e:local' };
 export const LLM = { id: 'llm-access-e2e', provider: 'claude', model: 'claude-haiku-4-5', label: 'access-e2e (dummy key)' };
 
+/**
+ * What the Ranch admin agent is built from, and what the ordinary agents
+ * are (CLEAN-271). The assistant has one of each kind of its own: a
+ * template, a skill and a tool server that template attaches, a model
+ * credential and a knowledge base with one document. The ordinary agents
+ * keep the shared `TEMPLATE` and `LLM`, and `access-alpha` gets a skill, a
+ * tool server and a knowledge base of its own, so that every kind has one an
+ * Admin still edits. Ids are fixed so scripts can link to them.
+ */
+export const BUILT_FROM = {
+  ranch: {
+    template: { name: 'access-e2e-ranch', description: 'Fixture template of the Ranch assistant', image: 'access-e2e:local' },
+    skill: { id: '00000271-0000-4000-8000-0000000000f1', name: 'access-ranch-ops', title: 'Ranch operations (fixture)' },
+    server: { id: 'mcp-access-ranch-tools', name: 'access-ranch-tools', url: 'https://ranch-tools.access-e2e.test/mcp' },
+    llm: { id: 'llm-access-e2e-ranch', provider: 'claude', model: 'claude-haiku-4-5', label: 'access-e2e-ranch (dummy key)' },
+    knowledge: { id: '00000271-0000-4000-8000-0000000000f2', name: 'access-ranch-handbook', workspace: 'access-e2e-ranch-handbook' },
+    source: { id: '00000271-0000-4000-8000-0000000000f3', name: 'ranch handbook, page one' },
+  },
+  other: {
+    skill: { id: '00000271-0000-4000-8000-0000000000a1', name: 'access-alpha-replies', title: 'Support replies (fixture)' },
+    server: { id: 'mcp-access-alpha-tools', name: 'access-alpha-tools', url: 'https://alpha-tools.access-e2e.test/mcp' },
+    knowledge: { id: '00000271-0000-4000-8000-0000000000a2', name: 'access-alpha-articles', workspace: 'access-e2e-alpha-articles' },
+    source: { id: '00000271-0000-4000-8000-0000000000a3', name: 'alpha articles, page one' },
+  },
+};
+
 // ---------------------------------------------------------------- tokens
 
 /**

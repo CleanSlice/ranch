@@ -43,6 +43,7 @@ import {
   done,
   launch,
   loginAs,
+  rememberAssistantAccess,
   section,
   sleep,
   until,
@@ -742,6 +743,9 @@ async function russianWords() {
   };
 }
 
+// The set-up puts Users on Standard, and a later step gives the second User
+// a custom pick. What was there before comes back at the end.
+const putAssistantAccessBack = await rememberAssistantAccess();
 const people = await setUp();
 const browser = await launch();
 try {
@@ -764,7 +768,9 @@ try {
   }
 } finally {
   await browser.close();
-  section('Putting the Admin’s access back');
+  section('Putting the Admin’s access and the assistant setting back');
   await setAdminReach(people.admin.id, [AGENTS.a.id, AGENTS.b.id]);
+  const failed = await putAssistantAccessBack();
+  check(failed.length === 0, `both roles and every account are as this script found them${failed.length ? `: ${failed.join(', ')}` : ''}`);
 }
 done('ownership');

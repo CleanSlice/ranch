@@ -221,6 +221,18 @@ async function main() {
   });
   await prisma.userAgentAccess.create({ data: { userId: user.id, limited: false } });
   await prisma.userAgentAccessEntry.create({ data: { userId: user.id, agentId: AGENTS.a.id, list: 'denied' } });
+
+  // The assistant setting (CLEAN-240) and the settings kept back from the
+  // assistant (CLEAN-271), back to an installation nobody configured: an
+  // Admin has the assistant at Full, a User at Basic, no account differs
+  // from its role, and no setting differs from what the Owner approved.
+  // Scripts change these for their own set-up (badge.mjs and ownership.mjs
+  // put Users and Admins on Standard, assistant-built-from.mjs has an Admin
+  // change settings); a seed that left them alone made every script after
+  // them depend on the order they ran in.
+  await prisma.assistantAccountAccess.deleteMany({});
+  await prisma.assistantRoleAccess.deleteMany({});
+  await prisma.assistantSettingPin.deleteMany({});
   // Something for a list to leave out (http.mjs): one day of usage per
   // ordinary agent, one conversation on the shared `admin` channel of each,
   // and the first User's own conversation with access-alpha, which that

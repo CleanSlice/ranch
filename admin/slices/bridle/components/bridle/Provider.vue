@@ -567,12 +567,14 @@ onUnmounted(() => {
 const confirmResetOpen = ref(false)
 const resetting = ref(false)
 
+// "New chat" closes the conversation into history, as the app console's does
+// (CLEAN-277). The socket stays up: the old reset dropped it around a DELETE,
+// but the archive is refused unless the agent can be told, and a refusal has
+// to leave this view exactly as it was, with the reason in its notice line.
 async function onConfirmReset() {
   resetting.value = true
   try {
-    store.disconnect(conversationKey)
-    await store.resetTranscript(props.apiUrl, props.agentId, props.channel)
-    await store.connect(props.apiUrl, props.agentId, props.channel)
+    await store.startNewChat(props.apiUrl, props.agentId, props.channel)
   } finally {
     resetting.value = false
   }
@@ -641,7 +643,7 @@ async function onConfirmReset() {
     <ConfirmDialog
       v-model:open="confirmResetOpen"
       title="Start new chat"
-      description="Delete the saved transcript for this agent and start fresh? Past messages will be removed from storage. The agent's in-memory context may persist until its next restart."
+      description="Close this conversation and start fresh? It is kept: you will find it under the agent's Chats, with Archived switched on. The agent forgets it and starts the new chat with a clean context."
       confirm-label="Start new chat"
       @confirm="onConfirmReset"
     />

@@ -218,9 +218,15 @@ this directory are committed with PR 1.
 
 Collection goes first and alone: from the day it is deployed the hours are
 exact, so every day it runs before the page exists is a day of history the
-page opens with. PR 3 needs PR 2 for the page. PR 4 can be built beside
-PR 2 and PR 3 but merges after PR 3: its "where people are unhappy" block
-reads the outcome column PR 3 adds.
+page opens with. PR 3 needs PR 2 for the page.
+
+**Order changed on 2026-11-27 (CLEAN-265): PR 4 ships before PR 3.** PR 3
+cannot merge before 100 of our conversations are labelled by hand, and
+nothing in the installation view waits for that except one column, the share
+of conversations left open per agent in "where people are unhappy". The
+route leaves `open` and `summarised` out of `quality[]` and the column says
+"not counted yet", the way the fourth scoreboard tile does in the personal
+view; PR 3 adds the two fields and the column fills.
 
 **Between PR 2 and PR 3** the route answers without `summaries`, `topics`,
 `outcome` and `openQuestions`. The page then shows the scoreboard's fourth

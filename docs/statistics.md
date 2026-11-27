@@ -117,6 +117,52 @@ is what refuses an agent that does not exist. A model missing from
 `model-pricing.ts` has no price: `hasPrice()` says so, and a page shows it as
 "no price" with tokens, never as zero.
 
+## Counting over a period in SQL
+
+The installation's people and conversations are counted in the database, by
+two raw statements over `ChatActivityHour`
+(`api/src/slices/chat/data/chatActivity.gateway.ts`, CLEAN-265). Three rules
+came out of running them on a real database. No unit spec showed any of the
+three.
+
+**Write a bound moment as UTC.** `hour` is a `timestamp` without zone that
+holds UTC. A `Date` bound into `$queryRaw` arrives as `timestamptz`, and
+Postgres compares the two by reading the column in the session's zone. On a
+session in Europe/Kyiv a 7-day period began two hours late and counted
+16 244 conversations of 16 472, and nothing failed. So every bound moment is
+written `($n::timestamptz AT TIME ZONE 'UTC')`, and a spec asserts that no
+comparison of `hour` is left with a bare parameter.
+
+**Give an aggregate its memory and its plan, in its own transaction.** The
+count hashes one entry per conversation of the period, about 170 bytes each.
+Under the server default `work_mem` of 4 MB the 245 133 conversations of a
+90-day period spilled to disk in 17 batches: 6.3 s for a statement whose
+scan took 0.4 s, and 0.3 s with `set_config('work_mem', '64MB', true)`.
+Postgres doubles that for a hash, which holds about 750 000 conversations in
+one period; past that it spills again, slower and never wrong. The statement
+is also prepared once per connection, and from its sixth execution Postgres
+may keep one plan for any dates: it did, and both went from 0.6 s to 5.5 s.
+`set_config('plan_cache_mode', 'force_custom_plan', true)` keeps the plan
+made for the dates asked. Both settings are local to the transaction, so no
+other query sees them. No single `EXPLAIN` shows the second problem, only a
+sixth request does: time such a statement over at least ten runs.
+
+**A distinct count is read from the hour rows, never added up from days.**
+A conversation active on two days would count twice in a sum of days. That
+is why people and conversations have no per-day table, and why the
+installation route's time grows with the conversations of the period:
+medians of 6, 7 and 10 ms for 7, 30 and 90 days at 15 278 conversations, and
+30, 90 and 700 ms at 1 005 120. If an installation outgrows that, the step
+is a covering partial index on `hour` (spec 038, research R9), at the price
+of a second write on a hot table. It is not built until measured.
+
+At most two of these statements run at once in the API process
+(`AGGREGATE_CONCURRENCY`, the pair one view asks for) and later ones wait
+their turn in order of arrival, because each holds a pool connection and up
+to 128 MB of hash memory for as long as it runs, and a few operators
+switching between 7, 30 and 90 days could otherwise hold the whole pool
+while chat and sign-in waited for a connection.
+
 ## The figure registry
 
 `api/src/slices/stats/domain/figures/` has one file per figure. A definition
@@ -160,3 +206,6 @@ with a time on it. Most do.
 - Is a person's figure reachable only by that person, and an installation
   figure filtered by reach, totals included?
 - Does any statistics row hold message text? It must not.
+- Does raw SQL bind a date to compare with a `timestamp` column? It must say
+  the zone, `($n::timestamptz AT TIME ZONE 'UTC')`, or the answer depends on
+  the session's.

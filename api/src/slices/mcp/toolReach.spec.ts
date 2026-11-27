@@ -35,6 +35,7 @@ import { McpOauthTool } from '#/mcpServer/oauth/mcpOauth.tool';
 import { PaddockEvaluationTool } from '#/paddock/evaluation/evaluation.tool';
 import { PaddockScenarioTool } from '#/paddock/scenario/scenario.tool';
 import { RancherTool } from '#/rancher/rancher.tool';
+import { installationHarness } from '#/stats/domain/__fixtures__/installationStats';
 import { statsHarness } from '#/stats/domain/__fixtures__/personalStats';
 import { StatsTool } from '#/stats/stats.tool';
 import { UsageTool } from '#/usage/usage.tool';
@@ -44,6 +45,7 @@ import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.servic
 import {
   ADMIN,
   OWNER,
+  USER,
   accessHarness,
 } from '#/user/agentAccess/domain/__fixtures__/agentAccess';
 import { UserRoleTypes } from '#/user/user/domain';
@@ -426,7 +428,59 @@ const { service: personalStats } = statsHarness(
   },
   access,
 );
-const statsTool = new StatsTool(personalStats);
+
+// The installation's statistics (CLEAN-265). Every one of the three agents
+// spent tokens today, had a conversation an hour ago and a poor rating in
+// it, refused requests, and has an open incident; the hidden agent the most
+// of each. The stand-ins apply the scope they are handed the way the
+// queries do, so whatever of the hidden agent reaches the Admin's answer
+// got there through a read that was not told the reach.
+const TODAY = new Date().toISOString().slice(0, 10);
+const { service: installationStats } = installationHarness(
+  {
+    agents: AGENTS.map((a) => ({ id: a.id, name: a.name })),
+    usage: AGENTS.map((a) => ({
+      agentId: a.id,
+      agentName: a.name,
+      day: TODAY,
+      model: a.id === HIDDEN ? HIDDEN_MODEL : 'claude-sonnet-4-6',
+      input: a.id === HIDDEN ? 9_000_000 : 1_000_000,
+      output: 0,
+      calls: a.id === HIDDEN ? 90 : 10,
+    })),
+    hours: AGENTS.map((a) => ({
+      sessionId: `visit-${a.id}`,
+      agentId: a.id,
+      // A different person for each agent, on a different channel for the
+      // hidden one: neither may show in the Admin's counts.
+      externalUserId: `visitor-of-${a.name}`,
+      channel: a.id === HIDDEN ? 'telegram' : 'bridle',
+      hour: AN_HOUR_AGO,
+      userMessages: 1,
+      agentMessages: 1,
+    })),
+    ratings: AGENTS.map((a) => ({
+      agentId: a.id,
+      rating: -1 as const,
+      at: AN_HOUR_AGO,
+    })),
+    loadDays: AGENTS.map((a) => ({
+      agentId: a.id,
+      day: TODAY,
+      refused: a.id === HIDDEN ? 70 : 7,
+    })),
+    incidents: AGENTS.map((a, index) => ({
+      number: index + 1,
+      agentId: a.id,
+      agentName: a.name,
+      reason: `reason-for-${a.name}`,
+      openedAt: AN_HOUR_AGO,
+      closedAt: null,
+    })),
+  },
+  access,
+);
+const statsTool = new StatsTool(personalStats, installationStats);
 
 // ── Who is asking ─────────────────────────────────────────────
 
@@ -690,6 +744,8 @@ const LISTS: Record<string, (req: Request) => Promise<unknown>> = {
   list_paddock_evaluations: (req) => paddockEvaluations.list({}, null, req),
   list_paddock_scenarios: (req) => paddockScenarios.list({}, null, req),
   get_my_stats: (req) => statsTool.getMyStats({}, null, req),
+  get_installation_stats: (req) =>
+    statsTool.getInstallationStats({}, null, req),
 };
 
 describe('tools that list, as a limited Admin', () => {
@@ -781,6 +837,92 @@ describe('tools that list, as a limited Admin', () => {
       topPeer: { name: HIDDEN_NAME, count: 2 },
     });
     expect(whole.models.items[0].model).toBe(HIDDEN_MODEL);
+  });
+
+  it('get_installation_stats: the hidden agent is in no list and no total of the installation’s statistics', async () => {
+    interface IStats {
+      reach: { limited: boolean; agents: number; ownerOnly: string[] };
+      board: {
+        tokens: { input: number };
+        calls: { value: number };
+        cost: { unpriced: string[] };
+        people: { value: number };
+      };
+      daily: { byModel: { model: string; tokens: number }[] }[];
+      models: { model: string }[];
+      agents: { agentId: string }[];
+      health: {
+        incidents: { agentName: string }[];
+        incidentsTotal: number;
+        refusals: { agentId: string; refused: number }[];
+      };
+      quality: { agentId: string; conversations: number; rated: number }[];
+      channels: { channel: string; conversations: number }[];
+    }
+    const statsOf = async (req: Request) =>
+      JSON.parse(await said(() => LISTS.get_installation_stats(req))) as IStats;
+    const dailyTokens = (stats: IStats) =>
+      stats.daily
+        .flatMap((day) => day.byModel)
+        .reduce((sum, model) => sum + model.tokens, 0);
+
+    const mine = await statsOf(asAdmin());
+    expect(mine.reach).toEqual({ limited: true, agents: 2, ownerOnly: [] });
+    expect(mine.board.tokens.input).toBe(2_000_000);
+    expect(mine.board.calls.value).toBe(20);
+    expect(mine.board.cost.unpriced).toEqual([]);
+    expect(mine.board.people.value).toBe(2);
+    expect(dailyTokens(mine)).toBe(2_000_000);
+    expect(mine.models.map((m) => m.model)).toEqual(['claude-sonnet-4-6']);
+    expect(mine.agents.map((a) => a.agentId).sort()).toEqual([A, B]);
+    expect(mine.health.incidents.map((i) => i.agentName).sort()).toEqual([
+      'alpha',
+      'bravo',
+    ]);
+    expect(mine.health.incidentsTotal).toBe(2);
+    expect(mine.health.refusals.map((r) => r.agentId).sort()).toEqual([A, B]);
+    expect(mine.quality.map((q) => q.agentId).sort()).toEqual([A, B]);
+    expect(mine.channels).toEqual([{ channel: 'console', conversations: 2 }]);
+    const text = JSON.stringify(mine);
+    expect(text).not.toContain(HIDDEN_MODEL);
+    expect(text).not.toContain(`reason-for-${HIDDEN_NAME}`);
+    // And nobody is named, reached agent or not: people are a number.
+    expect(text).not.toContain('visitor-of-');
+
+    // The Owner reaches all three, and the same installation shows whole.
+    const whole = await statsOf(asOwner());
+    expect(whole.reach).toEqual({
+      limited: false,
+      agents: 3,
+      ownerOnly: [],
+    });
+    expect(whole.board.tokens.input).toBe(11_000_000);
+    expect(whole.board.calls.value).toBe(110);
+    expect(whole.board.cost.unpriced).toEqual([HIDDEN_MODEL]);
+    expect(whole.board.people.value).toBe(3);
+    expect(dailyTokens(whole)).toBe(11_000_000);
+    expect(whole.agents.map((a) => a.agentId).sort()).toEqual([A, B, HIDDEN]);
+    expect(whole.health.incidentsTotal).toBe(3);
+    expect(whole.health.refusals[0]).toEqual({
+      agentId: HIDDEN,
+      name: HIDDEN_NAME,
+      refused: 70,
+    });
+    expect(whole.quality.map((q) => q.agentId).sort()).toEqual([A, B, HIDDEN]);
+    expect(whole.channels).toEqual([
+      { channel: 'console', conversations: 2 },
+      { channel: 'telegram', conversations: 1 },
+    ]);
+  });
+
+  it('get_installation_stats: the Ranch admin agent answering a User is refused, whatever its token carries', async () => {
+    const refused = await said(() =>
+      LISTS.get_installation_stats(forPerson(USER)),
+    );
+
+    expect(refused).toMatch(/^threw: /);
+    expect(refused).toContain('operator role');
+    expect(refused).not.toContain(A);
   });
 
   it('list_paddock_scenarios keeps the scenarios of templates', async () => {

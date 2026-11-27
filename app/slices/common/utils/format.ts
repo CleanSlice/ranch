@@ -227,8 +227,35 @@ export const formatCompact = (locale: string, value: number | null | undefined):
       }).format(value)
     : '';
 
+/**
+ * The same count as `formatCompact`, in two parts: `{ value: '1.2', unit: 'M' }`
+ * · `{ value: '1,2', unit: 'млн' }`, for a place that sets the unit in smaller
+ * type than the number. A count below a thousand has no unit.
+ */
+export function formatCompactParts(
+  locale: string,
+  value: number | null | undefined,
+): { value: string; unit: string } {
+  if (!isNumber(value)) return { value: '', unit: '' };
+  const parts = numberFormat(locale, 'compact', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).formatToParts(value);
+  let number = '';
+  let unit = '';
+  for (const part of parts) {
+    if (part.type === 'compact') unit += part.value;
+    // The space between a number and its unit belongs to neither.
+    else if (part.type !== 'literal') number += part.value;
+  }
+  return { value: number, unit };
+}
+
 /** From this many units up, cents are noise next to the amount. */
 const WHOLE_MONEY_FROM = 100;
+
+/** The least amount money is printed to: a cent. Half of it rounds up to it. */
+const LEAST_MONEY = 0.01;
 
 /**
  * `$12.50` · `12,50 $` below a hundred, `$1,235` · `1 235 $` from a hundred up.
@@ -260,6 +287,29 @@ export function formatMoney(
 }
 
 /**
+ * `≈ $212` · `≈ 212 $` — an amount that was computed from a price list and
+ * not read off an invoice. The sign is part of the value, so that no figure
+ * of that kind can be printed without it; a no-break space keeps the two on
+ * one line. Nothing to format is an empty string, not a lone sign.
+ *
+ * An amount above zero that rounds to no cents is `< $0.01` · `< 0,01 $`:
+ * something was spent, and "≈ $0.00" would say nothing was. The "<" stands
+ * where the "≈" would: a bound is already not an exact figure, and the two
+ * signs in a row read as neither. A true zero stays `≈ $0.00`.
+ */
+export function formatEstimate(
+  locale: string,
+  value: number | null | undefined,
+  currency = 'USD',
+): string {
+  if (isNumber(value) && value > 0 && value < LEAST_MONEY / 2) {
+    return `< ${formatMoney(locale, LEAST_MONEY, currency)}`;
+  }
+  const amount = formatMoney(locale, value, currency);
+  return amount ? `≈ ${amount}` : '';
+}
+
+/**
  * A byte count as a number in the language's own notation plus the unit to
  * translate it with: `{ value: '5,9', unit: 'mb' }`. The unit is a key and not
  * a word so that English stays the source and `i18n:sync` writes the rest.
@@ -288,6 +338,23 @@ export function formatSize(
 }
 
 // ------------------------------------------------------------------- names
+
+const listFormats = new Map<string, Intl.ListFormat>();
+
+/**
+ * `Ada, Bo, and Cy` · `Ада, Бо и Cy` — names in a sentence, joined the way
+ * the language joins them. Each name is shown as received; only what stands
+ * between them is the language's. No names is an empty string.
+ */
+export function formatList(locale: string, items: readonly string[] | null | undefined): string {
+  if (!items || items.length === 0) return '';
+  let formatter = listFormats.get(locale);
+  if (!formatter) {
+    formatter = new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' });
+    listFormats.set(locale, formatter);
+  }
+  return formatter.format(items);
+}
 
 const languageNames = new Map<string, Intl.DisplayNames>();
 

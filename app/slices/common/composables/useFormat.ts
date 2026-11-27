@@ -2,10 +2,13 @@ import {
   browserTimeZone,
   formatClock,
   formatCompact,
+  formatCompactParts,
   formatDate,
   formatDateTime,
   formatDayMonth,
+  formatEstimate,
   formatFullDate,
+  formatList,
   formatLongDate,
   formatMoney,
   formatMonthShort,
@@ -53,13 +56,23 @@ export function useFormat() {
     number: (value: number | null | undefined) => formatNumber(locale.value, value),
     percent: (ratio: number | null | undefined) => formatPercent(locale.value, ratio),
     compact: (value: number | null | undefined) => formatCompact(locale.value, value),
+    /** The number and its unit apart, for a unit set in smaller type. */
+    compactParts: (value: number | null | undefined) => formatCompactParts(locale.value, value),
     money: (value: number | null | undefined, currency?: string) =>
       formatMoney(locale.value, value, currency),
+    /**
+     * An amount computed from a price list: `≈ $212` · `≈ 212 $`; above zero
+     * and under half a cent, `< $0.01` · `< 0,01 $`.
+     */
+    estimate: (value: number | null | undefined, currency?: string) =>
+      formatEstimate(locale.value, value, currency),
     /** The number in the language's notation, the unit from `unit.*`. */
     size: (bytes: number | null | undefined, precise = false) => {
       const { value, unit } = formatSize(locale.value, bytes, precise);
       return t(`unit.${unit}`, { value });
     },
+    /** Names in a sentence: `Ada, Bo, and Cy` · `Ада, Бо и Cy`. Each as received. */
+    list: (items: readonly string[] | null | undefined) => formatList(locale.value, items),
     languageName: (code: string | null | undefined) => languageName(locale.value, code),
   };
 }

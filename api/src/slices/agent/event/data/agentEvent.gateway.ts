@@ -12,6 +12,8 @@ import {
   ICreateAgentEventData,
   IEventListFilter,
   IIncidentListFilter,
+  IIncidentRange,
+  IIncidentRangeQuery,
   IJoinedNotificationPayload,
   INotificationDestination,
   INotificationPayload,
@@ -342,6 +344,34 @@ export class AgentEventGateway extends IAgentEventGateway {
           ? encodeCursor(last.openedAt, last.id)
           : null,
     };
+  }
+
+  async findIncidentsInRange(
+    query: IIncidentRangeQuery,
+  ): Promise<IIncidentRange> {
+    const where: Prisma.AgentIncidentWhereInput = {
+      // The same filter `listIncidents` puts on the column, so the two
+      // agree on whose incident a caller sees. An incident of a deleted
+      // agent has no agent id and matches neither form of it.
+      ...(query.agentScope && { agentId: query.agentScope }),
+      // Opened by the end of the range, and then either inside it or still
+      // open. The agents stand outside the OR: "still open" must not let an
+      // incident past them.
+      openedAt: { lte: query.to },
+      OR: [{ openedAt: { gte: query.from } }, { openKey: { not: null } }],
+    };
+    // The count is its own statement rather than the length of an unbounded
+    // read: an installation in trouble has many incidents, and the view
+    // shows the newest few and a number.
+    const [records, total] = await Promise.all([
+      this.prisma.agentIncident.findMany({
+        where,
+        orderBy: [{ openedAt: 'desc' }, { id: 'desc' }],
+        take: query.limit,
+      }),
+      this.prisma.agentIncident.count({ where }),
+    ]);
+    return { items: records.map((r) => this.mapper.toIncident(r)), total };
   }
 
   // ── The bot's root message ────────────────────────────────────────────

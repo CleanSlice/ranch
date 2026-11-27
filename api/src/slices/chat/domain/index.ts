@@ -7,5 +7,6 @@ export * from './chatSource.types';
 export * from './chatSource.gateway';
 export * from './chatSource.service';
 export * from './activityBuckets';
+export * from './installationActivity';
 export * from './chatActivity.gateway';
 export * from './chatActivity.service';

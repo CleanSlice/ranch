@@ -1,5 +1,10 @@
 import { IActivityBucket } from './activityBuckets';
-import { IChatAgentScope, IPersonActivityHour } from './chat.types';
+import {
+  IActivityPeriods,
+  IChatAgentScope,
+  IInstallationActivity,
+  IPersonActivityHour,
+} from './chat.types';
 
 /** Which conversations a settle run takes. */
 export interface IChatSettleGate {
@@ -87,4 +92,26 @@ export abstract class IChatActivityGateway {
     to: Date,
     agentScope?: IChatAgentScope,
   ): Promise<IPersonActivityHour[]>;
+
+  /**
+   * An installation's activity, counted in the database (CLEAN-265): the
+   * distinct conversations a person wrote in during `[from, to]`, by agent
+   * and channel, and the distinct people who wrote, in that period and in
+   * `[previousFrom, from)`. `agentScope` keeps every count to the agents the
+   * caller reaches; without it no agent is left out, and a scope that admits
+   * no agent answers empty without a query.
+   *
+   * Left out everywhere: the `internal` channel (scheduled jobs and
+   * heartbeats) and identities that start with `peer:` (another agent's
+   * question). Neither is a person.
+   *
+   * Counted there and not here on purpose. An installation's 180 days are
+   * every hour row of every conversation, and the answer is a few dozen
+   * numbers; the rows themselves never leave the database, and no identity
+   * leaves the query.
+   */
+  abstract summaryForAgents(
+    periods: IActivityPeriods,
+    agentScope?: IChatAgentScope,
+  ): Promise<IInstallationActivity>;
 }

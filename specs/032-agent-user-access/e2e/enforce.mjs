@@ -45,7 +45,9 @@ import {
   done,
   launch,
   loginAs,
+  rememberAssistantAccess,
   section,
+  setAssistantFor,
   shot,
   sleep,
   until,
@@ -60,6 +62,20 @@ const idOf = async (who) => (await api('/auth/me', { as: who })).body.id;
 const user2Id = await idOf(USER2);
 const adminId = await idOf(ADMIN_USER);
 const ownerId = await idOf(OWNER);
+
+// This script is about accounts the lists leave with fewer agents, or with
+// none: a User who reaches no agent at all, an Admin who is shown nothing of
+// the agents outside their list, the Ranch admin agent among them. That
+// agent is on nobody's list since CLEAN-240: a person has it by the
+// assistant's own switch, which is on by default. So "does not reach it"
+// is "it is switched off for them", and that is how this run is set up, for
+// the Admin and for the second User; what was there comes back at the end.
+// The Admin and the User who HAVE it are checked by routes.mjs and http.mjs.
+const putAssistantAccessBack = await rememberAssistantAccess();
+for (const id of [adminId, user2Id]) {
+  const off = await setAssistantFor(id, { enabled: false });
+  if (off.status !== 200) throw new Error(`switching the assistant off answered ${off.status}`);
+}
 
 /** Every agent of the installation, as the Owner sees them. */
 const everyAgent = (await api('/agents', { as: OWNER })).body;
@@ -87,7 +103,8 @@ async function setUser2Access({ allowed = [], denied = [] } = {}) {
 }
 
 /** Every agent there is right now: other scripts create and delete some. */
-const agentsNow = async () => (await api('/agents', { as: OWNER })).body;
+/** The agents the access lists are about: every one but the assistant. */
+const agentsNow = async () => (await api('/agents', { as: OWNER })).body.filter((a) => !a.isAdmin);
 
 /**
  * Other scripts of this folder (ceiling, deletion, owner-editor, http) edit
@@ -199,7 +216,21 @@ try {
 
           await page.goto(`${APP}/agents/${alpha.id}`, { waitUntil: 'networkidle' });
           await sleep(1200);
-          check((await page.locator('textarea').count()) === 0, 'its typed address shows no chat');
+          // The page does not stay on an agent the account does not reach: it
+          // leaves for the agents (useAgentGone, CLEAN-231), where the workspace
+          // opens one they do reach with its composer in place (CLEAN-260 draws
+          // the shell and the composer at once). So a composer may be there;
+          // what must not be is this address, a chat with this agent, or its name.
+          const landedOn = new URL(page.url()).pathname;
+          const reachedIds = (await api('/agents', { as: USER2 })).body.map((a) => a.id);
+          check(
+            !landedOn.includes(alpha.id) && (landedOn === '/agents' || reachedIds.some((id) => landedOn === `/agents/${id}`)),
+            `its typed address does not stay: the page left for the agents the account reaches (${landedOn.replace(/agent-[0-9a-f-]+/, '<an agent they reach>')})`,
+          );
+          check(
+            (await page.locator('textarea').count()) === 0 || !(await textOf(page)).includes(alpha.name),
+            'and no chat with it is on the screen',
+          );
           check((await page.locator('[data-message-id]').count()) === 0, 'no message');
           check(!(await textOf(page)).includes(alpha.name), 'and no name');
           await shot(page, `enforce-app-denied-address-${width}`);
@@ -624,6 +655,8 @@ try {
   }
 } finally {
   await browser.close();
+  const failed = await putAssistantAccessBack();
+  check(failed.length === 0, `the assistant setting is as this script found it${failed.length ? `: ${failed.join(', ')}` : ''}`);
 }
 
 done('enforce');

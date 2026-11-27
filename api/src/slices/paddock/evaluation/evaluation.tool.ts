@@ -20,6 +20,7 @@ import {
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
 import { PaddockEvaluationService } from './domain/evaluation.service';
+import type { IPaddockRunScope } from './domain/evaluation.types';
 
 const judgeOverrideSchema = z
   .object({
@@ -87,6 +88,19 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
    * Owner and Admin). Until CLEAN-232 these tools had no gate at all: any
    * agent runtime could start, abort and read evaluations.
    */
+  /**
+   * What the party this call is made for may read of scenarios: for anybody
+   * but the Owner, not those of a template the assistant is built from
+   * (CLEAN-271). Every tool below passes it, the ones that read a run's
+   * COPY of its scenarios as much as the one that starts a run.
+   */
+  private scopeOf(httpRequest: Request): IPaddockRunScope {
+    return {
+      hidesTemplate: (templateId) =>
+        isBuiltIntoAssistant(httpRequest, 'template', templateId),
+    };
+  }
+
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     return Promise.resolve(callerIsOperator(httpRequest));
   }
@@ -133,12 +147,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     }
     // The scenarios of a template the assistant is built from are the
     // Owner's (CLEAN-271): for anybody else the run leaves them out.
-    return ok(
-      await this.service.start(input, {
-        hidesTemplate: (templateId) =>
-          isBuiltIntoAssistant(httpRequest, 'template', templateId),
-      }),
-    );
+    return ok(await this.service.start(input, this.scopeOf(httpRequest)));
   }
 
   @Tool({
@@ -171,7 +180,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     }
     return ok({
       evaluations: records.filter(
-        await this.service.list(input),
+        await this.service.list(input, this.scopeOf(httpRequest)),
         (ev) => ev.agentId,
       ),
       ...ownerOnlyLeftOutField(httpRequest, 'evaluations', input.agentId),
@@ -193,7 +202,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const refusal = await this.reached(httpRequest, id);
     if (refusal) return refusal;
-    return ok(await this.service.getById(id));
+    return ok(await this.service.getById(id, this.scopeOf(httpRequest)));
   }
 
   @Tool({
@@ -214,7 +223,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const refusal = await this.reached(httpRequest, id);
     if (refusal) return refusal;
-    return ok(await this.service.getReport(id));
+    return ok(await this.service.getReport(id, this.scopeOf(httpRequest)));
   }
 
   @Tool({
@@ -245,7 +254,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     if (refusal) return refusal;
     const ownerOnly = await this.reached(httpRequest, id);
     if (ownerOnly) return ownerOnly;
-    return ok(await this.service.abort(id));
+    return ok(await this.service.abort(id, this.scopeOf(httpRequest)));
   }
 
   @Tool({
@@ -266,7 +275,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
       'Source evaluation not found',
     );
     if (refusal) return refusal;
-    return ok(await this.service.rerun(id));
+    return ok(await this.service.rerun(id, this.scopeOf(httpRequest)));
   }
 
   @Tool({
@@ -295,7 +304,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const found = await this.lookup(async () => {
       const refusal = await this.reached(httpRequest, id);
-      return refusal ?? this.service.getLogs(id);
+      return refusal ?? this.service.getLogs(id, this.scopeOf(httpRequest));
     });
     if ('error' in found) return ok(found);
     if ('content' in found.value) return found.value;
@@ -322,8 +331,9 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     const found = await this.lookup(async () => {
       const refusal = await this.reached(httpRequest, id);
       if (refusal) return refusal;
-      const scenario = await this.service.getScenario(id, scenarioId);
-      const evaluation = await this.service.getById(id);
+      const scope = this.scopeOf(httpRequest);
+      const scenario = await this.service.getScenario(id, scenarioId, scope);
+      const evaluation = await this.service.getById(id, scope);
       return { scenario, evaluation };
     });
     if ('error' in found) return ok(found);
@@ -360,7 +370,7 @@ export class PaddockEvaluationTool implements IConditionallyListedTool {
     if ('error' in refused) return ok(refused);
     if (refused.value) return refused.value;
     const found = await this.lookup(() =>
-      this.service.getTrace(id, scenarioId),
+      this.service.getTrace(id, scenarioId, this.scopeOf(httpRequest)),
     );
     if ('error' in found) return ok(found);
     if (!found.value) {

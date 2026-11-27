@@ -62,6 +62,7 @@ import { SourceController } from '#/reins/source/source.controller';
 import { SettingController } from '#/setting/setting.controller';
 import { SkillController } from '#/skill/skill.controller';
 import { PaddockScenarioController } from '#/paddock/scenario/scenario.controller';
+import { TemplateExportController } from '#/agent/templateInstall/templateExport.controller';
 import type { AssistantIngredientTypes } from '#/mcp/interfaces/assistant-build.interface';
 import {
   OF_ALPHA,
@@ -261,15 +262,15 @@ const FILED: Record<string, Filed> = {
   },
   'POST /paddock-evaluations': {
     inMethod:
-      'a run by anybody but the Owner leaves the scenarios of the assistant’s template out: hidesTemplate',
+      'a run by anybody but the Owner leaves the scenarios of the assistant’s template out: scopeOf',
   },
   'POST /paddock-evaluations/:id/abort': {
-    exempt:
-      'an evaluation of an agent; the assistant’s are the Owner’s by reach (CLEAN-268). Changes no scenario',
+    inMethod:
+      'answers with the evaluation, whose copy of the scenarios is read through the caller’s scope: scopeOf',
   },
   'POST /paddock-evaluations/:id/rerun': {
-    exempt:
-      'runs the scenarios of the evaluation’s own snapshot again; the snapshot was taken under the rule above',
+    inMethod:
+      'replays the source’s snapshot as the caller reads it, so a scenario kept from them is not sent again: scopeOf',
   },
   'PUT /settings/:group/:name': {
     inMethod: 'the `rancher` group is the Owner’s: assertMayWrite',
@@ -334,12 +335,12 @@ describe('every writing route of the ingredient slices is filed', () => {
       const filed = FILED[row.route];
       return filed && 'inMethod' in filed;
     });
-    expect(asking.length).toBe(11);
+    expect(asking.length).toBe(13);
     for (const row of asking) {
       const body = row.targets.handler.toString();
       expect([
         row.route,
-        /guardFor\(|upsertSkill\(req|assertMayWrite\(|assertMayWriteFor\(|requireScenario\(|hidesTemplate/.test(
+        /guardFor\(|upsertSkill\(req|assertMayWrite\(|assertMayWriteFor\(|requireScenario\(|this\.scopeOf\(/.test(
           body,
         ),
       ]).toEqual([row.route, true]);
@@ -1199,5 +1200,36 @@ describe('the scenario routes: those of a template the assistant is built from a
       controller.create(planted(OF_RANCH.template), undefined),
     ).rejects.toMatchObject(BUILT_FROM);
     expect(await controller.findAll(OF_RANCH.template)).toEqual([]);
+  });
+});
+
+// ── A download is a copy of the scenarios too ────────────────
+
+describe('GET /templates/:id/download: the archive of the assistant’s template has its scenarios for the Owner only', () => {
+  const asked: { id: string; withoutScenarios?: boolean }[] = [];
+  const controller = new TemplateExportController(
+    {
+      exportZip: (id: string, options: { withoutScenarios?: boolean }) => {
+        asked.push({ id, ...options });
+        return Promise.resolve({ filename: 'x.zip', buffer: Buffer.from('') });
+      },
+    } as never,
+    world.build,
+  );
+  const res = { setHeader: () => undefined, send: () => undefined } as never;
+  beforeEach(() => {
+    asked.length = 0;
+  });
+
+  it('an Admin, and a request with no bearer: without them; the Owner: with them', async () => {
+    await controller.download(OF_RANCH.template, res, req(ADMIN));
+    await controller.download(OF_RANCH.template, res, undefined);
+    await controller.download(OF_RANCH.template, res, req(OWNER));
+    expect(asked.map((a) => a.withoutScenarios)).toEqual([true, true, false]);
+  });
+
+  it('an ordinary template is downloaded whole by an Admin', async () => {
+    await controller.download(OF_ALPHA.template, res, req(ADMIN));
+    expect(asked).toEqual([{ id: OF_ALPHA.template, withoutScenarios: false }]);
   });
 });

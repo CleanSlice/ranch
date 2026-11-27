@@ -26,14 +26,17 @@ import {
   ADMIN_USER,
   AGENTS,
   OWNER,
+  TEMPLATE,
   USER,
   USER2,
   WIDTHS,
   api,
+  apiEnv,
   check,
   done,
   launch,
   loginAs,
+  requireFromApi,
   section,
   shot,
   sleep,
@@ -101,9 +104,17 @@ async function openUser(page, userId) {
 
 const browser = await launch();
 try {
-  const view = (await api('/agents', { as: ADMIN_USER })).body.map((a) => a.id);
+  // The agents of the lists. The Ranch admin agent is on nobody's list since
+  // CLEAN-240: the Admin has it as their assistant, by its own switch, and
+  // the ceiling does not count it.
+  const reachedByAdmin = (await api('/agents', { as: ADMIN_USER })).body;
+  const view = reachedByAdmin.filter((a) => !a.isAdmin).map((a) => a.id);
   section('The fixture');
-  check(sorted(view) === sorted([AGENTS.a.id, AGENTS.b.id]), `the Admin reaches ${AGENTS.a.name} and ${AGENTS.b.name} only (${view.length} agents)`);
+  check(sorted(view) === sorted([AGENTS.a.id, AGENTS.b.id]), `the Admin reaches ${AGENTS.a.name} and ${AGENTS.b.name} only, of the agents of the lists (${view.length} agents)`);
+  check(
+    reachedByAdmin.filter((a) => a.isAdmin).map((a) => a.id).join() === AGENTS.ranch.id,
+    'and the Ranch admin agent as their assistant, which no list governs',
+  );
 
   for (const width of WIDTHS) {
     const height = width < 600 ? 844 : 900;
@@ -208,11 +219,30 @@ try {
     check(res.status === 404 && res.raw?.message === 'Agent not found', `PUT naming an agent that does not exist: 404 Agent not found (${res.status})`);
     check(await unchanged(), 'nothing was saved');
 
-    res = await put(ids.user2, ADMIN_USER, { allowed: [], denied: [], version: seen.version, confirmOpen: true });
-    check(
-      res.status === 409 && res.raw?.code === 'ACCESS_EXCEEDS_CEILING' && res.raw?.message === CEILING_TEXT,
-      `PUT emptying the lists with confirmOpen, which would open ${AGENTS.b.name} and more: 409 ACCESS_EXCEEDS_CEILING (${res.status} ${res.raw?.code})`,
-    );
+    // "Open" hands the second User every agent that is not denied for them.
+    // What made that more than the Admin has used to be the Ranch admin
+    // agent; no list governs it since CLEAN-240 and the ceiling no longer
+    // counts it. An ordinary agent outside the Admin's reach is what the
+    // ceiling is about: one is made here, as the fixtures are, and removed.
+    process.env.DATABASE_URL = apiEnv.DATABASE_URL;
+    const { PrismaClient } = requireFromApi('@prisma/client');
+    const prisma = new PrismaClient();
+    const template = await prisma.template.findUnique({ where: { name: TEMPLATE.name } });
+    const delta = await prisma.agent.create({
+      data: { id: `agent-${crypto.randomUUID()}`, name: 'access-delta', templateId: template.id, status: 'stopped', config: {}, resources: { cpu: '500m', memory: '512Mi' } },
+    });
+    try {
+      check((await api(`/agents/${delta.id}`, { as: ADMIN_USER })).status === 404, 'an agent the Admin does not reach exists: access-delta (404 for them)');
+      res = await put(ids.user2, ADMIN_USER, { allowed: [], denied: [], version: seen.version, confirmOpen: true });
+      check(
+        res.status === 409 && res.raw?.code === 'ACCESS_EXCEEDS_CEILING' && res.raw?.message === CEILING_TEXT,
+        `PUT emptying the lists with confirmOpen, which would open ${AGENTS.b.name} and an agent the Admin does not have: 409 ACCESS_EXCEEDS_CEILING (${res.status} ${res.raw?.code})`,
+      );
+      check(!JSON.stringify(res.raw).includes(delta.id) && !JSON.stringify(res.raw).includes('access-delta'), 'the refusal does not name that agent');
+    } finally {
+      await prisma.agent.deleteMany({ where: { name: 'access-delta' } });
+      await prisma.$disconnect();
+    }
     check(!JSON.stringify(res.raw).includes(AGENTS.c.id) && !JSON.stringify(res.raw).includes(AGENTS.c.name), 'the refusal names no agent outside the view');
     check(await unchanged(), 'nothing was saved');
 

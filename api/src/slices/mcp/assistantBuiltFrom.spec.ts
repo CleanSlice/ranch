@@ -304,17 +304,42 @@ const scenarioGenerator = {
     Promise.resolve({ ...input, name: 'A draft' }),
   ),
 };
-const evaluationsCreated: { agentId: string; scenariosSnapshot: unknown[] }[] =
-  [];
+interface IEvaluationRow {
+  id: string;
+  agentId: string;
+  status: string;
+  scenariosSnapshot: { id: string }[];
+  results: { scenarioId: string; verdict: string }[];
+  [key: string]: unknown;
+}
+const evaluationsCreated: IEvaluationRow[] = [];
+const evaluationRows = new Map<string, IEvaluationRow>();
 const paddockEvaluations = new PaddockEvaluationService(
   {
     findRunning: () => Promise.resolve(null),
-    create: (data: { agentId: string; scenariosSnapshot: unknown[] }) => {
-      evaluationsCreated.push(data);
-      return Promise.resolve({ id: 'evaluation-1', ...data });
+    create: (data: {
+      agentId: string;
+      scenariosSnapshot: { id: string }[];
+    }) => {
+      const row: IEvaluationRow = {
+        id: `evaluation-${evaluationRows.size + 1}`,
+        status: 'finished',
+        results: [],
+        currentScenarioId: null,
+        reportS3Key: null,
+        ...data,
+      };
+      evaluationsCreated.push(row);
+      evaluationRows.set(row.id, row);
+      return Promise.resolve(row);
     },
-    update: () => Promise.resolve(null),
-    findById: () => Promise.resolve(null),
+    update: (id: string, data: object) => {
+      // In place: the spec holds the row it was handed.
+      const row = Object.assign(evaluationRows.get(id)!, data);
+      return Promise.resolve(row);
+    },
+    findById: (id: string) => Promise.resolve(evaluationRows.get(id) ?? null),
+    findAll: () => Promise.resolve([...evaluationRows.values()]),
   } as never,
   scenarioGateway as never,
   world.agents,
@@ -322,7 +347,11 @@ const paddockEvaluations = new PaddockEvaluationService(
   world.llms,
   unused('paddockReports'),
   // The run itself is another process; this spec is about what goes into it.
-  { run: () => new Promise(() => undefined) } as never,
+  {
+    run: () => new Promise(() => undefined),
+    getLogs: () => ['a line about text of scenario-ranch'],
+    abort: () => false,
+  } as never,
   {
     materialize: () =>
       Promise.resolve({ agentDir: '', cleanup: () => Promise.resolve() }),
@@ -1485,6 +1514,7 @@ describe('the scenarios of a template the assistant is built from are the Owner�
   beforeEach(() => {
     scenarioRows.clear();
     evaluationsCreated.length = 0;
+    evaluationRows.clear();
     scenarioGenerator.generate.mockClear();
     scenarioRows.set(
       'scenario-ranch',
@@ -1637,6 +1667,112 @@ describe('the scenarios of a template the assistant is built from are the Owner�
     });
   });
 
+  describe('a run that holds them: the Owner’s evaluation of an ordinary agent on that template', () => {
+    // The copy is what is read here, not the live rows: the snapshot, a
+    // result per scenario, a trace, and a report and a log about them all.
+    let id: string;
+    beforeEach(async () => {
+      const alpha = world.state.agents.get(ALPHA)!;
+      world.state.agents.set(ALPHA, {
+        ...alpha,
+        templateId: OF_RANCH.template,
+      });
+      await asOwner('run_paddock_evaluation', { agentId: ALPHA });
+      const row = evaluationsCreated[0];
+      id = row.id;
+      row.results = [
+        { scenarioId: 'scenario-ranch', verdict: 'fail' },
+        { scenarioId: 'scenario-alpha', verdict: 'fail' },
+      ];
+      row.currentScenarioId = 'scenario-ranch';
+      expect(row.scenariosSnapshot.map((s) => s.id).sort()).toEqual([
+        'scenario-alpha',
+        'scenario-ranch',
+      ]);
+    });
+
+    it('an Admin who reaches the agent reads the run without them: the evaluation, the list, a scenario, a trace', async () => {
+      for (const ask of [asAdmin, asAdminConsole]) {
+        const one = await ask('get_paddock_evaluation', { id });
+        const list = await ask('list_paddock_evaluations', { agentId: ALPHA });
+        for (const said of [one, list]) {
+          expect(said).toContain('scenario-alpha');
+          expect(said).not.toContain('scenario-ranch');
+          expect(said).not.toContain('text of scenario-ranch');
+        }
+        const hidden = await ask('get_paddock_evaluation_scenario_result', {
+          id,
+          scenarioId: 'scenario-ranch',
+        });
+        const unknown = await ask('get_paddock_evaluation_scenario_result', {
+          id,
+          scenarioId: 'scenario-nobody-has',
+        });
+        expect(hidden).not.toContain('text of scenario-ranch');
+        expect(hidden.split('scenario-ranch').join('x')).toBe(
+          unknown.split('scenario-nobody-has').join('x'),
+        );
+        const trace = await ask('get_paddock_evaluation_trace', {
+          id,
+          scenarioId: 'scenario-ranch',
+        });
+        expect(trace).toContain('is not part of evaluation');
+        expect(
+          await ask('get_paddock_evaluation_scenario_result', {
+            id,
+            scenarioId: 'scenario-alpha',
+          }),
+        ).toContain('text of scenario-alpha');
+      }
+    });
+
+    it('the report and the log are one text about every scenario: the Owner’s for such a run', async () => {
+      expect(await asAdmin('get_paddock_evaluation_report', { id })).toContain(
+        'covers scenarios only the Owner reads',
+      );
+      const log = await asAdmin('get_paddock_evaluation_logs', { id });
+      expect(log).toContain('covers scenarios only the Owner reads');
+      expect(log).not.toContain('text of scenario-ranch');
+      // The Owner reads both; the report of this run was never written.
+      expect(await asOwner('get_paddock_evaluation_logs', { id })).toContain(
+        'text of scenario-ranch',
+      );
+      expect(await asOwner('get_paddock_evaluation_report', { id })).toContain(
+        'Report not yet available',
+      );
+    });
+
+    it('an Admin’s rerun does not send them again, and aborting answers without them', async () => {
+      const said = await asAdmin('rerun_paddock_evaluation', { id });
+      expect(said).not.toContain('scenario-ranch');
+      expect(evaluationsCreated).toHaveLength(2);
+      expect(evaluationsCreated[1].scenariosSnapshot.map((s) => s.id)).toEqual([
+        'scenario-alpha',
+      ]);
+      expect(
+        await asAdmin('abort_paddock_evaluation', { id, confirm: true }),
+      ).not.toContain('scenario-ranch');
+    });
+
+    it('a rerun with nothing left for the Admin runs nothing', async () => {
+      evaluationsCreated[0].scenariosSnapshot = [
+        scenarioRows.get('scenario-ranch')!,
+      ];
+      const said = await asAdmin('rerun_paddock_evaluation', { id });
+      expect(said).toContain('no scenarios to rerun');
+      expect(evaluationsCreated).toHaveLength(1);
+    });
+
+    it('the Owner reads the whole run and reruns all of it', async () => {
+      const one = await asOwner('get_paddock_evaluation', { id });
+      expect(one).toContain('text of scenario-ranch');
+      await asOwner('rerun_paddock_evaluation', { id });
+      expect(
+        evaluationsCreated[1].scenariosSnapshot.map((s) => s.id).sort(),
+      ).toEqual(['scenario-alpha', 'scenario-ranch']);
+    });
+  });
+
   it('a run takes only the scenarios of its own agent: one named from another scope is not copied into the snapshot', async () => {
     scenarioRows.set(
       'scenario-other',
@@ -1696,7 +1832,7 @@ function writeTools(source: string): { name: string; asks: boolean }[] {
     }
   }
   const ASKS =
-    /builtFromRefusal\(|builtFromScenariosRefusal\(|this\.reachedScenario\(|isBuiltIntoAssistant\(|this\.builtFrom\(|this\.upsertSkill\(\s*httpRequest|ownerOnlySettingRefusal\(/;
+    /builtFromRefusal\(|builtFromScenariosRefusal\(|this\.reachedScenario\(|this\.scopeOf\(|isBuiltIntoAssistant\(|this\.builtFrom\(|this\.upsertSkill\(\s*httpRequest|ownerOnlySettingRefusal\(/;
   return members.flatMap((member) => {
     if (!member.includes('@Tool({')) return [];
     if (!/effect: 'write'/.test(member)) return [];
@@ -1742,12 +1878,6 @@ const EXEMPT: Record<string, string> = {
   // (`reach.forChanges()`); with `subject` it is the person's own account.
   start_mcp_oauth:
     'the assistant’s agent-wide connection is refused by CLEAN-268; a personal one is the person’s own',
-  // Evaluations of an agent: they write no scenario, and the assistant's
-  // are the Owner's by reach (CLEAN-268).
-  abort_paddock_evaluation:
-    'stops a run of an agent the caller reaches; changes no scenario',
-  rerun_paddock_evaluation:
-    'runs the scenarios of the evaluation’s own snapshot again, which was taken under the rule',
 };
 
 describe('every write tool of the ingredient slices asks the rule or is exempt', () => {
@@ -1782,6 +1912,8 @@ describe('every write tool of the ingredient slices asks the rule or is exempt',
       'delete_paddock_scenario',
       'generate_paddock_scenarios',
       'run_paddock_evaluation',
+      'rerun_paddock_evaluation',
+      'abort_paddock_evaluation',
     ]);
     const notWalked = found
       .filter((tool) => tool.asks && !walked.has(tool.name))

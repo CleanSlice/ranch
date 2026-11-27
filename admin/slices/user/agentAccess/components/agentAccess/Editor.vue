@@ -55,6 +55,16 @@ const management = computed(() =>
   target.value ? accessManagement(auth.user, target.value) : 'none',
 );
 const editable = computed(() => management.value === 'editable');
+/**
+ * Whether the assistant block is shown at all. The API reads an account's
+ * assistant setting to the Owner for any account, and to an Admin for the
+ * Users they may edit (403 otherwise). Known before any request, like the
+ * rest of this card, so none is sent that would be refused: the block used
+ * to ask for the Admin's own account and the Owner's and swallow the 403.
+ */
+const showsAssistant = computed(
+  () => editable.value || auth.user?.role === 'Owner',
+);
 
 interface IShownError {
   code: string | null;
@@ -233,7 +243,7 @@ function onConfirm() {
     </CardHeader>
     <CardContent class="flex flex-col gap-4">
       <AssistantAccessAccountRow
-        v-if="target"
+        v-if="target && showsAssistant"
         :user-id="userId"
         :name="target.name || target.email"
       />

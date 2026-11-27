@@ -123,21 +123,99 @@ export class PaddockEvaluationService {
     return this.evaluationGateway.findAll({ agentId });
   }
 
-  async list(filter: {
-    agentId?: string;
-    templateId?: string;
-    limit?: number;
-  }): Promise<IPaddockEvaluationData[]> {
-    return this.evaluationGateway.findAll(filter);
+  async list(
+    filter: {
+      agentId?: string;
+      templateId?: string;
+      limit?: number;
+    },
+    scope: IPaddockRunScope = {},
+  ): Promise<IPaddockEvaluationData[]> {
+    return (await this.evaluationGateway.findAll(filter)).map((ev) =>
+      this.shownTo(ev, scope),
+    );
   }
 
-  async getById(id: string): Promise<IPaddockEvaluationData> {
+  async getById(
+    id: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<IPaddockEvaluationData> {
     const ev = await this.evaluationGateway.findById(id);
     if (!ev) throw new NotFoundException('Evaluation not found');
+    return this.shownTo(ev, scope);
+  }
+
+  // ── What a run holds of scenarios its reader may not read (CLEAN-271) ──
+  //
+  // An evaluation keeps a COPY of the scenarios it ran: the snapshot, a
+  // result and a trace per scenario, and a report and a log about all of
+  // them. An ordinary agent may sit on a template the Ranch assistant is
+  // built from, and a run of it started by the Owner (or before this rule)
+  // holds that template's scenarios, which only the Owner reads. Whoever
+  // reaches the agent reads the run, so the copy is read through the same
+  // scope as the live rows: the scenario and its result are left out, by
+  // id they are "not part of this evaluation", and the report and the log,
+  // which are one text about every scenario and cannot be taken apart, are
+  // the Owner's for such a run.
+
+  /** The ids of the snapshot's scenarios `scope` keeps from its reader. */
+  private keptFrom(
+    ev: IPaddockEvaluationData,
+    scope: IPaddockRunScope,
+  ): Set<string> {
+    const hides = scope.hidesTemplate;
+    if (!hides) return new Set();
+    return new Set(
+      ev.scenariosSnapshot
+        .filter(
+          (s) => !s.agentId && Boolean(s.templateId) && hides(s.templateId!),
+        )
+        .map((s) => s.id),
+    );
+  }
+
+  /** `ev` as the reader of `scope` gets it. */
+  private shownTo(
+    ev: IPaddockEvaluationData,
+    scope: IPaddockRunScope,
+  ): IPaddockEvaluationData {
+    const kept = this.keptFrom(ev, scope);
+    if (kept.size === 0) return ev;
+    return {
+      ...ev,
+      scenariosSnapshot: ev.scenariosSnapshot.filter((s) => !kept.has(s.id)),
+      results: ev.results.filter((r) => !kept.has(r.scenarioId)),
+      currentScenarioId:
+        ev.currentScenarioId && kept.has(ev.currentScenarioId)
+          ? null
+          : ev.currentScenarioId,
+    };
+  }
+
+  /** The evaluation, for a text about all of its scenarios at once. */
+  private async wholeFor(
+    id: string,
+    scope: IPaddockRunScope,
+    what: string,
+  ): Promise<IPaddockEvaluationData> {
+    const ev = await this.evaluationGateway.findById(id);
+    if (!ev) throw new NotFoundException('Evaluation not found');
+    if (this.keptFrom(ev, scope).size > 0) {
+      throw new NotFoundException(
+        `The ${what} of this evaluation covers scenarios only the Owner reads.`,
+      );
+    }
     return ev;
   }
 
-  async abort(id: string): Promise<IPaddockEvaluationData> {
+  async abort(
+    id: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<IPaddockEvaluationData> {
+    return this.shownTo(await this.abortRun(id), scope);
+  }
+
+  private async abortRun(id: string): Promise<IPaddockEvaluationData> {
     const ev = await this.evaluationGateway.findById(id);
     if (!ev) throw new NotFoundException('Evaluation not found');
     if (ev.status !== 'running') return ev;
@@ -167,9 +245,15 @@ export class PaddockEvaluationService {
    * If the source has no `results` (e.g. crashed before producing any),
    * everything is rerun — there's nothing to skip.
    */
-  async rerun(sourceId: string): Promise<IPaddockEvaluationData> {
-    const source = await this.evaluationGateway.findById(sourceId);
-    if (!source) throw new NotFoundException('Source evaluation not found');
+  async rerun(
+    sourceId: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<IPaddockEvaluationData> {
+    const stored = await this.evaluationGateway.findById(sourceId);
+    if (!stored) throw new NotFoundException('Source evaluation not found');
+    // The source as the person rerunning it reads it: a scenario kept from
+    // them is not sent again under their run (CLEAN-271).
+    const source = this.shownTo(stored, scope);
 
     const agent = await this.agentGateway.findById(source.agentId);
     if (!agent) {
@@ -223,9 +307,11 @@ export class PaddockEvaluationService {
     return evaluation;
   }
 
-  async getLogs(id: string): Promise<{ lines: string[] }> {
-    const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
+  async getLogs(
+    id: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<{ lines: string[] }> {
+    const ev = await this.wholeFor(id, scope, 'log');
     return { lines: this.runner.getLogs(ev.agentId) };
   }
 
@@ -236,9 +322,9 @@ export class PaddockEvaluationService {
   async getScenario(
     id: string,
     scenarioId: string,
+    scope: IPaddockRunScope = {},
   ): Promise<IPaddockScenarioData> {
-    const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
+    const ev = await this.getById(id, scope);
     const scenario = ev.scenariosSnapshot.find((s) => s.id === scenarioId);
     if (!scenario)
       throw new NotFoundException(
@@ -247,9 +333,11 @@ export class PaddockEvaluationService {
     return scenario;
   }
 
-  async getReport(id: string): Promise<{ json: object; md: string }> {
-    const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
+  async getReport(
+    id: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<{ json: object; md: string }> {
+    const ev = await this.wholeFor(id, scope, 'report');
     if (!ev.reportS3Key) {
       throw new NotFoundException(
         'Report not yet available — evaluation may still be running or failed before producing one',
@@ -261,9 +349,18 @@ export class PaddockEvaluationService {
     return report;
   }
 
-  async getTrace(id: string, scenarioId: string): Promise<object | null> {
-    const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
+  async getTrace(
+    id: string,
+    scenarioId: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<object | null> {
+    const stored = await this.evaluationGateway.findById(id);
+    if (!stored) throw new NotFoundException('Evaluation not found');
+    if (this.keptFrom(stored, scope).has(scenarioId)) {
+      throw new NotFoundException(
+        `Scenario ${scenarioId} is not part of evaluation ${id}`,
+      );
+    }
     return this.reportGateway.loadTrace(id, scenarioId);
   }
 

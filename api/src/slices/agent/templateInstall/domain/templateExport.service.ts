@@ -117,13 +117,24 @@ export class TemplateExportService {
     private readonly mcpServerGateway: IMcpServerGateway,
   ) {}
 
-  async exportZip(id: string): Promise<ITemplateExportResult> {
+  /**
+   * `withoutScenarios`: the archive of a template the Ranch assistant is
+   * built from, made for anybody but the Owner (CLEAN-271). Its scenarios
+   * are what the Owner tests the assistant with and only the Owner reads
+   * them; a download is a copy of them like any other.
+   */
+  async exportZip(
+    id: string,
+    options: { withoutScenarios?: boolean } = {},
+  ): Promise<ITemplateExportResult> {
     const template = await this.templateGateway.findById(id);
     if (!template) throw new NotFoundException(`Template ${id} not found`);
 
     const [files, scenarios] = await Promise.all([
       this.templateFileGateway.list(id),
-      this.scenarioGateway.findAll({ templateId: id }),
+      options.withoutScenarios
+        ? Promise.resolve([])
+        : this.scenarioGateway.findAll({ templateId: id }),
     ]);
 
     const archive = archiver('zip', { zlib: { level: 6 } });

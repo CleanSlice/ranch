@@ -234,6 +234,11 @@ function makeController(stubs: IStubs = {}) {
 
   // The chat index (CLEAN-136): closing a conversation moves its row.
   const chats = {
+    // Deleting a conversation removes its row (CLEAN-272).
+    deleteSession: jest.fn(async (_agentId: string, _key: string) => {
+      if (stubs.indexMoveFails) throw new Error('database unavailable');
+      return true;
+    }),
     archiveSession: jest.fn(
       async (_agentId: string, _key: string, _archivedKey: string) => {
         order.push('index');
@@ -1021,6 +1026,27 @@ describe('BridleController — closing a conversation', () => {
 
   it('tells every browser when the admin console deletes a conversation', async () => {
     const { controller, hub } = makeController(OWNER);
+
+    await controller.resetTranscript(AGENT, BEARER, 'admin');
+
+    expect(hub.resetConversation).toHaveBeenCalledWith(AGENT, 'admin');
+  });
+
+  // CLEAN-272. The row used to stay: both consoles went on listing the
+  // conversation with its old counts, and it opened empty.
+  it('removes the conversation from the chat index when it is deleted', async () => {
+    const { controller, chats } = makeController(OWNER);
+
+    await controller.resetTranscript(AGENT, BEARER, 'admin');
+
+    expect(chats.deleteSession).toHaveBeenCalledWith(AGENT, 'bridle:admin');
+  });
+
+  it('still resets the conversation when the index row cannot be removed', async () => {
+    const { controller, hub } = makeController({
+      ...OWNER,
+      indexMoveFails: true,
+    });
 
     await controller.resetTranscript(AGENT, BEARER, 'admin');
 

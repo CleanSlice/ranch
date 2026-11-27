@@ -4182,8 +4182,13 @@ export const SyncChatsResponseDtoSchema = {
     skipped: {
       type: "number",
     },
+    pruned: {
+      type: "number",
+      description:
+        "Index rows removed because their transcript file no longer exists",
+    },
   },
-  required: ["scannedAgents", "scannedFiles", "upserted", "skipped"],
+  required: ["scannedAgents", "scannedFiles", "upserted", "skipped", "pruned"],
 } as const;
 
 export const CreateChatFeedbackDtoSchema = {

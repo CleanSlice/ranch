@@ -323,6 +323,14 @@
 [data-profile-stats] .stats-table .stats-table__num {
   text-align: right;
 }
+/* A table view's first cell names its row and is a header for that; it is
+   drawn as the cell it stands among, not as a column heading. */
+[data-profile-stats] .stats-tblwrap tbody th {
+  border-bottom-color: var(--stats-hair);
+  color: inherit;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── who you talk to ── */
 [data-profile-stats] .stats-ag {
@@ -602,6 +610,329 @@
   }
 }
 
+/* ── the installation view (CLEAN-265) ── */
+
+/* A unit beside a scoreboard figure ("51.3 M"), in the label's type. */
+[data-profile-stats] .stats-board__value small {
+  font-family: Geist, Inter, system-ui, sans-serif;
+  font-size: 16px;
+  letter-spacing: 0;
+  color: var(--muted-foreground);
+}
+/* A figure too long for its tile at full size ("≈ $12,345"): smaller type on
+   a line as high as the other figures have, so the labels under the four of
+   them stay level. */
+[data-profile-stats] .stats-board__value--long {
+  font-size: clamp(20px, 2.2vw, 26px);
+  line-height: clamp(28px, 3.2vw, 36px);
+}
+
+/* Two cards side by side; one under the other on a narrow screen. */
+[data-profile-stats] .stats-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 640px) {
+  [data-profile-stats] .stats-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* "No price": a dashed outline and the words, never the colour alone. */
+[data-profile-stats] .stats-noprice,
+[data-profile-stats-tip] .stats-noprice {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px dashed rgba(245, 161, 107, 0.55);
+  border-radius: 999px;
+  color: var(--primary);
+  font-family: Geist, Inter, system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+/* The same outline around a "+": a cost that leaves some models out. */
+[data-profile-stats] .stats-noprice--plus,
+[data-profile-stats-tip] .stats-noprice--plus {
+  margin-left: 5px;
+  padding: 0 5px;
+  font-weight: 600;
+}
+/* In a day's detail the row's own gap already parts it from the cost. */
+[data-profile-stats-tip] .stats-tip__row .stats-noprice--plus {
+  margin-left: -2px;
+}
+/* Before the words that explain it, under the table of days. */
+[data-profile-stats] .stats-noprice--key {
+  margin: 0 3px 0 0;
+}
+
+/* ── spend by day ── */
+/* The chart is drawn one unit to a pixel at the width it has (Daily.vue), so
+   the box keeps the height of the drawing while that width is being measured. */
+[data-profile-stats] .stats-chart {
+  position: relative;
+  height: 192px;
+}
+[data-profile-stats] .stats-chart svg {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+}
+[data-profile-stats] .stats-chart__axis {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10px;
+  fill: var(--stats-dim);
+}
+[data-profile-stats] .stats-chart__line {
+  stroke: var(--stats-hair);
+}
+/* One cell per day over the columns: what the pointer and the keyboard land
+   on. The drawing under it is a picture; the detail is here. */
+[data-profile-stats] .stats-chart__hits {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+[data-profile-stats] .stats-chart__hit {
+  display: block;
+  min-width: 0;
+  border-radius: 3px;
+}
+[data-profile-stats] .stats-chart__hit:hover,
+[data-profile-stats] .stats-chart__hit:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+}
+/* A day of a 90-day chart is three pixels wide: the ring goes inside it. */
+[data-profile-stats] .stats-chart__hit:focus-visible {
+  outline-offset: -1px;
+}
+[data-profile-stats] .stats-table .stats-table__model {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  white-space: nowrap;
+}
+[data-profile-stats] .stats-table .stats-table__nowrap {
+  white-space: nowrap;
+}
+/* The legend under the chart. `.stats-lg` sets its own margin and this sheet
+   is in no layer, so a utility on the element could not add one. */
+[data-profile-stats] .stats-chart + .stats-lg {
+  margin-top: 8px;
+}
+
+/* ── agents by cost ── */
+[data-profile-stats] .stats-rk {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+[data-profile-stats] .stats-rk__row {
+  display: grid;
+  grid-template-columns: minmax(0, 150px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+[data-profile-stats] .stats-rk__name {
+  min-width: 0;
+  font-size: 13px;
+}
+[data-profile-stats] .stats-rk__title,
+[data-profile-stats] .stats-rk__name small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-profile-stats] .stats-rk__name small {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--stats-dim);
+}
+[data-profile-stats] .stats-rk__mid {
+  min-width: 0;
+}
+[data-profile-stats] .stats-rk__bar {
+  display: block;
+  height: 12px;
+  border-radius: 0 4px 4px 0;
+  background: var(--c2);
+}
+[data-profile-stats] .stats-rk__value {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-align: right;
+  white-space: nowrap;
+}
+[data-profile-stats] .stats-rk__value b {
+  color: var(--foreground);
+  font-weight: 500;
+}
+[data-profile-stats] .stats-hint b {
+  color: var(--foreground);
+  font-weight: 500;
+}
+/* On a phone the name and the money share a line and the bar gets its own. */
+@media (max-width: 479px) {
+  [data-profile-stats] .stats-rk__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 5px 12px;
+  }
+  [data-profile-stats] .stats-rk__mid {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+/* ── health ── */
+[data-profile-stats] .stats-inc {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+[data-profile-stats] .stats-inc__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--stats-hair);
+  font-size: 13px;
+}
+[data-profile-stats] .stats-inc__row:first-child {
+  border-top: 0;
+}
+[data-profile-stats] .stats-inc__state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 19px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+[data-profile-stats] .stats-inc__state--open {
+  color: #ef8a7a;
+}
+[data-profile-stats] .stats-inc__state--closed {
+  color: var(--stats-dim);
+}
+[data-profile-stats] .stats-inc__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+[data-profile-stats] .stats-inc__num {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--stats-dim);
+}
+/* A reason is shown as the server sent it, and a server can send a page:
+   three lines here, the whole of it in the title of the element. */
+[data-profile-stats] .stats-inc__text small {
+  display: block;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--stats-dim);
+}
+[data-profile-stats] .stats-inc__text .stats-inc__reason {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+[data-profile-stats] .stats-sub {
+  margin: 14px 0 8px;
+  font-weight: 400;
+}
+[data-profile-stats] .stats-ref {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+[data-profile-stats] .stats-ref__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+}
+[data-profile-stats] .stats-ref__row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── where people are unhappy ── */
+/* Four columns that cannot get narrower than their words: on a narrow card
+   the table scrolls inside it, never the page. */
+[data-profile-stats] .stats-qwrap {
+  overflow-x: auto;
+}
+[data-profile-stats] .stats-q th,
+[data-profile-stats] .stats-q td {
+  padding: 8px 4px;
+  vertical-align: top;
+}
+[data-profile-stats] .stats-q thead th {
+  padding-top: 0;
+  font-size: 11px;
+  white-space: nowrap;
+}
+[data-profile-stats] .stats-q thead svg {
+  display: inline-block;
+  vertical-align: -2px;
+}
+/* The name takes what the three figures leave and is cut with an ellipsis. */
+[data-profile-stats] .stats-q tbody th {
+  width: 100%;
+  min-width: 96px;
+  max-width: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--stats-hair);
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[data-profile-stats] .stats-q td {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+[data-profile-stats] .stats-q td small {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--stats-dim);
+}
+[data-profile-stats] .stats-q td svg {
+  display: inline-block;
+  vertical-align: -1px;
+}
+/* A column that is not counted yet holds a dash; the words are under the
+   table, once. */
+[data-profile-stats] .stats-q .stats-q__pending {
+  color: var(--stats-dim);
+}
+[data-profile-stats] .stats-qwrap .stats-hint {
+  margin-top: 10px;
+}
+[data-profile-stats] .stats-q .stats-q__hot {
+  color: #ef8a7a;
+  font-weight: 600;
+}
+
 /* ── empty and failed ── */
 [data-profile-stats] .stats-empty {
   padding: 22px 0 10px;
@@ -682,6 +1013,30 @@
 [data-profile-stats-tip] .stats-tip__dim {
   color: var(--stats-dim);
 }
+/* A day of the spend chart: one line per model, then the cost of the day. */
+[data-profile-stats-tip] .stats-tip__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+}
+[data-profile-stats-tip] .stats-tip__row i {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+[data-profile-stats-tip] .stats-tip__name {
+  flex: 1;
+  min-width: 0;
+}
+[data-profile-stats-tip] .stats-tip__row em {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-style: normal;
+  color: var(--foreground);
+  white-space: nowrap;
+}
 
 /* Entrance: blocks rise once, lit days pop in, placeholders breathe. Someone
    who asked for reduced motion gets everything at once and at rest. */
@@ -724,7 +1079,10 @@
   [data-profile-stats] .stats-meter i,
   [data-profile-stats] .stats-days__bar,
   [data-profile-stats] .stats-scale i,
-  [data-profile-stats] .stats-lg i {
+  [data-profile-stats] .stats-lg i,
+  [data-profile-stats] .stats-chart svg,
+  [data-profile-stats] .stats-rk__bar,
+  [data-profile-stats-tip] .stats-tip__row i {
     forced-color-adjust: none;
   }
 }

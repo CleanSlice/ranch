@@ -10,7 +10,11 @@ import { createPinia, defineStore, setActivePinia } from 'pinia';
 
 import type { IStatsGateway } from '../domain/stats.gateway';
 import { ProfileStatsService } from '../domain/stats.service';
-import type { IPersonalStats } from '../domain/stats.types';
+import {
+  StatsForbiddenError,
+  type IInstallationStats,
+  type IPersonalStats,
+} from '../domain/stats.types';
 import type { StatsPeriod } from '../utils/statsView';
 
 const T0 = new Date('2026-11-27T10:00:00.000Z');
@@ -42,12 +46,43 @@ function stats(period: StatsPeriod, conversations: number): IPersonalStats {
   };
 }
 
+/** An installation view that can be told apart by its model calls. */
+function installation(period: StatsPeriod, modelCalls: number): IInstallationStats {
+  return {
+    period,
+    range: {
+      from: new Date('2026-10-29T00:00:00.000Z'),
+      to: T0,
+      previousFrom: new Date('2026-09-29T00:00:00.000Z'),
+    },
+    reach: { limited: false, agents: 3, ownerOnly: [] },
+    notes: [],
+    board: {
+      tokens: { input: modelCalls * 1000, output: modelCalls * 100 },
+      calls: { value: modelCalls, previous: 0 },
+      cost: { value: 0, previous: 0, unpriced: [] },
+      people: { value: 1, previous: 0 },
+    },
+    daily: [],
+    models: [],
+    agents: [],
+    projection30d: 0,
+    health: { incidents: [], incidentsTotal: 0, refusals: [] },
+    quality: [],
+    channels: [],
+  };
+}
+
 /** What the server would count now. */
 let served = 1;
 let calls: { period: StatsPeriod; timeZone: string }[] = [];
+/** The periods the installation was asked for, in order. */
+let installationCalls: StatsPeriod[] = [];
 /** When set, answers wait for it. */
 let gate: Promise<void> | null = null;
 let failing = false;
+/** The route refuses the caller, as it does a User. */
+let forbidden = false;
 
 const gateway: IStatsGateway = {
   async getMine(period, timeZone) {
@@ -56,6 +91,16 @@ const gateway: IStatsGateway = {
     const answer = stats(period, served);
     const fail = failing;
     if (gate) await gate;
+    if (fail) throw new Error('offline');
+    return answer;
+  },
+  async getInstallation(period) {
+    installationCalls.push(period);
+    const answer = installation(period, served);
+    const fail = failing;
+    const refused = forbidden;
+    if (gate) await gate;
+    if (refused) throw new StatsForbiddenError('Forbidden resource');
     if (fail) throw new Error('offline');
     return answer;
   },
@@ -100,8 +145,10 @@ const test = (name: string, body: () => Promise<void>) =>
     setActivePinia(createPinia());
     served = 1;
     calls = [];
+    installationCalls = [];
     gate = null;
     failing = false;
+    forbidden = false;
     at(0);
     Date.now = () => clock;
     try {
@@ -283,5 +330,110 @@ describe('resetForAccount', () => {
 
     expect(calls.length).toBe(2);
     expect(store.viewFor('mine', 30)!.board.conversations.value).toBe(9);
+  });
+});
+
+describe('the installation scope', () => {
+  test('is fetched by its own route and kept beside the personal view', async () => {
+    const store = useProfileStatsStore();
+    await store.load('mine', 30, 'Europe/Kyiv');
+    served = 7;
+
+    await store.load('installation', 30, 'Europe/Kyiv');
+
+    // Its days are UTC days for everyone: the viewer's zone is not sent.
+    expect(installationCalls).toEqual([30]);
+    expect(calls.length).toBe(1);
+    expect(Object.keys(store.views).sort()).toEqual(['installation:30', 'mine:30']);
+    expect(store.statusFor('installation', 30)).toBe('ready');
+    expect(store.viewFor('installation', 30)!.board.calls.value).toBe(7);
+    expect(store.viewFor('mine', 30)!.board.conversations.value).toBe(1);
+  });
+
+  test('follows the same rules of age as the personal one', async () => {
+    const store = useProfileStatsStore();
+    await store.load('installation', 7, 'UTC');
+    served = 2;
+    at(STALE_MS - 1);
+    await store.load('installation', 7, 'UTC');
+    expect(installationCalls.length).toBe(1);
+
+    at(STALE_MS);
+    await store.load('installation', 7, 'UTC');
+    expect(installationCalls.length).toBe(2);
+    expect(store.viewFor('installation', 7)!.board.calls.value).toBe(2);
+  });
+
+  test('a failure keeps the view that was held', async () => {
+    const store = useProfileStatsStore();
+    await store.load('installation', 30, 'UTC');
+    at(STALE_MS);
+    failing = true;
+
+    await store.load('installation', 30, 'UTC');
+
+    expect(store.statusFor('installation', 30)).toBe('failed');
+    expect(store.viewFor('installation', 30)!.board.calls.value).toBe(1);
+  });
+});
+
+describe('a refusal (403)', () => {
+  test('leaves no view and says so in the status', async () => {
+    const store = useProfileStatsStore();
+    forbidden = true;
+
+    await store.load('installation', 30, 'UTC');
+
+    expect(store.statusFor('installation', 30)).toBe('forbidden');
+    expect(store.viewFor('installation', 30)).toBe(null);
+    expect(store.views['installation:30']!.loadedAt).toBe(null);
+  });
+
+  test('takes away every installation view that was held, and no personal one', async () => {
+    const store = useProfileStatsStore();
+    await store.load('mine', 30, 'UTC');
+    await store.load('installation', 30, 'UTC');
+    await store.load('installation', 7, 'UTC');
+    // The role was taken away while the page stood open.
+    forbidden = true;
+    at(STALE_MS);
+
+    await store.load('installation', 30, 'UTC');
+
+    expect(store.statusFor('installation', 30)).toBe('forbidden');
+    expect(store.viewFor('installation', 30)).toBe(null);
+    // The other period was an answer to the role the account had: gone too.
+    expect(store.viewFor('installation', 7)).toBe(null);
+    expect(store.statusFor('installation', 7)).toBe('idle');
+    expect(store.viewFor('mine', 30)!.board.conversations.value).toBe(1);
+    expect(store.statusFor('mine', 30)).toBe('ready');
+  });
+
+  test('is asked again by the next load, and an answer replaces it', async () => {
+    const store = useProfileStatsStore();
+    forbidden = true;
+    await store.load('installation', 30, 'UTC');
+    forbidden = false;
+    served = 4;
+    at(1);
+
+    await store.load('installation', 30, 'UTC');
+
+    expect(installationCalls.length).toBe(2);
+    expect(store.statusFor('installation', 30)).toBe('ready');
+    expect(store.viewFor('installation', 30)!.board.calls.value).toBe(4);
+  });
+
+  test('that arrives after the account changed is dropped', async () => {
+    const store = useProfileStatsStore();
+    forbidden = true;
+    const open = hold();
+    const late = store.load('installation', 30, 'UTC');
+
+    store.resetForAccount();
+    open();
+    await late;
+
+    expect(store.views).toEqual({});
   });
 });

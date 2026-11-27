@@ -1,5 +1,5 @@
 import type { StatsPeriod } from '../utils/statsView';
-import type { IPersonalStats } from './stats.types';
+import type { IInstallationStats, IPersonalStats } from './stats.types';
 
 /**
  * The contract the domain depends on. The data layer provides the concrete
@@ -13,4 +13,13 @@ export abstract class IStatsGateway {
    * their own clock. Throws when the view could not be read.
    */
   abstract getMine(period: StatsPeriod, timeZone: string): Promise<IPersonalStats>;
+
+  /**
+   * The installation's figures for the last `period` days and the period
+   * before, over the agents the caller reaches. No time zone: its days are
+   * UTC days for every viewer. Throws `StatsForbiddenError` when the route
+   * refuses the caller (anyone but the owner and administrators), and any
+   * other error when the view could not be read.
+   */
+  abstract getInstallation(period: StatsPeriod): Promise<IInstallationStats>;
 }

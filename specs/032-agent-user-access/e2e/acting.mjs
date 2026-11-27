@@ -79,8 +79,15 @@ async function setAdminAccess(allowed) {
   });
 }
 {
-  const res = await setAdminAccess([AGENTS.a.id, AGENTS.b.id, RANCH]);
-  check(res.status === 200 && res.body?.allowed?.length === 3, `for this run the Admin is allowed the Ranch admin agent too (${res.status})`);
+  // The assistant is on nobody's access list since CLEAN-240 (the route
+  // answers 422 ASSISTANT_NOT_LISTED for it): a person has it through the
+  // assistant setting, which is on for an Admin by default. So there is
+  // nothing to allow here, only to confirm.
+  const mine = (await api('/agents', { as: ADMIN_USER })).body ?? [];
+  check(
+    mine.some((a) => a.id === RANCH && a.isAdmin),
+    'the Admin has the Ranch admin agent, through the assistant setting',
+  );
 }
 
 // ------------------------------------------------- the browser: who is asking

@@ -22,7 +22,8 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { ADMIN, API, APP, HERE, OUT, arg, fake, until } from './lib.mjs';
 
-const SCRIPTS = ['routes', 'acting', 'http', 'owner-only', 'live-status', 'switch', 'owner-editor', 'ceiling', 'deletion', 'enforce', 'pins', 'assistant'];
+// assistant-built-from goes last: it runs seed.mjs again when it is done.
+const SCRIPTS = ['routes', 'acting', 'http', 'owner-only', 'live-status', 'switch', 'owner-editor', 'ceiling', 'deletion', 'enforce', 'pins', 'assistant', 'ownership', 'assistant-pages', 'assistant-built-from'];
 const only = typeof arg('only') === 'string' ? arg('only').split(',') : null;
 const skip = typeof arg('skip') === 'string' ? arg('skip').split(',') : [];
 const wanted = (name) => (!only || only.includes(name)) && !skip.includes(name);

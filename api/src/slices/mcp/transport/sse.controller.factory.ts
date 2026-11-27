@@ -28,7 +28,6 @@ import { Buffer } from 'node:buffer';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { McpOptions } from '../interfaces';
-import { McpRegistryService } from '../services/mcp-registry.service';
 import { McpExecutorService } from '../services/mcp-executor.service';
 import { SsePingService } from '../services/sse-ping.service';
 
@@ -62,7 +61,6 @@ export function createSseController(
     constructor(
       @Inject('MCP_OPTIONS') public readonly options: McpOptions,
       public readonly moduleRef: ModuleRef,
-      public readonly toolRegistry: McpRegistryService,
       @Inject(SsePingService) public readonly pingService: SsePingService,
     ) {}
 
@@ -177,7 +175,7 @@ export function createSseController(
         `[MCP] Local active sessions: ${Array.from(this.transports.keys()).join(', ')}`,
       );
 
-      // First check local sessions
+      // Only the sessions this pod holds: there is no restoring one.
       const transport = this.transports.get(sessionId);
       const mcpServer = this.mcpServers.get(sessionId);
 
@@ -186,10 +184,6 @@ export function createSseController(
         res.status(404).json({ error: 'Unknown session' });
         return;
       }
-
-      this.logger.debug(
-        `[MCP] Successfully found/restored session ${sessionId}`,
-      );
 
       const normalizedBody = this.normalizeRequestBody(body);
 
@@ -209,116 +203,14 @@ export function createSseController(
       // Register request handlers with the user context from this specific request
       executor.registerRequestHandlers(mcpServer, req);
 
-      // Process the message
-      // Note: For restored sessions, we can't use transport.handlePostMessage()
-      // because it tries to send headers that are already sent
-      // Instead, we'll handle the request directly through the MCP server
-
+      // Process the message. The transport is the only way in: it hands the
+      // message to the MCP server, whose handlers the executor has just
+      // registered, so every tools/call meets the party, the audience and
+      // the caller's tool policy in McpToolsHandler. There is no second path
+      // that runs a tool from the registry here, and there must not be one
+      // (CLEAN-263): a session this pod does not hold was answered 404 above.
       try {
-        // For restored sessions, we need to handle the request differently
-        // since we can't use the original transport
-        if (this.transports.has(sessionId)) {
-          // Original session - use normal transport handling
-          await transport.handlePostMessage(req, res, normalizedBody);
-        } else {
-          // Restored session - handle manually
-          // Parse the request body as MCP message
-          let mcpMessage: any = body;
-          if (normalizedBody) {
-            try {
-              mcpMessage = JSON.parse(normalizedBody);
-            } catch (parseError) {
-              this.logger.warn(
-                `[MCP] Failed to parse MCP message body as JSON for session ${sessionId}:`,
-                parseError,
-              );
-              mcpMessage = body;
-            }
-          }
-
-          // Check if it's a tool call request
-          if (mcpMessage?.method === 'tools/call') {
-            // Execute the tool directly
-            const toolName = mcpMessage?.params?.name;
-            if (toolName) {
-              // Find and execute the tool
-              const toolInfo = this.toolRegistry.findTool(toolName);
-              if (toolInfo) {
-                try {
-                  const contextId = ContextIdFactory.getByRequest(req);
-                  const toolInstance = await this.moduleRef.resolve(
-                    toolInfo.providerClass,
-                    contextId,
-                    { strict: false },
-                  );
-
-                  if (toolInstance) {
-                    const result = await toolInstance[toolInfo.methodName].call(
-                      toolInstance,
-                      mcpMessage?.params?.arguments || {},
-                      {
-                        reportProgress: () => {},
-                        log: {
-                          debug: () => {},
-                          error: () => {},
-                          info: () => {},
-                          warn: () => {},
-                        },
-                      },
-                      req,
-                    );
-
-                    res.json({
-                      jsonrpc: '2.0',
-                      id: mcpMessage?.id,
-                      result: result,
-                    });
-                  } else {
-                    res.status(500).json({
-                      jsonrpc: '2.0',
-                      id: mcpMessage?.id,
-                      error: {
-                        code: -32000,
-                        message: 'Tool instance not found',
-                      },
-                    });
-                  }
-                } catch (error) {
-                  res.status(500).json({
-                    jsonrpc: '2.0',
-                    id: mcpMessage?.id,
-                    error: { code: -32000, message: error.message },
-                  });
-                }
-              } else {
-                res.status(404).json({
-                  jsonrpc: '2.0',
-                  id: mcpMessage?.id,
-                  error: {
-                    code: -32601,
-                    message: `Tool not found: ${toolName}`,
-                  },
-                });
-              }
-            } else {
-              res.status(400).json({
-                jsonrpc: '2.0',
-                id: mcpMessage?.id,
-                error: { code: -32602, message: 'Tool name not specified' },
-              });
-            }
-          } else {
-            // For other MCP methods, return method not found
-            res.status(404).json({
-              jsonrpc: '2.0',
-              id: mcpMessage?.id,
-              error: {
-                code: -32601,
-                message: `Method not supported: ${mcpMessage?.method}`,
-              },
-            });
-          }
-        }
+        await transport.handlePostMessage(req, res, normalizedBody);
       } catch (error) {
         this.logger.error(
           `[MCP] Error handling MCP request for session ${sessionId}:`,

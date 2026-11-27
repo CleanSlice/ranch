@@ -12,8 +12,10 @@ import {
   ActivityChannel,
   IAgentChannelConversations,
   IAgentFeedbackCounts,
+  IAgentOutcomeCounts,
 } from '#/chat/domain/chat.types';
 import { IChatActivityGateway } from '#/chat/domain/chatActivity.gateway';
+import { ChatInsightService } from '#/chat/domain/chatInsight.service';
 import { hasPrice } from '#/usage/domain/model-pricing';
 import { IUsageGateway } from '#/usage/domain/usage.gateway';
 import { IUsageData } from '#/usage/domain/usage.types';
@@ -63,7 +65,9 @@ type Named = { id: string; name: string };
  *
  * It owns no fact. Every number is read through the slice that keeps it
  * (docs/statistics.md): people, conversations and channels from `chat`'s
- * hours, counted in the database; ratings from `chat`; tokens, calls and
+ * hours, counted in the database; how those conversations ended from their
+ * summaries, counted there too (CLEAN-270); ratings from `chat`; tokens,
+ * calls and
  * cost from `usage`, rolled up and priced by the functions the admin
  * overview uses, so the two cannot disagree about a day; refusals from
  * `agent/limit`; incidents from `agent/event`; names from the agent gateway.
@@ -75,7 +79,8 @@ type Named = { id: string; name: string };
  * The figures built from conversations are bound once more. What people
  * said to an agent only the Owner manages, the Ranch assistant, is the
  * Owner's (CLEAN-236), and every chat tool says the same since CLEAN-263
- * and CLEAN-267. So people, the quality rows and the channels are counted
+ * and CLEAN-267. So people, the quality rows (their open share included:
+ * an outcome is a reading of a conversation) and the channels are counted
  * over the reach less those agents, the scope chat history reads with, and
  * `reach.ownerOnly` names what was taken out: whoever leaves an agent out
  * owes the caller the reason. Tokens, calls, cost, the days, the agents by
@@ -91,6 +96,7 @@ export class InstallationStatsService {
   constructor(
     private readonly activity: IChatActivityGateway,
     private readonly chats: IChatGateway,
+    private readonly insight: ChatInsightService,
     private readonly usage: IUsageGateway,
     private readonly agents: IAgentGateway,
     private readonly limits: AgentLimitService,
@@ -114,10 +120,14 @@ export class InstallationStatsService {
     const today = localDay(now, UTC_ZONE);
     const endOfToday = startOfDay(shiftDay(today, 1), UTC_ZONE);
 
-    const [reach, ownerOnly, everyAgent] = await Promise.all([
+    const [reach, ownerOnly, everyAgent, summariesOn] = await Promise.all([
       this.access.reachableIds(caller),
       this.permission.ownerOnlyIds(caller),
       this.agents.findAll(),
+      // Whether this installation produces summaries (CLEAN-270). Asked
+      // before anything of them is read: when it does not, the ordinary
+      // case, the open share is not counted and the answer says so.
+      this.insight.isEnabled(),
     ]);
     const scope = reach.where();
     // The agents the caller reaches, as the agents list shows them.
@@ -135,7 +145,14 @@ export class InstallationStatsService {
 
     const [activity, ratings, usage, loadDays, incidents, notes] =
       await Promise.all([
-        this.activity.summaryForAgents(range, talkScope),
+        // One read for the conversations and for how they ended
+        // (CLEAN-270): where summaries are produced, the statement that
+        // counts the period's conversations also looks at the summary of
+        // each. Where they are not, it is the statement it always was, and
+        // no summary is read.
+        this.activity.summaryForAgents(range, talkScope, {
+          outcomes: summariesOn,
+        }),
         this.chats.feedbackByAgent(range.from, range.to, talkScope),
         // Both periods in one read, and every agent's rows: the reach is
         // applied to them below exactly as the admin overview applies it,
@@ -188,6 +205,7 @@ export class InstallationStatsService {
           .sort((a, b) => a.localeCompare(b)),
       },
       notes,
+      summaries: { enabled: summariesOn },
       board: {
         tokens: {
           input: spend.totals.inputTokens,
@@ -224,6 +242,7 @@ export class InstallationStatsService {
       quality: qualityOf(
         conversations,
         ratings.filter((row) => supervised.has(row.agentId)),
+        activity.outcomes.filter((row) => supervised.has(row.agentId)),
         supervised,
       ),
       channels: channelsOf(conversations),
@@ -435,15 +454,29 @@ function refusalsOf(
  * got. An agent is listed when it has either: a rating can be given in the
  * period on an answer of an older conversation. `supervised` are the agents
  * whose conversations the caller may count, which names each row.
+ *
+ * `outcomes` says how many of an agent's conversations have a summary and
+ * how many of those were left open (CLEAN-270); empty when the installation
+ * produces none, and both are then 0.
+ *
+ * Neither is capped here. They were, while a statement of their own read
+ * them a moment after the conversations were counted: a conversation that
+ * moved in between could be in one answer and not in the other, and the
+ * row was held to "open, of summarised, of conversations" by taking the
+ * smaller. They are counted from the very rows the conversations are
+ * counted from now (`agentConversationsQuery`), so the order holds by
+ * construction, and the capping went with the statement that needed it.
  */
 function qualityOf(
   conversations: readonly IAgentChannelConversations[],
   ratings: readonly IAgentFeedbackCounts[],
+  outcomes: readonly IAgentOutcomeCounts[],
   supervised: ReadonlyMap<string, Named>,
 ): IInstallationQuality[] {
   const talked = new Map<string, number>();
   for (const row of conversations) add(talked, row.agentId, row.conversations);
   const rated = new Map(ratings.map((row) => [row.agentId, row]));
+  const ended = new Map(outcomes.map((row) => [row.agentId, row]));
 
   return [...new Set([...talked.keys(), ...rated.keys()])]
     .map((agentId) => ({
@@ -452,6 +485,8 @@ function qualityOf(
       conversations: talked.get(agentId) ?? 0,
       down: rated.get(agentId)?.down ?? 0,
       rated: rated.get(agentId)?.rated ?? 0,
+      open: ended.get(agentId)?.open ?? 0,
+      summarised: ended.get(agentId)?.summarised ?? 0,
     }))
     .sort(
       (a, b) =>

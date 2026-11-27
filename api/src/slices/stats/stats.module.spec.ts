@@ -98,7 +98,24 @@ describe('StatsModule', () => {
       .map(classOf)
       .find((c) => c?.name === 'PersonalStatsService');
     expect(service).toBeDefined();
-    expect(metadata('design:paramtypes', service as Token)).toHaveLength(9);
+    // Nine, and two more for what the conversation summaries say
+    // (CLEAN-270): the topics by id, and whether summaries are produced at
+    // all. `ChatModule` exports both for this reader.
+    expect(
+      metadata<Token>('design:paramtypes', service as Token).map((p) => p.name),
+    ).toEqual([
+      'IChatActivityGateway',
+      'IChatGateway',
+      'IChatTopicGateway',
+      'ChatInsightService',
+      'ChatSourceService',
+      'IDelegationGateway',
+      'IUsageGateway',
+      'IAgentGateway',
+      'ILlmGateway',
+      'AgentAccessService',
+      'FigureRegistry',
+    ]);
   });
 
   // The installation view reads four more slices (CLEAN-265): the hours and
@@ -118,6 +135,9 @@ describe('StatsModule', () => {
     ).toEqual([
       'IChatActivityGateway',
       'IChatGateway',
+      // Whether summaries are produced: what the open share is read by
+      // (CLEAN-270).
+      'ChatInsightService',
       'IUsageGateway',
       'IAgentGateway',
       'AgentLimitService',

@@ -5,18 +5,22 @@ import { activityFigure } from './activity';
 import { citationsFigure } from './citations';
 import { handoversFigure } from './handovers';
 import { incidentsFigure } from './incidents';
+import { outcomesFigure } from './outcomes';
 import { ratingsFigure } from './ratings';
 import { refusalsFigure } from './refusals';
 import { spendFigure } from './spend';
+import { topicsFigure } from './topics';
 
 export {
   activityFigure,
   citationsFigure,
   handoversFigure,
   incidentsFigure,
+  outcomesFigure,
   ratingsFigure,
   refusalsFigure,
   spendFigure,
+  topicsFigure,
 };
 
 /**
@@ -51,5 +55,9 @@ export class StatFigures implements OnModuleInit {
     this.registry.register(ratingsFigure);
     this.registry.register(citationsFigure);
     this.registry.register(handoversFigure);
+    // What the conversation summaries say (CLEAN-270): how conversations
+    // ended, a person's and per agent, and what a person's were about.
+    this.registry.register(outcomesFigure);
+    this.registry.register(topicsFigure);
   }
 }

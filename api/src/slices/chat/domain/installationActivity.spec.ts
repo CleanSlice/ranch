@@ -2,6 +2,7 @@ import {
   activityChannelOf,
   agentScopeCondition,
   conversationsFromRows,
+  outcomesFromRows,
   peopleFromRows,
 } from './installationActivity';
 
@@ -158,6 +159,48 @@ describe('conversationsFromRows: what the query answered, as numbers by agent an
 
   it('answers nothing for nothing', () => {
     expect(conversationsFromRows([])).toEqual([]);
+  });
+});
+
+// The rows of the conversations statement carry two counts more when the
+// outcomes were asked for (CLEAN-270): how many of the row's conversations
+// have a summary, and how many of those were left open.
+describe('outcomesFromRows: how the conversations of each agent ended, as numbers', () => {
+  const row = (
+    agentId: string,
+    channel: string,
+    conversations: bigint,
+    summarised?: bigint,
+    open?: bigint,
+  ) => ({ agentId, channel, share: false, conversations, summarised, open });
+
+  it('adds an agent’s channels together, as numbers, by agent id', () => {
+    expect(
+      outcomesFromRows([
+        row('a2', 'telegram', 50n, 40n, 0n),
+        row('a1', 'bridle', 400n, 280n, 20n),
+        row('a1', 'slack', 30n, 20n, 1n),
+        { ...row('a1', 'bridle', 9n, 0n, 0n), share: true },
+      ]),
+    ).toEqual([
+      { agentId: 'a1', summarised: 300, open: 21 },
+      { agentId: 'a2', summarised: 40, open: 0 },
+    ]);
+  });
+
+  it('leaves out an agent none of whose conversations has a summary', () => {
+    expect(
+      outcomesFromRows([
+        row('a1', 'bridle', 400n, 0n, 0n),
+        row('a2', 'bridle', 5n, 1n, 1n),
+      ]),
+    ).toEqual([{ agentId: 'a2', summarised: 1, open: 1 }]);
+  });
+
+  // The statement as it runs where summaries are off has no such columns.
+  it('answers nothing for rows that carry no outcome, and for no rows', () => {
+    expect(outcomesFromRows([row('a1', 'bridle', 400n)])).toEqual([]);
+    expect(outcomesFromRows([])).toEqual([]);
   });
 });
 

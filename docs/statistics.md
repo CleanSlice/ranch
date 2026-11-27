@@ -163,6 +163,13 @@ to 128 MB of hash memory for as long as it runs, and a few operators
 switching between 7, 30 and 90 days could otherwise hold the whole pool
 while chat and sign-in waited for a connection.
 
+The helper that does all of this, and the queue, are
+`api/src/slices/chat/data/aggregate.ts` (`runAggregate`). Any statement of
+the slice that passes over a large table goes through it, never a bare
+`$queryRaw`: the count of conversations by topic (`topicUsageQuery`,
+CLEAN-270) ran bare at first, with the client's five seconds, no say over
+its plan and no place in the queue, and takes its turn there now.
+
 ## The figure registry
 
 `api/src/slices/stats/domain/figures/` has one file per figure. A definition

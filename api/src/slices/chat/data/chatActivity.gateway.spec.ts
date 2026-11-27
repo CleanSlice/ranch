@@ -1,10 +1,11 @@
 import {
   ChatActivityGateway,
-  AGGREGATE_CONCURRENCY,
-  AGGREGATE_WORK_MEM,
   agentConversationsQuery,
   peopleQuery,
 } from './chatActivity.gateway';
+// The helper every aggregate of the slice runs through, and its queue: in a
+// file of its own since the topic statement joined it (CLEAN-270, review).
+import { AGGREGATE_CONCURRENCY, AGGREGATE_WORK_MEM } from './aggregate';
 
 type Row = Record<string, unknown>;
 type Limit = { lt?: number | Date };
@@ -554,10 +555,11 @@ const flat = (text: string) => text.replace(/\s+/g, ' ').trim();
 const UTC = (parameter: string) =>
   `(${parameter}::timestamptz AT TIME ZONE 'UTC')`;
 
-describe('the bounds of both statements', () => {
+describe('the bounds of every statement', () => {
   it('are read as UTC, never in the zone of the session', () => {
     for (const query of [
       agentConversationsQuery(PERIODS, EVERY_AGENT),
+      agentConversationsQuery(PERIODS, EVERY_AGENT, true),
       peopleQuery(PERIODS, EVERY_AGENT),
     ]) {
       const text = flat(query.text);
@@ -606,6 +608,33 @@ describe('agentConversationsQuery', () => {
     );
     expect(text).toContain('COUNT(*) AS "conversations"');
     expect(text).toContain('GROUP BY c."agentId", c."channel", c."share"');
+  });
+
+  // The whole statement, as it has shipped since CLEAN-265. An installation
+  // that produces no summaries, the ordinary one, runs exactly this: one
+  // table, no join (CLEAN-270).
+  it('is this statement and no more when the outcomes are not asked for: `ChatSession` is not read', () => {
+    const plain = agentConversationsQuery(PERIODS, EVERY_AGENT);
+    const said = agentConversationsQuery(PERIODS, EVERY_AGENT, false);
+
+    expect(flat(plain.text)).toBe(
+      'SELECT c."agentId", c."channel", c."share", COUNT(*) AS "conversations" ' +
+        'FROM ( ' +
+        'SELECT "sessionId", "agentId", "channel", ' +
+        '("externalUserId" LIKE $1) AS "share" ' +
+        'FROM "ChatActivityHour" ' +
+        `WHERE "hour" >= ${UTC('$2')} AND "hour" <= ${UTC('$3')} ` +
+        'AND "userMessages" > 0 ' +
+        'AND "channel" <> $4 ' +
+        'AND "externalUserId" NOT LIKE $5 ' +
+        'GROUP BY "sessionId", "agentId", "channel", "externalUserId" ' +
+        ') c ' +
+        'GROUP BY c."agentId", c."channel", c."share"',
+    );
+    expect(plain.text).not.toContain('ChatSession');
+    expect(plain.text).not.toContain('JOIN');
+    expect(said.text).toBe(plain.text);
+    expect(said.values).toEqual(plain.values);
   });
 
   it('names no agent for a caller nothing is hidden from', () => {
@@ -727,6 +756,95 @@ describe('peopleQuery', () => {
   });
 });
 
+// How the period's conversations ended (CLEAN-270): the open share of the
+// installation's quality block. Not a statement of its own. It was one, for
+// a day: it scanned and hashed the hour rows the conversations statement
+// had just scanned and hashed, and took a 90-day view from 0.65 s to 1.65 s
+// on a database of a million conversations. The conversations statement
+// now carries the two counts, from a join to each conversation's summary,
+// and only where summaries are produced.
+describe('agentConversationsQuery, with how the conversations ended', () => {
+  const withOutcomes = (
+    scope: Parameters<typeof agentConversationsQuery>[1] = EVERY_AGENT,
+  ) => agentConversationsQuery(PERIODS, scope, true);
+
+  it('is the same statement with each conversation joined to its summary, and two counts more', () => {
+    const query = withOutcomes();
+
+    expect(flat(query.text)).toBe(
+      'SELECT c."agentId", c."channel", c."share", COUNT(*) AS "conversations", ' +
+        'COUNT(s."id") AS "summarised", ' +
+        'COUNT(*) FILTER (WHERE s."outcome" = $1) AS "open" ' +
+        'FROM ( ' +
+        'SELECT "sessionId", "agentId", "channel", ' +
+        '("externalUserId" LIKE $2) AS "share" ' +
+        'FROM "ChatActivityHour" ' +
+        `WHERE "hour" >= ${UTC('$3')} AND "hour" <= ${UTC('$4')} ` +
+        'AND "userMessages" > 0 ' +
+        'AND "channel" <> $5 ' +
+        'AND "externalUserId" NOT LIKE $6 ' +
+        'GROUP BY "sessionId", "agentId", "channel", "externalUserId" ' +
+        ') c ' +
+        'LEFT JOIN "ChatSession" s ' +
+        'ON s."id" = c."sessionId" AND s."summaryAt" IS NOT NULL ' +
+        'GROUP BY c."agentId", c."channel", c."share"',
+    );
+    expect(query.values).toEqual([
+      'open',
+      'share-%',
+      PERIODS.from,
+      PERIODS.to,
+      'internal',
+      'peer:%',
+    ]);
+  });
+
+  // A LEFT join, with "has a summary" in its condition: a conversation
+  // without one keeps its row and is counted as a conversation, with
+  // nothing to count under the other two.
+  it('counts every conversation as before: the join drops none', () => {
+    const text = flat(withOutcomes().text);
+
+    expect(text).toContain('LEFT JOIN "ChatSession" s');
+    // "Has a summary" is a condition of the join, not of the rows: after
+    // the join nothing is filtered.
+    expect(text.slice(text.indexOf(') c LEFT JOIN'))).not.toContain('WHERE');
+    expect(text).toContain('COUNT(*) AS "conversations"');
+    // One row per conversation first, by primary key after: the hour rows
+    // are scanned and hashed once, for all three counts.
+    expect(text.match(/FROM "ChatActivityHour"/g)).toHaveLength(1);
+  });
+
+  // An installation view names no person and repeats nothing that was
+  // written (FR-021, FR-033): the statement reads no column that could.
+  it('reads nothing a person wrote: not the question, the summary, the preview or the title', () => {
+    const text = flat(withOutcomes().text);
+
+    for (const column of ['question', 'summary"', 'preview', 'title']) {
+      expect(text).not.toContain(column);
+    }
+  });
+
+  it('carries the same agents, each id bound, one place further on', () => {
+    const limited = withOutcomes({
+      matchesAny: true,
+      in: ['agent-1', 'agent-2'],
+      notIn: null,
+    });
+    expect(flat(limited.text)).toContain('AND "agentId" IN ($7,$8)');
+    expect(limited.values.slice(6)).toEqual(['agent-1', 'agent-2']);
+    expect(limited.text).not.toContain('agent-1');
+
+    const excluding = withOutcomes({
+      matchesAny: true,
+      in: null,
+      notIn: ['agent-3'],
+    });
+    expect(flat(excluding.text)).toContain('AND "agentId" NOT IN ($7)');
+    expect(excluding.values.slice(6)).toEqual(['agent-3']);
+  });
+});
+
 describe('ChatActivityGateway.summaryForAgents', () => {
   type Sql = { text: string; values: unknown[] };
 
@@ -808,8 +926,77 @@ describe('ChatActivityGateway.summaryForAgents', () => {
         { agentId: 'a2', channel: 'other', conversations: 1 },
         { agentId: 'a2', channel: 'telegram', conversations: 5 },
       ],
+      // Not asked for: no agent, which is not "none was left open".
+      outcomes: [],
       people: { value: 9, previous: 7 },
     });
+  });
+
+  // How the conversations ended comes with them (CLEAN-270): the same rows,
+  // each agent's added up over its channels.
+  it('answers how each agent’s conversations ended when asked, from the statement that counts them', async () => {
+    const { gateway, $queryRaw } = makeSummaryStub(
+      [
+        {
+          agentId: 'a1',
+          channel: 'bridle',
+          share: false,
+          conversations: 12n,
+          summarised: 9n,
+          open: 3n,
+        },
+        {
+          agentId: 'a1',
+          channel: 'bridle',
+          share: true,
+          conversations: 2n,
+          summarised: 1n,
+          open: 1n,
+        },
+        {
+          agentId: 'a2',
+          channel: 'telegram',
+          share: false,
+          conversations: 5n,
+          summarised: 0n,
+          open: 0n,
+        },
+      ],
+      [{ value: 9n, previous: 7n }],
+    );
+
+    const summary = await gateway.summaryForAgents(PERIODS, undefined, {
+      outcomes: true,
+    });
+
+    expect(summary.conversations).toEqual([
+      { agentId: 'a1', channel: 'console', conversations: 12 },
+      { agentId: 'a1', channel: 'share', conversations: 2 },
+      { agentId: 'a2', channel: 'telegram', conversations: 5 },
+    ]);
+    // An agent none of whose conversations has a summary is absent.
+    expect(summary.outcomes).toEqual([
+      { agentId: 'a1', summarised: 10, open: 4 },
+    ]);
+    // Still two statements, a transaction each: nothing was added to them.
+    expect($queryRaw).toHaveBeenCalledTimes(2);
+    const joined = $queryRaw.mock.calls.filter(([query]) =>
+      query.text.includes('"ChatSession"'),
+    );
+    expect(joined).toHaveLength(1);
+    expect(joined[0][0].values).toContain('open');
+  });
+
+  it('reads no summary unless asked: neither statement names `ChatSession`', async () => {
+    const { gateway, $queryRaw } = makeSummaryStub();
+
+    await gateway.summaryForAgents(PERIODS);
+    await gateway.summaryForAgents(PERIODS, undefined, { outcomes: false });
+
+    expect($queryRaw).toHaveBeenCalledTimes(4);
+    for (const [query] of $queryRaw.mock.calls) {
+      expect(query.text).not.toContain('ChatSession');
+    }
   });
 
   it('asks twice, once for conversations and once for people, each as a bound statement', async () => {
@@ -858,6 +1045,14 @@ describe('ChatActivityGateway.summaryForAgents', () => {
 
     expect(await gateway.summaryForAgents(PERIODS, { in: [] })).toEqual({
       conversations: [],
+      outcomes: [],
+      people: { value: 0, previous: 0 },
+    });
+    expect(
+      await gateway.summaryForAgents(PERIODS, { in: [] }, { outcomes: true }),
+    ).toEqual({
+      conversations: [],
+      outcomes: [],
       people: { value: 0, previous: 0 },
     });
     expect($queryRaw).not.toHaveBeenCalled();

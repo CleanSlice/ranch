@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { ChatOutcome, ChatOutcomeTypes } from '#/chat/domain/chat.types';
 import {
   IActivityDay,
   IComparedCount,
@@ -10,7 +11,14 @@ import {
   IPersonalAgent,
   IPersonalBoard,
   IPersonalHelp,
+  IPersonalOpenQuestion,
+  IPersonalOpenQuestions,
+  IPersonalOutcome,
+  IPersonalResolved,
   IPersonalStats,
+  IPersonalSummaries,
+  IPersonalTopic,
+  IPersonalTopicQuestion,
   PERIODS,
   PERSONAL_FIGURES,
   Period,
@@ -22,10 +30,13 @@ import {
 // shape it documents, so a field added to one and not the other does not
 // compile.
 //
-// The blocks that depend on conversation summaries (`summaries`, `topics`,
+// The blocks read from conversation summaries (`summaries`, `topics`,
 // `outcome`, `openQuestions`, `board.resolved`, and `resolved` / `summarised`
-// per agent) are not in this answer yet. They arrive with summaries of
-// version 2; until then the page reads their absence as "not counted yet".
+// per agent; CLEAN-270) are always in the answer, with the same shape. On an
+// installation that produces no summaries, the ordinary one, every count in
+// them is 0 and every list empty, and `summaries.enabled` is false: the page
+// decides by that field, never by a zero, between "nothing was left open"
+// and "summaries are not produced".
 
 export class StatsRangeDto implements IPeriodRange {
   @ApiProperty({
@@ -92,6 +103,62 @@ export class MyStatsBoardAgentsDto {
   reachable: number;
 }
 
+export class MyStatsSummariesDto implements IPersonalSummaries {
+  @ApiProperty({
+    description:
+      'Whether this installation produces conversation summaries. False: ' +
+      'the three counts here, `board.resolved`, `resolved` and `summarised` ' +
+      'of every agent and all of `outcome` are 0, and `topics` and ' +
+      '`openQuestions.items` are empty, because nothing about summaries is ' +
+      'counted. Show one card in their place, not zeros.',
+    example: true,
+  })
+  enabled: boolean;
+
+  @ApiProperty({
+    description:
+      "How many of the period's conversations have a summary. With " +
+      '`waiting` and `tooShort` it adds up to `board.conversations.value`.',
+    example: 9,
+  })
+  summarised: number;
+
+  @ApiProperty({
+    description:
+      'Conversations without a summary yet that will get one: long ' +
+      'enough, and the batch has not reached them. Not counted in topics ' +
+      'or outcomes yet.',
+    example: 2,
+  })
+  waiting: number;
+
+  @ApiProperty({
+    description:
+      'Conversations without a summary that will not get one as they ' +
+      'stand: under three messages from the person. Not a backlog.',
+    example: 1,
+  })
+  tooShort: number;
+}
+
+export class MyStatsResolvedDto implements IPersonalResolved {
+  @ApiProperty({
+    description:
+      'Conversations of the period whose summary says the person got what ' +
+      'they asked for.',
+    example: 6,
+  })
+  resolved: number;
+
+  @ApiProperty({
+    description:
+      'Conversations of the period that have a summary: what the share is ' +
+      'a share of. The same number as `summaries.summarised`.',
+    example: 9,
+  })
+  summarised: number;
+}
+
 export class MyStatsBoardDto implements IPersonalBoard {
   @ApiProperty({
     type: StatsComparedCountDto,
@@ -109,6 +176,16 @@ export class MyStatsBoardDto implements IPersonalBoard {
 
   @ApiProperty({ type: MyStatsBoardAgentsDto })
   agents: MyStatsBoardAgentsDto;
+
+  @ApiProperty({
+    type: MyStatsResolvedDto,
+    description:
+      'The resolved share: `resolved` out of `summarised`. Both 0 when ' +
+      '`summaries.enabled` is false, and `summarised` 0 while no ' +
+      'conversation of the period has a summary: no share to show either ' +
+      'way.',
+  })
+  resolved: MyStatsResolvedDto;
 }
 
 export class MyStatsDayDto implements IActivityDay {
@@ -173,6 +250,22 @@ export class MyStatsAgentDto implements IPersonalAgent {
   conversations: number;
 
   @ApiProperty({
+    description:
+      'The ones among those conversations whose summary says resolved. 0 ' +
+      'when `summaries.enabled` is false.',
+    example: 4,
+  })
+  resolved: number;
+
+  @ApiProperty({
+    description:
+      'The ones among those conversations that have a summary: what ' +
+      '`resolved` is a share of. 0 when `summaries.enabled` is false.',
+    example: 5,
+  })
+  summarised: number;
+
+  @ApiProperty({
     type: String,
     nullable: true,
     description:
@@ -192,6 +285,235 @@ export class MyStatsAgentDto implements IPersonalAgent {
     example: '2026-11-26T09:12:30.000Z',
   })
   lastMessageAt: Date | null;
+}
+
+const OUTCOMES = Object.values(ChatOutcomeTypes);
+
+export class MyStatsTopicQuestionDto implements IPersonalTopicQuestion {
+  @ApiProperty({
+    description: 'The conversation the question was asked in.',
+    example: 'chat-7c1f',
+  })
+  chatId: string;
+
+  @ApiProperty() agentId: string;
+
+  @ApiProperty({ example: 'Support Bot' }) agentName: string;
+
+  @ApiProperty({
+    maxLength: 120,
+    description:
+      "The person's main question in that conversation: one line, in " +
+      'their language, as its summary worded it. Shown as received. It is ' +
+      'in this answer because the answer is its owner’s; no other route ' +
+      'or tool of the statistics carries it.',
+    example: 'How do I change my plan?',
+  })
+  question: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    description: "The conversation's last message.",
+    example: '2026-11-26T09:12:30.000Z',
+  })
+  at: Date;
+
+  @ApiProperty({
+    enum: OUTCOMES,
+    description:
+      'How that conversation ended. `unknown`: its summary could not tell; ' +
+      'neither a resolved nor an open mark.',
+    example: 'resolved',
+  })
+  outcome: ChatOutcome;
+}
+
+export class MyStatsTopicDto implements IPersonalTopic {
+  @ApiProperty({
+    description:
+      'The topic. One that was merged into another is counted under that ' +
+      'other, and only that one is listed.',
+    example: 'topic-3f2a',
+  })
+  id: string;
+
+  @ApiProperty({
+    description:
+      "The topic's name in the request's language (`Accept-Language`, " +
+      'among the languages of the console), in English when it has none ' +
+      'in that language.',
+    example: 'Billing',
+  })
+  label: string;
+
+  @ApiProperty({
+    description:
+      'Summarised conversations of the period that carry the topic. A ' +
+      'conversation can carry two, so the topics can add up to more than ' +
+      '`summaries.summarised`, and one with no topic is in none.',
+    example: 5,
+  })
+  conversations: number;
+
+  @ApiProperty({
+    description: 'Of them, the ones resolved.',
+    example: 3,
+  })
+  resolved: number;
+
+  @ApiProperty({
+    description:
+      'Of them, the ones left open. With `resolved` it can be less than ' +
+      '`conversations`: the rest ended `unknown`.',
+    example: 1,
+  })
+  open: number;
+
+  @ApiProperty({
+    type: [MyStatsTopicQuestionDto],
+    maxItems: 4,
+    description:
+      'Up to four main questions of those conversations, newest first, ' +
+      'each wording once. Empty when no summary quoted a question.',
+  })
+  questions: MyStatsTopicQuestionDto[];
+}
+
+export class MyStatsSentimentDto {
+  @ApiProperty({ example: 4 }) positive: number;
+
+  @ApiProperty({ example: 3 }) neutral: number;
+
+  @ApiProperty({ example: 1 }) mixed: number;
+
+  @ApiProperty({ example: 1 }) negative: number;
+}
+
+export class MyStatsLanguageDto {
+  @ApiProperty({
+    description: 'ISO 639-1 code, lower case, as the summary judged it.',
+    example: 'en',
+  })
+  code: string;
+
+  @ApiProperty({
+    description: 'Summarised conversations in that language.',
+    example: 7,
+  })
+  conversations: number;
+}
+
+export class MyStatsOutcomeDto implements IPersonalOutcome {
+  @ApiProperty({
+    description:
+      'Conversations whose summary says the person got what they asked for.',
+    example: 6,
+  })
+  resolved: number;
+
+  @ApiProperty({
+    description: 'Conversations whose summary says they did not.',
+    example: 2,
+  })
+  open: number;
+
+  @ApiProperty({
+    description:
+      'Summarised, and the summary could not tell. In neither of the two ' +
+      'above, and never under open questions.',
+    example: 1,
+  })
+  unknown: number;
+
+  @ApiProperty({
+    description:
+      'Conversations of the period with no summary: `summaries.waiting` ' +
+      'and `summaries.tooShort` together. With the three above it adds up ' +
+      'to `board.conversations.value`, except when `summaries.enabled` is ' +
+      'false: all four are then 0 and stand for nothing.',
+    example: 3,
+  })
+  notSummarised: number;
+
+  @ApiProperty({
+    type: MyStatsSentimentDto,
+    description:
+      'The tone of the summarised conversations, each in one of the four. ' +
+      'A summary that stored no tone is in none, so they can add up to ' +
+      'less than the summarised.',
+  })
+  sentiment: MyStatsSentimentDto;
+
+  @ApiProperty({
+    type: [MyStatsLanguageDto],
+    description:
+      'The languages of the summarised conversations, most first. Empty ' +
+      'when none has a summary.',
+  })
+  languages: MyStatsLanguageDto[];
+}
+
+export class MyStatsOpenQuestionDto implements IPersonalOpenQuestion {
+  @ApiProperty({
+    description:
+      'The conversation left open: what "Continue" opens, with `agentId`.',
+    example: 'chat-7c1f',
+  })
+  chatId: string;
+
+  @ApiProperty() agentId: string;
+
+  @ApiProperty({ example: 'Support Bot' }) agentName: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    maxLength: 120,
+    description:
+      "The person's main question in it, shown as received. Null when the " +
+      'summary found the conversation open and quoted no question.',
+    example: 'Why was I charged twice?',
+  })
+  question: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The name of the conversation's first topic, as `topics[].label` " +
+      'names it. Null when its summary assigned none.',
+    example: 'Billing',
+  })
+  topic: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    description: "The conversation's last message.",
+    example: '2026-11-26T09:12:30.000Z',
+  })
+  at: Date;
+}
+
+export class MyStatsOpenQuestionsDto implements IPersonalOpenQuestions {
+  @ApiProperty({
+    type: [MyStatsOpenQuestionDto],
+    maxItems: 4,
+    description:
+      'The newest four conversations of the period left open, newest ' +
+      'first. Empty when none was, and when `summaries.enabled` is false: ' +
+      'tell the two apart by that field.',
+  })
+  items: MyStatsOpenQuestionDto[];
+
+  @ApiProperty({
+    description:
+      'How many more there are. `items` and `more` together are ' +
+      '`outcome.open`.',
+    example: 0,
+  })
+  more: number;
 }
 
 export class MyStatsSourceDto {
@@ -337,6 +659,15 @@ export class MyStatsDto implements IPersonalStats {
   })
   notes: StatsNoteDto[];
 
+  @ApiProperty({
+    type: MyStatsSummariesDto,
+    description:
+      'Whether conversation summaries are produced here, and how many of ' +
+      "the period's conversations have one, wait for one, or are too " +
+      'short for one.',
+  })
+  summaries: MyStatsSummariesDto;
+
   @ApiProperty({ type: MyStatsBoardDto })
   board: MyStatsBoardDto;
 
@@ -350,6 +681,27 @@ export class MyStatsDto implements IPersonalStats {
       'most first.',
   })
   agents: MyStatsAgentDto[];
+
+  @ApiProperty({
+    type: [MyStatsTopicDto],
+    maxItems: 8,
+    description:
+      "What the period's summarised conversations were about: up to " +
+      'eight topics, most conversations first. Empty when no summarised ' +
+      'conversation has a topic, and when `summaries.enabled` is false.',
+  })
+  topics: MyStatsTopicDto[];
+
+  @ApiProperty({
+    type: MyStatsOutcomeDto,
+    description:
+      "How the period's conversations ended. All zeros and no language " +
+      'when `summaries.enabled` is false.',
+  })
+  outcome: MyStatsOutcomeDto;
+
+  @ApiProperty({ type: MyStatsOpenQuestionsDto })
+  openQuestions: MyStatsOpenQuestionsDto;
 
   @ApiProperty({ type: MyStatsHelpDto })
   help: MyStatsHelpDto;

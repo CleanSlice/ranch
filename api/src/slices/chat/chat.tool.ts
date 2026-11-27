@@ -21,6 +21,8 @@ import {
   ownerOnlyConversationsLeftOut,
   ownerOnlyRefusal,
   OWNER_ONLY_LEFT_OUT_FIELD,
+  confirmed,
+  CONFIRM_SENTENCE,
 } from '#/mcp/tooling';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import type { IConditionallyListedTool } from '#/mcp/interfaces/conditional-listing.interface';
@@ -31,15 +33,36 @@ import {
 } from '#/agent/file/domain';
 import {
   IChatGateway,
+  IChatTopicGateway,
   ChatSyncService,
   ChatInsightService,
+  ChatTopicMergeRefused,
+  topicLabelsFor,
+  topicMergeRefusal,
   type IChatSessionData,
+  type IChatTopicData,
+  type IChatTopicUsage,
 } from './domain';
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 
 const NOT_FOUND = (id: string) =>
   ok({ error: `Chat ${id} not found — call list_chats to find the id` });
+
+const TOPIC_NOT_FOUND = (key: string) =>
+  ok({
+    error: `Topic ${key} not found — call list_chat_topics to find the key`,
+  });
+
+/**
+ * The language a tool names topics in: the one `insights.topics` is written
+ * in, and the one the operator's agent reads. `list_chat_topics` gives every
+ * label for an answer in another language.
+ */
+const TOOL_TOPIC_LANGUAGE = 'en';
+
+/** A topic key as it is stored, whatever case and blanks it was typed with. */
+const topicKeyOf = (value: string) => value.trim().toLowerCase();
 
 /** Same defaults as `FilterChatsDto` / `ChatMessagesQueryDto`. */
 const DEFAULT_PAGE = 1;
@@ -71,8 +94,17 @@ const DEFAULT_TYPES: TranscriptMessage['role'][] = [
  * `agentName` goes beside `agentId` (CLEAN-267): the same end user has a
  * chat with every agent they talked to, and a row that says whose it is by
  * an id alone was read as the chat of the agent the person had asked about.
+ *
+ * `outcome`, `question` and `topics` are what version 2 of the summary says
+ * (CLEAN-270): null, null and none while there is no summary, which is not
+ * the same as an outcome of `unknown`. Topics by label; their ids and the
+ * prompt's version are bookkeeping and stay out.
  */
-function toToolChat(s: IChatSessionData, agentName: string | null) {
+function toToolChat(
+  s: IChatSessionData,
+  agentName: string | null,
+  topics: string[],
+) {
   return {
     id: s.id,
     agentId: s.agentId,
@@ -88,6 +120,9 @@ function toToolChat(s: IChatSessionData, agentName: string | null) {
     userMessageCount: s.userMessageCount,
     summary: s.summary,
     summaryAt: s.summaryAt,
+    outcome: s.outcome,
+    question: s.question,
+    topics,
     insights: s.insights,
     archived: s.archived,
     createdAt: s.createdAt,
@@ -109,6 +144,13 @@ function toToolChat(s: IChatSessionData, agentName: string | null) {
  *
  * Operator-only: a chat is somebody's conversation with an agent, and a plain
  * agent must not be able to read other people's sessions.
+ *
+ * Two tools have no console screen behind them (CLEAN-270, spec 038
+ * contracts/api.md): `list_chat_topics` and `merge_chat_topics`, the remedy
+ * when the summaries gave one subject two labels. They live here because
+ * the fact they change, `ChatTopic`, is this slice's. They follow the same
+ * rule as the rest of the class: a count over conversations is a reading of
+ * them, so it is asked for the agents `supervised` answers.
  */
 @ToolAudience('admin')
 @Injectable()
@@ -123,6 +165,7 @@ export class ChatTool implements IConditionallyListedTool {
     private readonly access: AgentAccessService,
     private readonly permission: AgentPermissionService,
     private readonly agents: IAgentGateway,
+    private readonly topics: IChatTopicGateway,
   ) {}
 
   /**
@@ -217,6 +260,40 @@ export class ChatTool implements IConditionallyListedTool {
     return (agentId) => names.get(agentId) ?? null;
   }
 
+  /** These chats as the tools hand them back: each with its agent's name and its topics by label. */
+  private async toToolChats(sessions: IChatSessionData[]) {
+    const [nameOf, labelsOf] = await Promise.all([
+      this.agentNames(sessions),
+      topicLabelsFor(this.topics, sessions, TOOL_TOPIC_LANGUAGE),
+    ]);
+    return sessions.map((s) => toToolChat(s, nameOf(s.agentId), labelsOf(s)));
+  }
+
+  /**
+   * The topics this caller is shown, each with the conversations they may
+   * read: the ones `supervised` answers, as for every chat tool.
+   *
+   * Whoever reads every conversation is shown the whole vocabulary, a topic
+   * nobody uses any more included. For anybody else a topic with none of
+   * their conversations is one that does not exist: its name was coined from
+   * what people said to an agent they do not read, the Owner's conversations
+   * with the Ranch assistant among them (CLEAN-236), and a list of subjects
+   * is a reading of those conversations too.
+   *
+   * `whole` says which of the two the caller is: true for the one who reads
+   * every conversation.
+   */
+  private async shownTopics(
+    httpRequest: Request,
+  ): Promise<{ shown: IChatTopicUsage[]; whole: boolean }> {
+    const scope = (await this.supervised(httpRequest)).where();
+    const usage = await this.topics.listWithCounts(scope);
+    return {
+      shown: scope ? usage.filter((entry) => entry.conversations > 0) : usage,
+      whole: !scope,
+    };
+  }
+
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
     return Promise.resolve(callerIsOperator(httpRequest));
   }
@@ -231,7 +308,10 @@ export class ChatTool implements IConditionallyListedTool {
     template: 'List the recent chats «of agent name»',
     description:
       'Chat sessions from the index, most recently active first, with the ' +
-      'title, preview, counts and any stored summary of each. Filter by ' +
+      'title, preview, counts and any stored summary of each: with it the ' +
+      'person’s main `question`, the `outcome` (resolved, open, or unknown ' +
+      'when the summary could not tell; null while there is no summary) ' +
+      'and the `topics`. Filter by ' +
       'agent id (list_agents resolves a name), channel or a search over ' +
       'title / preview / end-user id; archived and internal (cron, ' +
       'heartbeat) sessions are hidden unless asked for. Without an agent ' +
@@ -297,9 +377,8 @@ export class ChatTool implements IConditionallyListedTool {
       page,
       perPage,
     });
-    const nameOf = await this.agentNames(items);
     return ok({
-      items: items.map((s) => toToolChat(s, nameOf(s.agentId))),
+      items: await this.toToolChats(items),
       total,
       page,
       perPage,
@@ -318,7 +397,10 @@ export class ChatTool implements IConditionallyListedTool {
       '`agentName`), channel, end user, title, preview, message counts, ' +
       'when it was last active, and the stored ' +
       'summary and insights if summarize_chat (or the nightly batch) has ' +
-      'run. Metadata only — read the turns with get_chat_messages.',
+      'run: the main `question`, the `outcome` (resolved, open, or unknown ' +
+      'when the summary could not tell) and the `topics`. All null or ' +
+      'empty while there is no summary. Metadata only — read the turns ' +
+      'with get_chat_messages.',
     parameters: z.object({
       id: z.string().describe('Chat session id (list_chats has them)'),
     }),
@@ -331,8 +413,8 @@ export class ChatTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const { session, refusal } = await this.chatFor(httpRequest, id);
     if (!session) return refusal;
-    const nameOf = await this.agentNames([session]);
-    return ok(toToolChat(session, nameOf(session.agentId)));
+    const [chat] = await this.toToolChats([session]);
+    return ok(chat);
   }
 
   @Tool({
@@ -488,7 +570,9 @@ export class ChatTool implements IConditionallyListedTool {
     template: 'Summarize the chat «id»',
     description:
       'Generate (or refresh) an LLM summary and structured insights — ' +
-      'topics, sentiment, resolved, language — for one chat, and store them ' +
+      'the main question, the outcome (resolved, open or unknown), topics ' +
+      'from the installation’s list, sentiment, language — for one chat, ' +
+      'and store them ' +
       'on the session. Needs an active Anthropic credential in Settings → ' +
       'LLM credentials; the call reports it when one is missing or ' +
       'rejected. Returns the session with its new summary. A chat whose ' +
@@ -507,9 +591,9 @@ export class ChatTool implements IConditionallyListedTool {
     if (!found.session) return found.refusal;
     try {
       const session = await this.insight.summarize(id);
-      const nameOf = await this.agentNames([session]);
+      const [chat] = await this.toToolChats([session]);
       return ok({
-        ...toToolChat(session, nameOf(session.agentId)),
+        ...chat,
         note: session.summary
           ? 'Summary stored on the session.'
           : 'No summary produced — the transcript is empty or unreadable.',
@@ -531,6 +615,164 @@ export class ChatTool implements IConditionallyListedTool {
       }
       throw e;
     }
+  }
+
+  // ─── Topics (CLEAN-270) ──────────────────────────────────────
+
+  @Tool({
+    name: 'list_chat_topics',
+    topic: ToolTopics.ChatsUsage,
+    effect: 'read',
+    title: 'List chat topics',
+    template: 'List the topics people talk to the agents about',
+    description:
+      'The subjects the conversation summaries sort chats under, most used ' +
+      'first: for each its `key`, its labels by language, how many ' +
+      'conversations carry it (`conversations`, among the conversations ' +
+      'this person may read) and the keys of topics already folded into ' +
+      'it (`merged`, given only to a person who may read every ' +
+      'conversation; when a topic has no `merged` field, say nothing ' +
+      'about what was folded into it). Use it to see whether two topics ' +
+      'mean one subject ' +
+      'before merge_chat_topics, which takes the keys. Topics are coined ' +
+      'by the summaries, never by hand: when `summariesEnabled` is false ' +
+      'this installation produces no summaries, so say that no new topics ' +
+      'appear, never that people talk about nothing. When the result ' +
+      'carries `notIncluded`, conversations exist that this person may not ' +
+      'read and they are not in the counts.',
+    parameters: z.object({}),
+  })
+  async listChatTopics(
+    _args: Record<string, never>,
+    _context: unknown,
+    httpRequest: AuthedRequest,
+  ): Promise<ToolResult> {
+    requireOperator(httpRequest);
+    const [{ shown, whole }, summariesEnabled] = await Promise.all([
+      this.shownTopics(httpRequest),
+      this.insight.isEnabled(),
+    ]);
+    return ok({
+      topics: shown.map((entry) => ({
+        key: entry.topic.key,
+        labels: entry.topic.labels,
+        conversations: entry.conversations,
+        // The keys folded into a topic, for the caller who reads every
+        // conversation and for nobody else (CLEAN-270, review). A folded
+        // key is a subject's name, coined from conversations, and the
+        // counts arrive folded: nothing here knows whether one of the
+        // conversations that carried it is this caller's to read. A topic
+        // with none of their conversations is not shown to them, so a
+        // folded key with none must not be either. Scoping it key by key
+        // would take a second pass over every conversation, per call, for
+        // a list that only helps to decide a merge; it is left out. Left
+        // out, and not sent as `[]`, which would say nothing was folded.
+        ...(whole ? { merged: entry.merged } : {}),
+      })),
+      total: shown.length,
+      summariesEnabled,
+      ...this.leftOut(httpRequest, undefined),
+    });
+  }
+
+  @Tool({
+    name: 'merge_chat_topics',
+    topic: ToolTopics.ChatsUsage,
+    effect: 'write',
+    destructive: true,
+    title: 'Merge two chat topics',
+    template: 'Merge the chat topic «from» into «into»',
+    description:
+      'Fold one topic into another when two labels turned out to mean one ' +
+      'subject: every conversation under `from` is counted under `into` ' +
+      'from then on, for every person and on every statistics page, and ' +
+      '`from` is no longer offered to new summaries. Takes the two keys ' +
+      '(list_chat_topics has them). There is no tool that takes a merge ' +
+      'back, so name both topics and their conversation counts to the ' +
+      'person first. Refused for a topic merged into itself, for a topic ' +
+      'that is merged already, and for a target that was merged itself. ' +
+      CONFIRM_SENTENCE,
+    parameters: z.object({
+      from: z.string().describe('Key of the topic that goes away'),
+      into: z.string().describe('Key of the topic that stays'),
+      confirm: z
+        .boolean()
+        .describe('Set true only after the person confirmed in the chat.'),
+    }),
+  })
+  async mergeChatTopics(
+    args: { from: string; into: string; confirm?: boolean },
+    _context: unknown,
+    httpRequest: AuthedRequest,
+  ): Promise<ToolResult> {
+    requireOperator(httpRequest);
+    const { shown } = await this.shownTopics(httpRequest);
+    const fromKey = topicKeyOf(args.from);
+    const intoKey = topicKeyOf(args.into);
+    const from = await this.shownTopic(shown, fromKey);
+    if (!from) return TOPIC_NOT_FOUND(fromKey);
+    const into = await this.shownTopic(shown, intoKey);
+    if (!into) return TOPIC_NOT_FOUND(intoKey);
+
+    const refusal = topicMergeRefusal(from, into);
+    if (refusal) {
+      // Where the target went, so that the next call can name it.
+      const standing =
+        into.mergedIntoId !== null && from.id !== into.id
+          ? shown.find((entry) => entry.topic.id === into.mergedIntoId)
+          : undefined;
+      return err(
+        standing ? `${refusal} That one is «${standing.topic.key}».` : refusal,
+      );
+    }
+
+    const unconfirmed = confirmed(
+      args,
+      `merge topic «${from.key}» into «${into.key}»: every conversation ` +
+        `under «${from.key}» is counted under «${into.key}» from then on, ` +
+        'for everyone, and it cannot be undone from the chat',
+    );
+    if (unconfirmed) return unconfirmed;
+
+    try {
+      await this.topics.merge(from.id, into.id);
+    } catch (e) {
+      // Another merge landed between the look above and this write, and the
+      // two topics no longer allow this one (the gateway asks the same
+      // rules again inside its transaction). A refusal like the ones
+      // above, with the list as the next move: it shows how they stand now.
+      if (e instanceof ChatTopicMergeRefused) {
+        return err(
+          `${e.message} The topics changed while this was being confirmed: call list_chat_topics to see how they stand now.`,
+        );
+      }
+      throw e;
+    }
+    this.logger.log(
+      `Chat topics merged through MCP: ${from.key} into ${into.key}`,
+    );
+    return ok({
+      merged: { from: from.key, into: into.key },
+      note:
+        `Conversations under «${from.key}» are now counted under ` +
+        `«${into.key}», and «${from.key}» is no longer offered to new ` +
+        'summaries. list_chat_topics shows the new counts.',
+    });
+  }
+
+  /**
+   * The topic with this key, when the caller is shown it or the topic it
+   * was folded into; null otherwise, and for a key that names nothing. One
+   * answer for both.
+   */
+  private async shownTopic(
+    shown: IChatTopicUsage[],
+    key: string,
+  ): Promise<IChatTopicData | null> {
+    const topic = await this.topics.findByKey(key);
+    if (!topic) return null;
+    const standingId = topic.mergedIntoId ?? topic.id;
+    return shown.some((entry) => entry.topic.id === standingId) ? topic : null;
   }
 
   @Tool({

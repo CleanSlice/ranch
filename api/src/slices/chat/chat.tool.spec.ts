@@ -8,14 +8,28 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { ChatTool } from './chat.tool';
-import type { IChatGateway, IChatSessionData } from './domain';
+import type {
+  IChatGateway,
+  IChatSessionData,
+  IChatTopicData,
+  IChatTopicGateway,
+  IChatTopicUsage,
+} from './domain';
 import type { ChatSyncService, ChatInsightService } from './domain';
+import { ChatTopicMergeRefused } from './domain';
 import type {
   TranscriptReaderService,
   TranscriptMessage,
 } from '#/agent/file/domain';
 import { UserRoleTypes } from '#/user/user/domain';
 import { asPerson, asTrustedAgent } from '#/mcp/testing';
+import {
+  MCP_TOOL_METADATA_KEY,
+  toolAudienceOf,
+  type ToolMetadata,
+} from '#/mcp/decorators';
+import { toolMetadataProblems } from '#/mcp/services/mcp-registry.service';
+import { CONFIRM_SENTENCE } from '#/mcp/tooling';
 import type { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
 import {
   accessHarness,
@@ -47,6 +61,10 @@ const session = (
   summary: null,
   summaryAt: null,
   insights: null,
+  outcome: null,
+  question: null,
+  topicIds: [],
+  insightVersion: 0,
   archived: false,
   createdAt: new Date('2026-09-17T09:00:00.000Z'),
   updatedAt: new Date('2026-09-17T10:00:00.000Z'),
@@ -74,8 +92,38 @@ interface Harness {
   chats: jest.Mocked<Pick<IChatGateway, 'list' | 'findById'>>;
   reader: jest.Mocked<Pick<TranscriptReaderService, 'read'>>;
   sync: jest.Mocked<Pick<ChatSyncService, 'syncAll'>>;
-  insight: jest.Mocked<Pick<ChatInsightService, 'summarize'>>;
+  insight: jest.Mocked<Pick<ChatInsightService, 'summarize' | 'isEnabled'>>;
+  topics: jest.Mocked<
+    Pick<
+      IChatTopicGateway,
+      'findByIds' | 'findByKey' | 'listWithCounts' | 'merge'
+    >
+  >;
 }
+
+const topicRow = (
+  key: string,
+  over: Partial<IChatTopicData> = {},
+): IChatTopicData => ({
+  id: `topic-${key}`,
+  key,
+  labels: { en: key[0].toUpperCase() + key.slice(1), ru: `${key}-ru` },
+  mergedIntoId: null,
+  createdAt: new Date('2026-11-01T00:00:00.000Z'),
+  ...over,
+});
+const BILLING = topicRow('billing');
+const REFUNDS = topicRow('refunds');
+const VACATION = topicRow('vacation');
+/** Folded into billing earlier. */
+const INVOICES = topicRow('invoices', { mergedIntoId: BILLING.id });
+const TOPICS = [BILLING, REFUNDS, VACATION, INVOICES];
+/** What the conversations of every agent add up to. */
+const USAGE: IChatTopicUsage[] = [
+  { topic: BILLING, conversations: 12, merged: ['invoices'] },
+  { topic: REFUNDS, conversations: 3, merged: [] },
+  { topic: VACATION, conversations: 0, merged: [] },
+];
 
 /** `agent-ranch` is the Ranch admin agent; nothing else is. */
 const RANCH_AGENT = 'agent-ranch';
@@ -112,14 +160,37 @@ function harness(access: AgentAccessService = openAccess()): Harness {
         summary: 'The user asked for a refund and got it.',
         summaryAt: new Date('2026-09-17T11:00:00.000Z'),
         insights: {
-          topics: ['refund'],
+          topics: ['Refunds'],
           sentiment: 'positive',
           resolved: true,
           language: 'en',
         },
+        outcome: 'resolved',
+        question: 'Can I get my money back for order 42?',
+        topicIds: [REFUNDS.id],
+        insightVersion: 2,
       }),
     ),
+    isEnabled: jest.fn().mockResolvedValue(true),
   } as unknown as Harness['insight'];
+  const topics = {
+    findByIds: jest.fn((ids: readonly string[]) =>
+      Promise.resolve(
+        new Map(
+          TOPICS.filter((t) => ids.includes(t.id)).map((t) => [
+            t.id,
+            // A merged topic is answered as the one it was folded into.
+            TOPICS.find((o) => o.id === t.mergedIntoId) ?? t,
+          ]),
+        ),
+      ),
+    ),
+    findByKey: jest.fn((key: string) =>
+      Promise.resolve(TOPICS.find((t) => t.key === key) ?? null),
+    ),
+    listWithCounts: jest.fn().mockResolvedValue(USAGE),
+    merge: jest.fn().mockResolvedValue(undefined),
+  } as unknown as Harness['topics'];
 
   const tool = new ChatTool(
     chats as unknown as IChatGateway,
@@ -129,8 +200,9 @@ function harness(access: AgentAccessService = openAccess()): Harness {
     access,
     permissionOver(agentRows),
     agentRows as unknown as IAgentGateway,
+    topics as unknown as IChatTopicGateway,
   );
-  return { tool, chats, reader, sync, insight };
+  return { tool, chats, reader, sync, insight, topics };
 }
 
 const textOf = (result: { content: { text: string }[] }) =>
@@ -556,5 +628,442 @@ describe('export_chat', () => {
     const result = await tool.exportChat({ id: 'nope' }, null, operator());
     expect(textOf(result)).toContain('Chat nope not found');
     expect(textOf(result)).not.toContain('downloadPath');
+  });
+});
+
+// ── Summaries, version 2 (CLEAN-270) ─────────────────────────
+
+/** The same agent, answering a User: its token carries Owner, the person does not. */
+const answeringUser = () =>
+  asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.User, 'user-9');
+/** An Admin behind it: reads every conversation but the assistant's. */
+const answeringAdmin = () =>
+  asPerson(request([UserRoleTypes.Owner]), UserRoleTypes.Admin, 'user-1');
+
+describe('what a summary says about a chat', () => {
+  const summarised = () =>
+    session({
+      summary: 'Asked about an invoice; it was resent.',
+      outcome: 'open',
+      question: 'Where is my invoice for October?',
+      // The second was folded into the first: one subject, named once.
+      topicIds: [BILLING.id, INVOICES.id, REFUNDS.id],
+      insightVersion: 2,
+    });
+
+  it('get_chat carries the outcome, the main question and the topics by their English labels', async () => {
+    const { tool, chats, topics } = harness();
+    chats.findById.mockResolvedValue(summarised());
+
+    const body = parse(await tool.getChat({ id: 'chat-1' }, null, operator()));
+
+    expect(body.outcome).toBe('open');
+    expect(body.question).toBe('Where is my invoice for October?');
+    expect(body.topics).toEqual(['Billing', 'Refunds']);
+    expect(topics.findByIds).toHaveBeenCalledWith([
+      BILLING.id,
+      INVOICES.id,
+      REFUNDS.id,
+    ]);
+    // Ids and the prompt's version are bookkeeping.
+    expect(body.topicIds).toBeUndefined();
+    expect(body.insightVersion).toBeUndefined();
+  });
+
+  it('list_chats carries them on every row, with one read of the topics', async () => {
+    const { tool, chats, topics } = harness();
+    chats.list.mockResolvedValue({
+      items: [summarised(), session({ id: 'chat-2' })],
+      total: 2,
+    });
+
+    const body = parse(await tool.listChats({}, null, operator()));
+
+    expect(body.items[0].topics).toEqual(['Billing', 'Refunds']);
+    expect(body.items[0].outcome).toBe('open');
+    // No summary: no outcome, which is not "open" and not "unknown".
+    expect(body.items[1]).toMatchObject({
+      outcome: null,
+      question: null,
+      topics: [],
+    });
+    expect(topics.findByIds).toHaveBeenCalledTimes(1);
+  });
+
+  it('summarize_chat returns what the new summary says', async () => {
+    const { tool } = harness();
+    const body = parse(
+      await tool.summarizeChat({ id: 'chat-1' }, null, operator()),
+    );
+    expect(body.outcome).toBe('resolved');
+    expect(body.question).toBe('Can I get my money back for order 42?');
+    expect(body.topics).toEqual(['Refunds']);
+  });
+});
+
+describe('list_chat_topics and merge_chat_topics: what the API boots them with', () => {
+  const proto = ChatTool.prototype as unknown as Record<string, unknown>;
+  const declared = (method: string) => {
+    const ref = Object.getOwnPropertyDescriptor(proto, method)?.value as object;
+    return {
+      metadata: Reflect.getMetadata(MCP_TOOL_METADATA_KEY, ref) as ToolMetadata,
+      audience: toolAudienceOf(ChatTool, ref),
+    };
+  };
+
+  it('list_chat_topics is a read for an operator, filed under chats', () => {
+    const { metadata, audience } = declared('listChatTopics');
+    expect(metadata.name).toBe('list_chat_topics');
+    expect(toolMetadataProblems(metadata)).toEqual([]);
+    expect(metadata.topic).toBe('chats_usage');
+    expect(metadata.effect).toBe('read');
+    expect(metadata.destructive).toBeFalsy();
+    expect(audience).toBe('admin');
+  });
+
+  // It cannot be taken back from the chat, and it changes what every person
+  // of the installation sees on their statistics page.
+  it('merge_chat_topics is a destructive write for an operator, with `confirm`', () => {
+    const { metadata, audience } = declared('mergeChatTopics');
+    expect(metadata.name).toBe('merge_chat_topics');
+    expect(toolMetadataProblems(metadata)).toEqual([]);
+    expect(metadata.topic).toBe('chats_usage');
+    expect(metadata.effect).toBe('write');
+    expect(metadata.destructive).toBe(true);
+    expect(metadata.description.endsWith(CONFIRM_SENTENCE)).toBe(true);
+    expect(audience).toBe('admin');
+  });
+});
+
+describe('the topic tools: who may use them', () => {
+  it.each([
+    ['a User behind the Ranch admin agent', answeringUser],
+    ['a plain agent', plainAgent],
+  ])('refuses %s, and reads and changes nothing', async (_who, caller) => {
+    const { tool, topics } = harness();
+
+    await expect(
+      tool.listChatTopics({}, null, caller()),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      tool.mergeChatTopics(
+        { from: 'refunds', into: 'billing', confirm: true },
+        null,
+        caller(),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(topics.listWithCounts).not.toHaveBeenCalled();
+    expect(topics.findByKey).not.toHaveBeenCalled();
+    expect(topics.merge).not.toHaveBeenCalled();
+  });
+});
+
+describe('list_chat_topics', () => {
+  it('lists every topic with its labels, its conversations and what was folded into it', async () => {
+    const { tool, topics } = harness();
+
+    const body = parse(await tool.listChatTopics({}, null, operator()));
+
+    // Whoever reads every conversation gets the count over every agent.
+    expect(topics.listWithCounts).toHaveBeenCalledWith(undefined);
+    expect(body.topics).toEqual([
+      {
+        key: 'billing',
+        labels: { en: 'Billing', ru: 'billing-ru' },
+        conversations: 12,
+        merged: ['invoices'],
+      },
+      {
+        key: 'refunds',
+        labels: { en: 'Refunds', ru: 'refunds-ru' },
+        conversations: 3,
+        merged: [],
+      },
+      {
+        key: 'vacation',
+        labels: { en: 'Vacation', ru: 'vacation-ru' },
+        conversations: 0,
+        merged: [],
+      },
+    ]);
+    expect(body.total).toBe(3);
+    expect(body.summariesEnabled).toBe(true);
+    // Ids are the table's, the key is what the merge takes.
+    expect(
+      textOf(await tool.listChatTopics({}, null, operator())),
+    ).not.toContain('topic-billing');
+  });
+
+  // CLEAN-236: the Owner's conversations with the assistant are not an
+  // Admin's to read, and a count over them is a reading of them.
+  it('counts for an Admin only the conversations that Admin may read, and lists no topic that has none of them', async () => {
+    const { tool, topics } = harness();
+    topics.listWithCounts.mockResolvedValue([
+      { topic: BILLING, conversations: 4, merged: ['invoices'] },
+      { topic: REFUNDS, conversations: 0, merged: [] },
+      { topic: VACATION, conversations: 0, merged: [] },
+    ]);
+
+    const body = parse(await tool.listChatTopics({}, null, answeringAdmin()));
+
+    expect(topics.listWithCounts).toHaveBeenCalledWith({
+      notIn: [RANCH_AGENT],
+    });
+    expect(body.topics.map((t: { key: string }) => t.key)).toEqual(['billing']);
+    expect(body.total).toBe(1);
+  });
+
+  /**
+   * The keys folded into a topic (CLEAN-270, review). A folded key is the
+   * name of a subject, coined from conversations; the counts are folded in
+   * the statement, so nothing here knows whether any conversation that
+   * carried `invoices` is one this Admin may read. A topic with none of
+   * their conversations is not shown to them; a folded key with none would
+   * have been, in `merged`. So the list of folded keys goes only to a caller
+   * who reads every conversation, and is left out, not sent empty, for
+   * anybody else: empty would say that nothing was folded.
+   */
+  it('names the folded keys only to a caller who reads every conversation', async () => {
+    const { tool, topics } = harness();
+    topics.listWithCounts.mockResolvedValue([
+      { topic: BILLING, conversations: 4, merged: ['invoices'] },
+      { topic: REFUNDS, conversations: 2, merged: [] },
+    ]);
+
+    const scoped = await tool.listChatTopics({}, null, answeringAdmin());
+
+    expect(parse(scoped).topics).toEqual([
+      {
+        key: 'billing',
+        labels: { en: 'Billing', ru: 'billing-ru' },
+        conversations: 4,
+      },
+      {
+        key: 'refunds',
+        labels: { en: 'Refunds', ru: 'refunds-ru' },
+        conversations: 2,
+      },
+    ]);
+    expect(textOf(scoped)).not.toContain('invoices');
+    expect(textOf(scoped)).not.toContain('merged');
+
+    // The Owner's own call still has them.
+    const whole = parse(await tool.listChatTopics({}, null, operator()));
+    expect(whole.topics[0].merged).toEqual(['invoices']);
+  });
+
+  it('counts for an Admin with a list of agents only the conversations of those', async () => {
+    const { service, gateway } = accessHarness(['agent-a', 'agent-b']);
+    gateway.seed('user-1', false, [{ agentId: 'agent-a', list: 'denied' }]);
+    const { tool, topics } = harness(service);
+
+    await tool.listChatTopics({}, null, answeringAdmin());
+
+    expect(topics.listWithCounts).toHaveBeenCalledWith({
+      notIn: ['agent-a', RANCH_AGENT],
+    });
+  });
+
+  // An empty list on an installation that writes no summaries is not
+  // "people talk about nothing".
+  it('says when the installation produces no summaries', async () => {
+    const { tool, topics, insight } = harness();
+    topics.listWithCounts.mockResolvedValue([]);
+    insight.isEnabled.mockResolvedValue(false);
+
+    const body = parse(await tool.listChatTopics({}, null, operator()));
+
+    expect(body.topics).toEqual([]);
+    expect(body.summariesEnabled).toBe(false);
+  });
+});
+
+describe('merge_chat_topics', () => {
+  it('refuses without `confirm`, says what it would do, and changes nothing', async () => {
+    const { tool, topics } = harness();
+
+    const result = await tool.mergeChatTopics(
+      { from: 'refunds', into: 'billing' },
+      null,
+      operator(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('«refunds»');
+    expect(textOf(result)).toContain('«billing»');
+    expect(textOf(result)).toContain('cannot be undone');
+    expect(textOf(result)).toContain('confirm: true');
+    expect(topics.merge).not.toHaveBeenCalled();
+  });
+
+  it('folds one topic into the other once confirmed', async () => {
+    const { tool, topics } = harness();
+
+    const result = await tool.mergeChatTopics(
+      { from: ' Refunds ', into: 'billing', confirm: true },
+      null,
+      operator(),
+    );
+
+    expect(topics.merge).toHaveBeenCalledWith(REFUNDS.id, BILLING.id);
+    expect(result.isError).toBeUndefined();
+    expect(parse(result)).toMatchObject({
+      merged: { from: 'refunds', into: 'billing' },
+    });
+  });
+
+  it.each([
+    ['from', { from: 'nope', into: 'billing' }, 'nope'],
+    ['into', { from: 'refunds', into: 'nope' }, 'nope'],
+  ])(
+    'names the next move when `%s` is no topic',
+    async (_which, keys, missing) => {
+      const { tool, topics } = harness();
+
+      const result = await tool.mergeChatTopics(
+        { ...keys, confirm: true },
+        null,
+        operator(),
+      );
+
+      expect(textOf(result)).toContain(`Topic ${missing} not found`);
+      expect(textOf(result)).toContain('list_chat_topics');
+      expect(topics.merge).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses a topic merged into itself', async () => {
+    const { tool, topics } = harness();
+
+    const result = await tool.mergeChatTopics(
+      { from: 'billing', into: 'billing', confirm: true },
+      null,
+      operator(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('into itself');
+    expect(topics.merge).not.toHaveBeenCalled();
+  });
+
+  // A reader follows a merge once: the conversations would be counted under
+  // a topic no list shows.
+  it('refuses a target that was merged itself, and names where to merge instead', async () => {
+    const { tool, topics } = harness();
+
+    const result = await tool.mergeChatTopics(
+      { from: 'refunds', into: 'invoices', confirm: true },
+      null,
+      operator(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('«invoices» was merged');
+    expect(textOf(result)).toContain('«billing»');
+    expect(topics.merge).not.toHaveBeenCalled();
+  });
+
+  it('refuses a topic that is merged already', async () => {
+    const { tool, topics } = harness();
+
+    const result = await tool.mergeChatTopics(
+      { from: 'invoices', into: 'refunds', confirm: true },
+      null,
+      operator(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('«invoices» is already merged');
+    expect(topics.merge).not.toHaveBeenCalled();
+  });
+
+  // The rules are asked again inside the merge's transaction, because
+  // another merge can land between the look above and the write (CLEAN-270,
+  // review). What that finds is a refusal like any other, not a fault.
+  it('answers a merge that another merge got ahead of with the refusal it met', async () => {
+    const { tool, topics } = harness();
+    topics.merge.mockRejectedValue(
+      new ChatTopicMergeRefused(
+        'Topic «billing» was merged into another topic itself: merge into that one.',
+      ),
+    );
+
+    const result = await tool.mergeChatTopics(
+      { from: 'refunds', into: 'billing', confirm: true },
+      null,
+      operator(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('«billing» was merged into another topic');
+    expect(textOf(result)).toContain('list_chat_topics');
+  });
+
+  it('lets any other failure of the merge through', async () => {
+    const { tool, topics } = harness();
+    topics.merge.mockRejectedValue(new Error('connection lost'));
+
+    await expect(
+      tool.mergeChatTopics(
+        { from: 'refunds', into: 'billing', confirm: true },
+        null,
+        operator(),
+      ),
+    ).rejects.toThrow('connection lost');
+  });
+
+  it('answers the refusals before it asks for confirmation', async () => {
+    const { tool } = harness();
+    const result = await tool.mergeChatTopics(
+      { from: 'billing', into: 'billing' },
+      null,
+      operator(),
+    );
+    expect(textOf(result)).toContain('into itself');
+    expect(textOf(result)).not.toContain('confirm: true');
+  });
+
+  // The same rule as the list: a topic with no conversation this Admin may
+  // read is, for them, a topic that does not exist.
+  it('answers a topic the caller is not shown as one that does not exist', async () => {
+    const { tool, topics } = harness();
+    topics.listWithCounts.mockResolvedValue([
+      { topic: BILLING, conversations: 4, merged: ['invoices'] },
+      { topic: REFUNDS, conversations: 0, merged: [] },
+    ]);
+
+    const hidden = await tool.mergeChatTopics(
+      { from: 'refunds', into: 'billing', confirm: true },
+      null,
+      answeringAdmin(),
+    );
+    const unknown = await tool.mergeChatTopics(
+      { from: 'nothing', into: 'billing', confirm: true },
+      null,
+      answeringAdmin(),
+    );
+
+    expect(textOf(hidden).split('refunds').join('<key>')).toBe(
+      textOf(unknown).split('nothing').join('<key>'),
+    );
+    expect(textOf(hidden)).not.toContain('Refunds');
+    expect(topics.merge).not.toHaveBeenCalled();
+  });
+
+  it('lets an Admin merge two topics both of which they are shown', async () => {
+    const { tool, topics } = harness();
+    topics.listWithCounts.mockResolvedValue([
+      { topic: BILLING, conversations: 4, merged: ['invoices'] },
+      { topic: REFUNDS, conversations: 2, merged: [] },
+    ]);
+
+    await tool.mergeChatTopics(
+      { from: 'refunds', into: 'billing', confirm: true },
+      null,
+      answeringAdmin(),
+    );
+
+    expect(topics.merge).toHaveBeenCalledWith(REFUNDS.id, BILLING.id);
   });
 });

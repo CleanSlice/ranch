@@ -37,16 +37,19 @@ import {
 } from '#/agent/file/domain';
 import {
   IChatGateway,
+  IChatTopicGateway,
   ChatSourceService,
   ChatSyncService,
   ChatInsightService,
   IChatSessionData,
   formatChatExport,
+  topicLabelsFor,
 } from './domain';
 import {
   FilterChatsDto,
   ChatListResponseDto,
   ChatSessionDto,
+  toChatSessionDto,
   ChatMessagesQueryDto,
   ChatMessagesResponseDto,
   SyncChatsDto,
@@ -58,6 +61,13 @@ import {
 
 type AuthedRequest = Request & { user?: IAuthTokenPayload };
 const FEEDBACK_SOURCE = 'admin';
+
+/**
+ * The language these routes name topics in (CLEAN-270). They serve the admin
+ * console, which is English whatever the browser says (docs/i18n.md), so the
+ * request's `Accept-Language` is not read here. `/me/chats` reads it.
+ */
+const TOPIC_LANGUAGE = 'en';
 
 const ALLOWED_TYPES: TranscriptMessage['role'][] = [
   'user',
@@ -90,6 +100,7 @@ export class ChatController {
     private readonly access: AgentAccessService,
     private readonly permission: AgentPermissionService,
     private readonly participants: ChatParticipantService,
+    private readonly topics: IChatTopicGateway,
   ) {}
 
   /**
@@ -97,18 +108,32 @@ export class ChatController {
    * agent that handed a conversation over is named by the caller's reach on
    * using agents, not by `supervised`: being told a name is a question of
    * access to that agent, not of reading its conversations.
+   *
+   * And with the topics of each one's summary, by label (CLEAN-270): one
+   * read of the topics for the whole page.
+   *
+   * What comes out is the DTO, field by field (`toChatSessionDto`), never
+   * the row with something added to it: the row has columns no DTO
+   * declares.
    */
-  private async withParticipants<T extends IChatSessionData>(
-    sessions: T[],
+  private async withParticipants(
+    sessions: IChatSessionData[],
     req: AuthedRequest | undefined,
-  ): Promise<Array<T & IChatParticipant>> {
-    const reach = await this.access.reachableIds(accessCallerOf(req));
+  ): Promise<ChatSessionDto[]> {
+    const [reach, labelsOf] = await Promise.all([
+      this.access.reachableIds(accessCallerOf(req)),
+      topicLabelsFor(this.topics, sessions, TOPIC_LANGUAGE),
+    ]);
     const participantOf = this.participants.forViewer((id) => reach.has(id));
     return Promise.all(
-      sessions.map(async (session) => ({
-        ...session,
-        ...(await participantOf(session)),
-      })),
+      sessions.map(async (session) => {
+        const participant: IChatParticipant = await participantOf(session);
+        return toChatSessionDto(session, {
+          topics: labelsOf(session),
+          person: participant.person,
+          peer: participant.peer,
+        });
+      }),
     );
   }
 
@@ -279,7 +304,8 @@ export class ChatController {
 
   @ApiOperation({
     description:
-      'Generate (or refresh) an LLM summary + insights for one chat, on demand.',
+      'Generate (or refresh) an LLM summary + insights for one chat, on demand: ' +
+      'the main question, the outcome and the topics with it.',
     operationId: 'summarizeChat',
   })
   @ApiOkResponse({ type: ChatSessionDto })
@@ -289,7 +315,13 @@ export class ChatController {
     @Req() req?: AuthedRequest,
   ): Promise<ChatSessionDto> {
     await this.requireChat(id, req);
-    return this.insight.summarize(id);
+    // As `detail` answers it, so the page that asked can replace its row:
+    // the new topics by label, and who the conversation is with.
+    const [session] = await this.withParticipants(
+      [await this.insight.summarize(id)],
+      req,
+    );
+    return session;
   }
 
   @ApiOperation({

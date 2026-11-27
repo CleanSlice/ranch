@@ -9,11 +9,17 @@ import type {
 import type { AgentLimitService } from '#/agent/limit/domain';
 import type { IChatGateway } from '#/chat/domain/chat.gateway';
 import type {
+  ChatOutcome,
   IActivityPeriods,
   IAgentFeedbackCounts,
+  IAgentOutcomeCounts,
   IInstallationActivity,
 } from '#/chat/domain/chat.types';
-import type { IChatActivityGateway } from '#/chat/domain/chatActivity.gateway';
+import type {
+  IActivitySummaryOptions,
+  IChatActivityGateway,
+} from '#/chat/domain/chatActivity.gateway';
+import type { ChatInsightService } from '#/chat/domain/chatInsight.service';
 import {
   IConversationCountRow,
   agentScopeCondition,
@@ -41,6 +47,11 @@ import type { IStatFigureGateway } from '../statFigure.gateway';
  *    person wrote in, inside the range, never the `internal` channel or a
  *    `peer:` identity, only the agents of the scope, a conversation once
  *    and a person once;
+ *  - asked for the outcomes too, it looks at the summary of each of those
+ *    conversations and answers two numbers more per agent; not asked, it
+ *    looks at none. The question a summary quotes is in this world and
+ *    never in what the read answers, as the statement selects no such
+ *    column;
  *  - an incident whose agent is gone has no agent id, and a NULL is neither
  *    in a list nor outside one: any scope hides it;
  *  - a read that is given no scope returns every agent, as the query would;
@@ -92,6 +103,14 @@ export interface IFleetRating {
   at: string;
 }
 
+/** What a conversation's row says of its summary (CLEAN-270). */
+export interface IFleetSummary {
+  /** Null: a summary an older release wrote, with no outcome stored. */
+  outcome: ChatOutcome | null;
+  /** The person's main question: theirs, and no part of this view. */
+  question?: string | null;
+}
+
 export interface IFleetUsage {
   agentId: string;
   /** The name stored with the row; null when no report could read it. */
@@ -126,6 +145,10 @@ export interface IFleetIncident {
 export interface IFleetWorld {
   agents: IFleetAgent[];
   hours: IFleetHour[];
+  /** Whether the installation produces summaries. False unless said. */
+  summaries: boolean;
+  /** By conversation id; a conversation not named here has no summary. */
+  summarised: Record<string, IFleetSummary>;
   ratings: IFleetRating[];
   usage: IFleetUsage[];
   loadDays: IFleetLoadDay[];
@@ -137,6 +160,8 @@ export interface IFleetWorld {
 const EMPTY: IFleetWorld = {
   agents: [],
   hours: [],
+  summaries: false,
+  summarised: {},
   ratings: [],
   usage: [],
   loadDays: [],
@@ -182,10 +207,12 @@ export function installationHarness(
       (
         periods: IActivityPeriods,
         agentScope?: Scope,
+        options: IActivitySummaryOptions = {},
       ): Promise<IInstallationActivity> => {
         if (!agentScopeCondition(agentScope).matchesAny) {
           return Promise.resolve({
             conversations: [],
+            outcomes: [],
             people: { value: 0, previous: 0 },
           });
         }
@@ -215,8 +242,29 @@ export function installationHarness(
         const identities = (from: Date, to: Date) =>
           new Set(counted(from, to, agentScope).map((h) => h.externalUserId))
             .size;
+        // The same statement with each conversation joined to its summary,
+        // when the outcomes were asked for: two numbers per agent leave
+        // it, and no conversation or anything a summary quotes does.
+        const ended = new Map<string, IAgentOutcomeCounts>();
+        if (options.outcomes) {
+          for (const h of sessions.values()) {
+            const summary = world.summarised[h.sessionId];
+            if (!summary) continue;
+            const counts = ended.get(h.agentId) ?? {
+              agentId: h.agentId,
+              summarised: 0,
+              open: 0,
+            };
+            counts.summarised += 1;
+            if (summary.outcome === 'open') counts.open += 1;
+            ended.set(h.agentId, counts);
+          }
+        }
         return Promise.resolve({
           conversations: conversationsFromRows([...groups.values()]),
+          outcomes: [...ended.values()].sort((a, b) =>
+            a.agentId.localeCompare(b.agentId),
+          ),
           people: {
             value: identities(periods.from, periods.to),
             previous: identities(periods.previousFrom, beforePeriod),
@@ -224,6 +272,10 @@ export function installationHarness(
         });
       },
     ),
+  };
+
+  const insight = {
+    isEnabled: recorded(() => Promise.resolve(world.summaries)),
   };
 
   const chats = {
@@ -418,6 +470,7 @@ export function installationHarness(
   const service = new InstallationStatsService(
     activity as unknown as IChatActivityGateway,
     chats as unknown as IChatGateway,
+    insight as unknown as ChatInsightService,
     usage as unknown as IUsageGateway,
     agents as unknown as IAgentGateway,
     limits as unknown as AgentLimitService,
@@ -430,6 +483,6 @@ export function installationHarness(
   return {
     service,
     world,
-    reads: { activity, chats, usage, limits, events, agents },
+    reads: { activity, chats, insight, usage, limits, events, agents },
   };
 }

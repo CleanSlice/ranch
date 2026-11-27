@@ -9,7 +9,10 @@ import type { IComparedCount } from './personalStats.types';
 //
 // Counts, sums, names of agents and models, the state and cause of
 // incidents, and times. Nothing here names a person, holds a chat identity
-// or repeats anything that was written (FR-021): people are a number.
+// or repeats anything that was written (FR-021): people are a number. That
+// holds for what the conversation summaries add (CLEAN-270): how many
+// conversations of an agent were left open is a count, and the question a
+// summary quotes is its person's alone and is not here (FR-033).
 //
 // Every figure, totals included, is of the agents the caller reaches. The
 // ones built from conversations (people, quality, channels) also leave out
@@ -139,6 +142,27 @@ export interface IInstallationQuality {
   down: number;
   /** Every rating its answers got in the period. */
   rated: number;
+  /**
+   * Of `summarised`, the conversations whose summary says the person was
+   * left without what they asked for. `unknown` is not among them.
+   */
+  open: number;
+  /**
+   * Of `conversations`, the ones that have a summary: what the open share
+   * is a share of, and what a page must show beside it. Both are 0 when
+   * `summaries.enabled` is false, where they are not counted.
+   */
+  summarised: number;
+}
+
+/**
+ * Whether the installation produces conversation summaries (CLEAN-270).
+ * What tells "no conversation was left open" from "not counted": with
+ * `enabled` false every `open` and `summarised` of `quality` is 0 because
+ * nothing was read. Nothing else about summaries is in this view.
+ */
+export interface IInstallationSummaries {
+  enabled: boolean;
 }
 
 export interface IInstallationChannel {
@@ -152,6 +176,7 @@ export interface IInstallationStats {
   range: IPeriodRange;
   reach: IInstallationReach;
   notes: IFigureNote[];
+  summaries: IInstallationSummaries;
   board: IInstallationBoard;
   /** One entry per UTC day of the period, oldest first. */
   daily: IInstallationDay[];

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { IChatSessionData } from '../domain';
 
 /** The signed-in person a conversation is with (CLEAN-236). */
 export class ChatPersonDto {
@@ -75,6 +76,40 @@ export class ChatSessionDto {
   })
   insights: unknown;
 
+  // What version 2 of the summary adds (CLEAN-270). Additive and optional:
+  // the admin console's chat pages keep reading `insights`.
+  @ApiPropertyOptional({
+    type: String,
+    enum: ['resolved', 'open', 'unknown'],
+    nullable: true,
+    description:
+      'How the conversation ended, by its latest summary. `unknown`: the ' +
+      'summary could not tell. Null while there is no summary.',
+    example: 'resolved',
+  })
+  outcome?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 120,
+    description:
+      'The person’s main question, one line, in their language. Null ' +
+      'while there is no summary, or when they asked for nothing.',
+    example: 'How do I change my plan?',
+  })
+  question?: string | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Labels of the topics the summary assigned, at most two. On ' +
+      '`/me/chats` in the language of `Accept-Language` when the console ' +
+      'has it, English otherwise; on `/chats` always English.',
+    example: ['Billing'],
+  })
+  topics?: string[];
+
   @ApiProperty() archived: boolean;
 
   @ApiProperty() createdAt: Date;
@@ -99,6 +134,46 @@ export class ChatSessionDto {
       '(`externalUserId` starts with `peer:`). Null otherwise.',
   })
   peer?: ChatPeerDto | null;
+}
+
+/**
+ * A conversation as a chat route answers it: the fields `ChatSessionDto`
+ * declares, one by one, and what the route adds to them (the topics by
+ * label; who the conversation is with).
+ *
+ * The routes used to spread the whole index row into the answer (CLEAN-270,
+ * review). Every column the row has then left the API, declared or not:
+ * `topicIds` and `insightVersion`, which the summaries of version 2 added
+ * as the row's own bookkeeping, and `lastIndexedEventId` and
+ * `lastIndexedSize`, which are the reconcile's. Written out, a column added
+ * to the row stays in until somebody declares it here and in the class.
+ */
+export function toChatSessionDto(
+  session: IChatSessionData,
+  added: Pick<ChatSessionDto, 'topics' | 'person' | 'peer'>,
+): ChatSessionDto {
+  return {
+    id: session.id,
+    agentId: session.agentId,
+    channel: session.channel,
+    externalUserId: session.externalUserId,
+    sessionKey: session.sessionKey,
+    title: session.title,
+    preview: session.preview,
+    lastRole: session.lastRole,
+    lastMessageAt: session.lastMessageAt,
+    messageCount: session.messageCount,
+    userMessageCount: session.userMessageCount,
+    summary: session.summary,
+    summaryAt: session.summaryAt,
+    insights: session.insights,
+    outcome: session.outcome,
+    question: session.question,
+    archived: session.archived,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    ...added,
+  };
 }
 
 export class ChatListResponseDto {

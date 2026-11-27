@@ -1,10 +1,35 @@
 import { Injectable } from '@nestjs/common';
-import { ChatSession } from '@prisma/client';
+import { ChatSession, Prisma } from '@prisma/client';
 import {
+  ChatOutcome,
+  ChatSentiment,
   IChatActivity,
   IChatReconcileInput,
   IChatSessionData,
+  IChatSessionOutcome,
 } from '../domain';
+
+/** The four tones a summary names; anything else in the Json is not one. */
+const SENTIMENTS: readonly ChatSentiment[] = [
+  'positive',
+  'neutral',
+  'mixed',
+  'negative',
+];
+
+/** The columns `findOutcomesForSessions` selects. */
+type OutcomeRecord = Pick<
+  ChatSession,
+  | 'id'
+  | 'agentId'
+  | 'lastMessageAt'
+  | 'userMessageCount'
+  | 'summaryAt'
+  | 'outcome'
+  | 'question'
+  | 'topicIds'
+  | 'insights'
+>;
 
 @Injectable()
 export class ChatMapper {
@@ -26,9 +51,47 @@ export class ChatMapper {
       summary: record.summary,
       summaryAt: record.summaryAt,
       insights: record.insights,
+      // A column of text: what is in it is one of the three, written by
+      // `saveInsights` or by the migration's backfill.
+      outcome: record.outcome as ChatOutcome | null,
+      question: record.question,
+      topicIds: record.topicIds,
+      insightVersion: record.insightVersion,
       archived: record.archived,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+    };
+  }
+
+  /**
+   * A conversation as a person's statistics read its summary (CLEAN-270).
+   * `insights` is Json written by whichever prompt summarised it: the tone
+   * and the language are taken when they are what they should be, and
+   * nothing else of it is passed on.
+   */
+  toOutcome(record: OutcomeRecord): IChatSessionOutcome {
+    const insights: Prisma.JsonObject =
+      record.insights !== null &&
+      typeof record.insights === 'object' &&
+      !Array.isArray(record.insights)
+        ? record.insights
+        : {};
+    const sentiment = SENTIMENTS.find((s) => s === insights.sentiment);
+    const language =
+      typeof insights.language === 'string'
+        ? insights.language.trim().toLowerCase()
+        : '';
+    return {
+      id: record.id,
+      agentId: record.agentId,
+      lastMessageAt: record.lastMessageAt,
+      userMessageCount: record.userMessageCount,
+      summaryAt: record.summaryAt,
+      outcome: record.outcome as ChatOutcome | null,
+      question: record.question,
+      topicIds: record.topicIds,
+      sentiment: sentiment ?? null,
+      language: language || null,
     };
   }
 

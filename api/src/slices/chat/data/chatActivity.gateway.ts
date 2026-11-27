@@ -5,9 +5,11 @@ import { SHARE_CLIENT_PREFIX } from '#/agent/shareLink/domain/shareLink.types';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import {
   ChatChannelTypes,
+  ChatOutcomeTypes,
   IActivityBucket,
   IActivityOwner,
   IActivityPeriods,
+  IActivitySummaryOptions,
   IAgentScopeCondition,
   IChatActivityGateway,
   IChatAgentScope,
@@ -19,8 +21,10 @@ import {
   IUnsettledChat,
   agentScopeCondition,
   conversationsFromRows,
+  outcomesFromRows,
   peopleFromRows,
 } from '../domain';
+import { runAggregate } from './aggregate';
 
 // ── The installation's activity, counted in the database (CLEAN-265) ──
 //
@@ -57,78 +61,6 @@ const utc = (moment: Date) =>
   Prisma.sql`(${moment}::timestamptz AT TIME ZONE 'UTC')`;
 
 /**
- * Memory one of these statements may hash in, set for its transaction only.
- *
- * Counting conversations is a hash of one entry per conversation of the
- * period, about 170 bytes each. Under the server's default of 4 MB the 245 000
- * conversations of a 90-day period in an installation of a million spilled
- * to disk in 17 passes and took 6.3 s; in memory the same statement takes
- * 0.3 s (measured, CLEAN-265). 64 MB, which Postgres doubles for a hash,
- * holds about 750 000 conversations in one period. Past that it spills again:
- * slower, never wrong. Local to the transaction, so the server's setting and
- * every other query keep what they had.
- */
-export const AGGREGATE_WORK_MEM = '64MB';
-
-/**
- * How long one of these statements may run, and wait for a connection. The
- * first read after a restart finds nothing cached and scans the table from
- * disk; the default of five seconds would end that with an error on a page
- * that a second try shows.
- */
-const AGGREGATE_TIMEOUT_MS = 30_000;
-
-/**
- * How many of these statements run at once in the process: two, the pair one
- * view asks for, so a single view still runs its two side by side and the
- * next view waits for a place.
- *
- * Each statement holds a connection of the Prisma pool for as long as it
- * runs, up to `AGGREGATE_TIMEOUT_MS`, and may hash in `AGGREGATE_WORK_MEM`,
- * which Postgres doubles: 128 MB each. Nothing capped how many ran, so a few
- * operators switching between 7, 30 and 90 days could hold the whole pool
- * while chat and sign-in waited for a connection (second review,
- * CLEAN-265). The API is one process by design: the hub, chat routing and
- * MCP sessions live in its memory (`ApiInstanceService`, CLEAN-140). So a
- * limit kept here is a limit on the installation. With two, the aggregates
- * take at most two connections and 256 MB, whoever is clicking.
- */
-export const AGGREGATE_CONCURRENCY = 2;
-
-/**
- * Places for `limit` tasks at a time, given out in the order they were asked
- * for. A task that ends, either way, hands its place to the one that has
- * waited longest, and frees it only when nobody waits: a newcomer cannot
- * slip in between an ending and the turn of the next in line.
- */
-class Turns {
-  private taken = 0;
-  private readonly waiting: Array<() => void> = [];
-
-  constructor(private readonly limit: number) {}
-
-  async run<T>(task: () => Promise<T>): Promise<T> {
-    if (this.taken < this.limit) {
-      this.taken += 1;
-    } else {
-      // Resolved by the task that hands its place over, so `taken` already
-      // counts this one when it wakes.
-      await new Promise<void>((next) => this.waiting.push(next));
-    }
-    try {
-      return await task();
-    } finally {
-      const next = this.waiting.shift();
-      if (next) next();
-      else this.taken -= 1;
-    }
-  }
-}
-
-/** One queue for the process: every aggregate of every request is in it. */
-const aggregateTurns = new Turns(AGGREGATE_CONCURRENCY);
-
-/**
  * The caller's agents as SQL, ready to follow the other conditions. Each id
  * is a bound value. A list has as many ids as the installation has agents;
  * a statement may carry 32 767 values.
@@ -153,13 +85,55 @@ function agentCondition(scope: IAgentScopeCondition): Prisma.Sql {
  * grouping by the conversation, and the outer query counts rows. Which of
  * the five channels of the view a row is, is decided from `channel` and
  * `share` afterwards (`activityChannelOf`), where a spec holds the rule.
+ *
+ * With `withOutcomes` (CLEAN-270) each of those rows is also joined to its
+ * conversation, by primary key, for how it ended: `summarised` counts the
+ * ones that have a summary and `open` the ones among them it left open.
+ * `unknown`, and a summary with no outcome at all (one an older release
+ * wrote), are summarised and not open. A LEFT join with "has a summary" in
+ * its condition, so a conversation without one keeps its row and
+ * `conversations` is the number it is without the join. Two columns of
+ * `ChatSession` are read, `summaryAt` and `outcome`: not the question, the
+ * summary or anything else a person's words are in (FR-021, FR-033).
+ *
+ * In this statement and not in one of its own. It was a third statement
+ * for a day, and scanned and hashed the hour rows this one had just scanned
+ * and hashed. Measured on a database of 1 005 120 conversations, 300 912 of
+ * them summarised, over 90 days (245 133 conversations): the third
+ * statement took 0.95 to 1.1 s warm and 1.7 s cold and, waiting its turn
+ * behind the pair, took the view from 0.65 s to about 1.65 s. Folded in,
+ * this statement takes 0.92 to 1.08 s where it took 0.3 s, beside the
+ * people statement's 0.6 s, so the view is about 1.0 s. The counts were
+ * checked against a separate recount (36 733 summarised and 12 207 open
+ * of one agent's 123 201 conversations).
+ *
+ * What the second takes is the join: a sequential scan of `ChatSession`
+ * for two columns. If that has to be cheaper, the step is a partial index
+ * `("id") INCLUDE ("outcome") WHERE "summaryAt" IS NOT NULL`, written by
+ * hand in a migration; it was measured at 0.6 to 0.85 s for the inner-join
+ * form and is not built.
+ *
+ * Without `withOutcomes` the statement is the one that has shipped since
+ * CLEAN-265, to the letter: an installation that produces no summaries,
+ * the ordinary one, does not read `ChatSession` for its statistics.
  */
 export function agentConversationsQuery(
   periods: Pick<IActivityPeriods, 'from' | 'to'>,
   scope: IAgentScopeCondition,
+  withOutcomes = false,
 ): Prisma.Sql {
+  const outcomeCounts = withOutcomes
+    ? Prisma.sql`,
+           COUNT(s."id") AS "summarised",
+           COUNT(*) FILTER (WHERE s."outcome" = ${ChatOutcomeTypes.Open}) AS "open"`
+    : Prisma.empty;
+  const summaryOfEach = withOutcomes
+    ? Prisma.sql`
+    LEFT JOIN "ChatSession" s
+      ON s."id" = c."sessionId" AND s."summaryAt" IS NOT NULL`
+    : Prisma.empty;
   return Prisma.sql`
-    SELECT c."agentId", c."channel", c."share", COUNT(*) AS "conversations"
+    SELECT c."agentId", c."channel", c."share", COUNT(*) AS "conversations"${outcomeCounts}
     FROM (
       SELECT "sessionId", "agentId", "channel",
              ("externalUserId" LIKE ${startingWith(SHARE_CLIENT_PREFIX)}) AS "share"
@@ -170,7 +144,7 @@ export function agentConversationsQuery(
         AND "externalUserId" NOT LIKE ${startingWith(PEER_CLIENT_PREFIX)}
         ${agentCondition(scope)}
       GROUP BY "sessionId", "agentId", "channel", "externalUserId"
-    ) c
+    ) c${summaryOfEach}
     GROUP BY c."agentId", c."channel", c."share"`;
 }
 
@@ -387,60 +361,35 @@ export class ChatActivityGateway extends IChatActivityGateway {
   async summaryForAgents(
     periods: IActivityPeriods,
     agentScope?: IChatAgentScope,
+    options: IActivitySummaryOptions = {},
   ): Promise<IInstallationActivity> {
     const scope = agentScopeCondition(agentScope);
     // A caller who reaches no agent: nothing to count, and nothing asked.
     if (!scope.matchesAny) {
-      return { conversations: [], people: { value: 0, previous: 0 } };
+      return {
+        conversations: [],
+        outcomes: [],
+        people: { value: 0, previous: 0 },
+      };
     }
     // Together: each takes its own connection and neither waits for the
     // other, once the pair has its turn (`AGGREGATE_CONCURRENCY`).
     // Conversations read the period, people the period and the one before
-    // it.
+    // it. How the conversations ended, when asked, is counted by the
+    // statement that counts them (CLEAN-270): still a pair, and the hour
+    // rows are scanned and hashed once for both.
     const [conversations, people] = await Promise.all([
-      this.aggregate<IConversationCountRow>(
-        agentConversationsQuery(periods, scope),
+      runAggregate<IConversationCountRow>(
+        this.prisma,
+        agentConversationsQuery(periods, scope, options.outcomes === true),
       ),
-      this.aggregate<IPeopleCountRow>(peopleQuery(periods, scope)),
+      runAggregate<IPeopleCountRow>(this.prisma, peopleQuery(periods, scope)),
     ]);
     return {
       conversations: conversationsFromRows(conversations),
+      // Empty unless asked: the rows then carry no outcome to add up.
+      outcomes: outcomesFromRows(conversations),
       people: peopleFromRows(people),
     };
-  }
-
-  /**
-   * Run one aggregate with the two settings it needs, both made with
-   * `set_config(…, true)`: that lasts until the transaction ends, so it has
-   * to be in the same transaction as the statement, and it never reaches the
-   * next user of the connection.
-   *
-   * `work_mem` is the memory to hash in (`AGGREGATE_WORK_MEM`).
-   *
-   * `plan_cache_mode = force_custom_plan` keeps the plan made for the dates
-   * asked. The statement is prepared once per connection, and after its
-   * fifth run Postgres may stop planning for the values and keep one plan
-   * for any: not knowing how much of the table two unknown dates span, it
-   * picked a plan that took 5.5 s where the first five runs took 0.6 s
-   * (measured at a million conversations, CLEAN-265). Nothing but a sixth
-   * request shows it, so no single `EXPLAIN` does.
-   *
-   * The statement first waits for its turn (`AGGREGATE_CONCURRENCY`), and
-   * the transaction is opened only then. So `maxWait` counts the wait for a
-   * connection and `timeout` the run, each from the statement's own turn:
-   * neither counts the time spent in the queue, and a statement is not
-   * ended for having waited behind others. What bounds that wait is the
-   * ones ahead, each of which ends within its own timeout.
-   */
-  private aggregate<T>(statement: Prisma.Sql): Promise<T[]> {
-    return aggregateTurns.run(() =>
-      this.prisma.$transaction(
-        async (tx) => {
-          await tx.$executeRaw`SELECT set_config('work_mem', ${AGGREGATE_WORK_MEM}, true), set_config('plan_cache_mode', 'force_custom_plan', true)`;
-          return tx.$queryRaw<T[]>(statement);
-        },
-        { maxWait: AGGREGATE_TIMEOUT_MS, timeout: AGGREGATE_TIMEOUT_MS },
-      ),
-    );
   }
 }

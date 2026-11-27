@@ -6,11 +6,12 @@ import {
   IChatFeedbackData,
   IChatFilter,
   IChatInsightGate,
-  IChatInsights,
   IChatListResult,
   IChatReconcileInput,
   IChatSessionData,
+  IChatSessionOutcome,
   IChatSessionRef,
+  IChatSummaryData,
   IUpsertChatFeedback,
 } from './chat.types';
 
@@ -57,21 +58,37 @@ export abstract class IChatGateway {
   ): Promise<void>;
 
   /**
-   * Sessions eligible for insight generation: not internal, not archived,
-   * enough user messages, settled (no recent activity), and with new activity
-   * since the last summary (`summaryAt IS NULL OR lastMessageAt > summaryAt`).
-   * Ordered most-recently-active first, capped at `gate.limit`.
+   * Sessions eligible for insight generation: not internal, enough user
+   * messages, settled (no recent activity), and one of
+   *
+   *  - never summarised, or something was said since the summary
+   *    (`summaryAt IS NULL OR lastMessageAt > summaryAt`);
+   *  - summarised by an older prompt (`insightVersion` below the current
+   *    one) and active within `gate.resummarizeWindowMs` (CLEAN-270).
+   *
+   * Archived conversations are taken too (CLEAN-270): one closed with New
+   * chat before its hour of quiet had passed was archived unsummarised and
+   * stayed so. Nothing is said in an archived conversation again, so it is
+   * taken once, and again only for a newer prompt.
+   *
+   * Ordered most-recently-active first, capped at `gate.limit`: new
+   * conversations and old summaries share the one cap.
+   *
+   * `gate.exclude` names conversations to leave out all the same, each by
+   * its id and the last message it had: the ones the batch has set aside.
    */
   abstract findEligibleForInsight(
     gate: IChatInsightGate,
   ): Promise<IChatSessionData[]>;
 
-  /** Persist an LLM summary + structured insights; stamps `summaryAt = now`. */
-  abstract saveInsights(
-    id: string,
-    summary: string,
-    insights: IChatInsights,
-  ): Promise<void>;
+  /**
+   * Persist what one summary says: the text, the question, the outcome, the
+   * topics, and `insights` (Json) in the shape the admin console reads.
+   * Stamps `summaryAt = now` and `insightVersion` with the current prompt's.
+   * Every field is written, so "no question" and "no topic" replace what an
+   * earlier summary said.
+   */
+  abstract saveInsights(id: string, summary: IChatSummaryData): Promise<void>;
 
   /** Upsert one author's 👍/👎 on a message (unique per session+message+author). */
   abstract upsertFeedback(
@@ -104,6 +121,23 @@ export abstract class IChatGateway {
     ids: readonly string[],
     agentScope?: IChatAgentScope,
   ): Promise<IChatSessionRef[]>;
+
+  /**
+   * The same conversations with what their summaries say (CLEAN-270): the
+   * outcome, the main question, the topics, the tone and the language, and
+   * the two things that tell a summary still to come from one that never
+   * will (`summaryAt`, `userMessageCount`). Not the summary's text, the
+   * preview or the title.
+   *
+   * By id, like `findSessionsByIds`, and bounded the same way: the ids are
+   * the conversations the hour rows of one person's period named, never a
+   * condition on `ChatSession` that would have it searched. It carries the
+   * person's question, so it is for that person's own view and no other.
+   */
+  abstract findOutcomesForSessions(
+    ids: readonly string[],
+    agentScope?: IChatAgentScope,
+  ): Promise<IChatSessionOutcome[]>;
 
   /**
    * How many answers one author rated up and down with `createdAt` in

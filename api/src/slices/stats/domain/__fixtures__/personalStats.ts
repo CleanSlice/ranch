@@ -5,10 +5,18 @@ import type {
   IDelegationCounts,
 } from '#/agent/peer/domain/peer.types';
 import type { IChatGateway } from '#/chat/domain/chat.gateway';
-import type { IChatSessionRef } from '#/chat/domain/chat.types';
+import type {
+  ChatOutcome,
+  ChatSentiment,
+  IChatSessionOutcome,
+  IChatSessionRef,
+  IChatTopicData,
+} from '#/chat/domain/chat.types';
 import type { IChatActivityGateway } from '#/chat/domain/chatActivity.gateway';
+import type { ChatInsightService } from '#/chat/domain/chatInsight.service';
 import type { ChatSourceService } from '#/chat/domain/chatSource.service';
 import type { ICitedForClient } from '#/chat/domain/chatSource.types';
+import type { IChatTopicGateway } from '#/chat/domain/chatTopic.gateway';
 import type { ILlmGateway } from '#/llm/domain/llm.gateway';
 import type { IUsageGateway } from '#/usage/domain/usage.gateway';
 import type { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
@@ -19,7 +27,9 @@ import {
   activityFigure,
   citationsFigure,
   handoversFigure,
+  outcomesFigure,
   ratingsFigure,
+  topicsFigure,
 } from '../figures';
 import { PersonalStatsService } from '../personalStats.service';
 import type { IStatFigureGateway } from '../statFigure.gateway';
@@ -102,9 +112,42 @@ export interface IWorldUsage {
   calls: number;
 }
 
+/**
+ * What a conversation's row says of its summary (CLEAN-270). A conversation
+ * with hours and no entry here has no summary, and as many messages from
+ * the person as its hours add up to.
+ */
+export interface IWorldSummary {
+  /** Lifetime messages from the person; the sum of its hours unless said. */
+  userMessageCount?: number;
+  /** When it was summarised, ISO; null or absent for no summary. */
+  summaryAt?: string | null;
+  outcome?: ChatOutcome | null;
+  question?: string | null;
+  topicIds?: string[];
+  sentiment?: ChatSentiment | null;
+  language?: string | null;
+}
+
+/** A `ChatTopic` row. */
+export interface IWorldTopic {
+  id: string;
+  key: string;
+  labels: Record<string, string>;
+  mergedIntoId?: string | null;
+}
+
 export interface IStatsWorld {
   agents: IWorldAgent[];
   hours: IWorldHour[];
+  /** Whether the installation produces summaries. False unless said: the
+   *  ordinary installation, our own production included. */
+  summaries: boolean;
+  /** By conversation id. Stored whether or not summaries are produced now:
+   *  a summary made by hand, or before they were switched off, is a row
+   *  like any other. */
+  summarised: Record<string, IWorldSummary>;
+  topics: IWorldTopic[];
   /** Last message time per conversation, ISO; a conversation not named here
    *  has the end of its last hour row. */
   lastMessageAt: Record<string, string>;
@@ -121,6 +164,9 @@ export interface IStatsWorld {
 const EMPTY: IStatsWorld = {
   agents: [],
   hours: [],
+  summaries: false,
+  summarised: {},
+  topics: [],
   lastMessageAt: {},
   ratings: [],
   citations: [],
@@ -185,27 +231,57 @@ export function statsHarness(
     ),
   };
 
+  /**
+   * The conversations named, as the primary-key lookup finds them: whoever
+   * they belong to. Whose they are is decided by who names them, so a
+   * service that named somebody else's would get that person's back.
+   */
+  const sessionsById = (ids: readonly string[], agentScope: Scope) => {
+    const found: IChatSessionRef[] = [];
+    for (const id of new Set(ids)) {
+      const rows = world.hours.filter((h) => h.sessionId === id);
+      if (rows.length === 0) continue;
+      if (!inScope(rows[0].agentId, agentScope)) continue;
+      const lastHour = Math.max(...rows.map((h) => new Date(h.hour).getTime()));
+      found.push({
+        id,
+        agentId: rows[0].agentId,
+        lastMessageAt: world.lastMessageAt[id]
+          ? new Date(world.lastMessageAt[id])
+          : new Date(lastHour + HOUR_MS - 1),
+      });
+    }
+    return found;
+  };
+
   const chats = {
-    findSessionsByIds: recorded(
-      (ids: readonly string[], agentScope?: Scope) => {
-        const found: IChatSessionRef[] = [];
-        for (const id of new Set(ids)) {
-          const rows = world.hours.filter((h) => h.sessionId === id);
-          if (rows.length === 0) continue;
-          if (!inScope(rows[0].agentId, agentScope)) continue;
-          const lastHour = Math.max(
-            ...rows.map((h) => new Date(h.hour).getTime()),
-          );
-          found.push({
-            id,
-            agentId: rows[0].agentId,
-            lastMessageAt: world.lastMessageAt[id]
-              ? new Date(world.lastMessageAt[id])
-              : new Date(lastHour + HOUR_MS - 1),
-          });
-        }
-        return Promise.resolve(found);
-      },
+    findSessionsByIds: recorded((ids: readonly string[], agentScope?: Scope) =>
+      Promise.resolve(sessionsById(ids, agentScope)),
+    ),
+    findOutcomesForSessions: recorded(
+      (
+        ids: readonly string[],
+        agentScope?: Scope,
+      ): Promise<IChatSessionOutcome[]> =>
+        Promise.resolve(
+          sessionsById(ids, agentScope).map((session) => {
+            const summary = world.summarised[session.id] ?? {};
+            return {
+              ...session,
+              userMessageCount:
+                summary.userMessageCount ??
+                world.hours
+                  .filter((h) => h.sessionId === session.id)
+                  .reduce((sum, h) => sum + h.userMessages, 0),
+              summaryAt: summary.summaryAt ? new Date(summary.summaryAt) : null,
+              outcome: summary.outcome ?? null,
+              question: summary.question ?? null,
+              topicIds: summary.topicIds ?? [],
+              sentiment: summary.sentiment ?? null,
+              language: summary.language ?? null,
+            };
+          }),
+        ),
     ),
     countFeedbackByAuthor: recorded(
       (authorId: string, from: Date, to: Date, agentScope?: Scope) => {
@@ -225,6 +301,33 @@ export function statsHarness(
         return Promise.resolve(counts);
       },
     ),
+  };
+
+  const topicOf = (t: IWorldTopic): IChatTopicData => ({
+    id: t.id,
+    key: t.key,
+    labels: t.labels,
+    mergedIntoId: t.mergedIntoId ?? null,
+    createdAt: new Date(0),
+  });
+  const topics = {
+    // By the id asked: the topic, or the one it was merged into, followed
+    // once and no further, as `ChatTopicGateway.findByIds` does. An id that
+    // names nothing is absent.
+    findByIds: recorded((ids: readonly string[]) => {
+      const found = new Map<string, IChatTopicData>();
+      for (const id of new Set(ids)) {
+        const topic = world.topics.find((t) => t.id === id);
+        if (!topic) continue;
+        const target = world.topics.find((t) => t.id === topic.mergedIntoId);
+        found.set(id, topicOf(target ?? topic));
+      }
+      return Promise.resolve(found);
+    }),
+  };
+
+  const insight = {
+    isEnabled: recorded(() => Promise.resolve(world.summaries)),
   };
 
   const sources = {
@@ -386,10 +489,14 @@ export function statsHarness(
   registry.register(ratingsFigure);
   registry.register(citationsFigure);
   registry.register(handoversFigure);
+  registry.register(outcomesFigure);
+  registry.register(topicsFigure);
 
   const service = new PersonalStatsService(
     activity as unknown as IChatActivityGateway,
     chats as unknown as IChatGateway,
+    topics as unknown as IChatTopicGateway,
+    insight as unknown as ChatInsightService,
     sources as unknown as ChatSourceService,
     delegations as unknown as IDelegationGateway,
     usage as unknown as IUsageGateway,
@@ -402,6 +509,16 @@ export function statsHarness(
   return {
     service,
     world,
-    reads: { activity, chats, sources, delegations, usage, agents, llms },
+    reads: {
+      activity,
+      chats,
+      topics,
+      insight,
+      sources,
+      delegations,
+      usage,
+      agents,
+      llms,
+    },
   };
 }

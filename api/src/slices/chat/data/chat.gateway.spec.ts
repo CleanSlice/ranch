@@ -1331,6 +1331,159 @@ describe('ChatGateway.findSessionsByIds', () => {
   });
 });
 
+// What a person's statistics read of their conversations' summaries
+// (CLEAN-270): by id, the ids the hour rows of the period named.
+describe('ChatGateway.findOutcomesForSessions', () => {
+  const session = (id: string, over: Row = {}): Row => ({
+    id,
+    agentId: 'agent-1',
+    lastMessageAt: new Date('2026-11-26T09:15:00Z'),
+    userMessageCount: 5,
+    summaryAt: new Date('2026-11-26T10:20:00Z'),
+    outcome: 'open',
+    question: 'How do I change my plan?',
+    topicIds: ['topic-billing'],
+    insights: {
+      topics: ['Billing'],
+      sentiment: 'mixed',
+      resolved: false,
+      language: 'en',
+    },
+    // What the row also holds, and the read leaves where it is.
+    title: 'a title',
+    preview: 'what the person wrote',
+    summary: 'the whole summary',
+    ...over,
+  });
+
+  it('returns what the summary says of each conversation, with its agent and its last message', async () => {
+    const { gw } = makePeriodStub([
+      session('c1'),
+      session('c2', {
+        agentId: 'agent-2',
+        userMessageCount: 2,
+        summaryAt: null,
+        outcome: null,
+        question: null,
+        topicIds: [],
+        insights: null,
+      }),
+    ]);
+
+    const found = await gw.findOutcomesForSessions(['c2', 'c1', 'c-gone']);
+
+    expect(found.sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+      {
+        id: 'c1',
+        agentId: 'agent-1',
+        lastMessageAt: new Date('2026-11-26T09:15:00Z'),
+        userMessageCount: 5,
+        summaryAt: new Date('2026-11-26T10:20:00Z'),
+        outcome: 'open',
+        question: 'How do I change my plan?',
+        topicIds: ['topic-billing'],
+        sentiment: 'mixed',
+        language: 'en',
+      },
+      {
+        id: 'c2',
+        agentId: 'agent-2',
+        lastMessageAt: new Date('2026-11-26T09:15:00Z'),
+        userMessageCount: 2,
+        summaryAt: null,
+        outcome: null,
+        question: null,
+        topicIds: [],
+        sentiment: null,
+        language: null,
+      },
+    ]);
+  });
+
+  it('reads the columns of the summary’s judgments, and not the summary, the preview or the title', async () => {
+    const { gw, prisma } = makePeriodStub([session('c1')]);
+
+    const found = await gw.findOutcomesForSessions(['c1']);
+
+    expect(prisma.chatSession.findMany.mock.calls[0][0].select).toEqual({
+      id: true,
+      agentId: true,
+      lastMessageAt: true,
+      userMessageCount: true,
+      summaryAt: true,
+      outcome: true,
+      question: true,
+      topicIds: true,
+      insights: true,
+    });
+    const text = JSON.stringify(found);
+    expect(text).not.toContain('the whole summary');
+    expect(text).not.toContain('what the person wrote');
+    expect(text).not.toContain('a title');
+    // Of `insights` only the tone and the language are passed on.
+    expect(text).not.toContain('Billing');
+  });
+
+  it('reads a tone or a language it does not know as none', async () => {
+    const { gw } = makePeriodStub([
+      session('c1', { insights: { sentiment: 'furious', language: 42 } }),
+      session('c2', { insights: 'not an object' }),
+      session('c3', { insights: { sentiment: 'negative', language: ' RU ' } }),
+    ]);
+
+    const found = await gw.findOutcomesForSessions(['c1', 'c2', 'c3']);
+
+    expect(
+      found
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map((s) => [s.sentiment, s.language]),
+    ).toEqual([
+      [null, null],
+      [null, null],
+      ['negative', 'ru'],
+    ]);
+  });
+
+  it('leaves out a conversation with an agent outside the scope', async () => {
+    const { gw } = makePeriodStub([
+      session('c1'),
+      session('c2', { agentId: 'agent-2' }),
+    ]);
+
+    expect(
+      (await gw.findOutcomesForSessions(['c1', 'c2'], { in: ['agent-1'] })).map(
+        (s) => s.id,
+      ),
+    ).toEqual(['c1']);
+    expect(
+      (
+        await gw.findOutcomesForSessions(['c1', 'c2'], { notIn: ['agent-1'] })
+      ).map((s) => s.id),
+    ).toEqual(['c2']);
+  });
+
+  it('asks nothing when no conversation is named, and in parts of at most 1000 ids', async () => {
+    const none = makePeriodStub();
+    expect(await none.gw.findOutcomesForSessions([])).toEqual([]);
+    expect(none.prisma.chatSession.findMany).not.toHaveBeenCalled();
+
+    const ids = Array.from({ length: 2500 }, (_, i) => `c${i}`);
+    const { gw, prisma } = makePeriodStub(ids.map((id) => session(id)));
+
+    const found = await gw.findOutcomesForSessions([
+      ...ids,
+      ...ids.slice(0, 9),
+    ]);
+
+    expect(found).toHaveLength(2500);
+    expect(
+      prisma.chatSession.findMany.mock.calls.map(
+        ([args]) => args.where.id.in.length,
+      ),
+    ).toEqual([1000, 1000, 500]);
+  });
+});
+
 describe('ChatGateway.countFeedbackByAuthor', () => {
   const FROM = new Date('2026-11-20T22:00:00Z');
   const TO = new Date('2026-11-27T10:30:00Z');
@@ -1523,5 +1676,403 @@ describe('ChatGateway.firstFeedbackAt', () => {
     const { gw } = makePeriodStub();
 
     expect(await gw.firstFeedbackAt()).toBeNull();
+  });
+});
+
+// ── The summary batch (CLEAN-270, spec 038 research R7) ───────────
+
+/** Stands for `prisma.chatSession.fields.summaryAt`: a column, not a value. */
+const SUMMARY_AT = { column: 'summaryAt' };
+
+/**
+ * Conversations as the summary batch asks for them, each condition applied
+ * as Postgres applies it: a comparison with a NULL `summaryAt` is not true.
+ */
+function makeInsightStub(sessions: Row[]) {
+  const time = (value: unknown) => (value as Date).getTime();
+
+  const branchMatches = (r: Row, branch: Record<string, any>) => {
+    onlyKnown(branch, ['summaryAt', 'lastMessageAt', 'insightVersion']);
+    if ('summaryAt' in branch) {
+      if (branch.summaryAt !== null) throw new Error('summaryAt: only null');
+      if (r.summaryAt !== null) return false;
+    }
+    if (branch.insightVersion) {
+      onlyKnown(branch.insightVersion, ['lt']);
+      if (!((r.insightVersion as number) < branch.insightVersion.lt))
+        return false;
+    }
+    if (branch.lastMessageAt) {
+      onlyKnown(branch.lastMessageAt, ['gt', 'gte']);
+      const { gt, gte } = branch.lastMessageAt;
+      if (gt !== undefined) {
+        if (gt !== SUMMARY_AT) throw new Error('gt: only the summaryAt column');
+        if (r.summaryAt === null) return false;
+        if (!(time(r.lastMessageAt) > time(r.summaryAt))) return false;
+      }
+      if (gte !== undefined && !(time(r.lastMessageAt) >= time(gte)))
+        return false;
+    }
+    return true;
+  };
+
+  const chatSession = {
+    fields: { summaryAt: SUMMARY_AT },
+    findMany: jest.fn(
+      async ({
+        where,
+        orderBy,
+        take,
+      }: {
+        where: Record<string, any>;
+        orderBy: { lastMessageAt: 'desc' };
+        take: number;
+      }) => {
+        onlyKnown(where, [
+          'channel',
+          'archived',
+          'userMessageCount',
+          'lastMessageAt',
+          'OR',
+          'NOT',
+        ]);
+        if (orderBy.lastMessageAt !== 'desc') {
+          throw new Error('not newest first');
+        }
+        // NOT with a list: none of them may match. Each names one
+        // conversation at one moment of it.
+        const excluded = (where.NOT ?? []) as Record<string, any>[];
+        for (const not of excluded) onlyKnown(not, ['id', 'lastMessageAt']);
+        return sessions
+          .filter((r) => {
+            if (
+              excluded.some(
+                (not) =>
+                  not.id === r.id &&
+                  time(not.lastMessageAt) === time(r.lastMessageAt),
+              )
+            )
+              return false;
+            if (
+              where.channel?.not !== undefined &&
+              r.channel === where.channel.not
+            )
+              return false;
+            if (where.archived !== undefined && r.archived !== where.archived)
+              return false;
+            if ((r.userMessageCount as number) < where.userMessageCount.gte)
+              return false;
+            if (!(time(r.lastMessageAt) < time(where.lastMessageAt.lt)))
+              return false;
+            return (where.OR as Record<string, any>[]).some((branch) =>
+              branchMatches(r, branch),
+            );
+          })
+          .sort((a, b) => time(b.lastMessageAt) - time(a.lastMessageAt))
+          .slice(0, take);
+      },
+    ),
+    update: jest.fn(
+      async ({ where, data }: { where: { id: string }; data: Row }) => {
+        const row = sessions.find((s) => s.id === where.id);
+        if (!row) throw new Error('No ChatSession found');
+        return Object.assign(row, data);
+      },
+    ),
+  };
+
+  const gw = new ChatGateway(
+    { chatSession } as unknown as ConstructorParameters<typeof ChatGateway>[0],
+    new ChatMapper(),
+  );
+  return { gw, chatSession };
+}
+
+describe('ChatGateway, the summary batch', () => {
+  const NOW = new Date('2026-11-27T12:00:00Z');
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+  const GATE = {
+    cooldownMs: HOUR,
+    minUserMessages: 3,
+    limit: 25,
+    resummarizeWindowMs: 180 * DAY,
+  };
+  const ago = (ms: number) => new Date(NOW.getTime() - ms);
+
+  /** A conversation the batch takes: quiet for two hours, never summarised. */
+  const chat = (id: string, over: Row = {}): Row => ({
+    id,
+    agentId: 'agent-1',
+    channel: 'bridle',
+    externalUserId: 'user-1',
+    sessionKey: `bridle:${id}`,
+    title: null,
+    preview: 'hi',
+    lastRole: 'assistant',
+    lastMessageAt: ago(2 * HOUR),
+    messageCount: 8,
+    userMessageCount: 4,
+    lastIndexedEventId: null,
+    lastIndexedSize: 0,
+    summary: null,
+    summaryAt: null,
+    insights: null,
+    outcome: null,
+    question: null,
+    topicIds: [],
+    insightVersion: 0,
+    archived: false,
+    activityRebuiltAt: null,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+    ...over,
+  });
+
+  /** One summarised by the prompt of `version`, an hour after its last message. */
+  const summarised = (id: string, version: number, over: Row = {}): Row => {
+    const row = chat(id, {
+      insightVersion: version,
+      summary: 'a summary',
+      ...over,
+    });
+    row.summaryAt = new Date((row.lastMessageAt as Date).getTime() + HOUR);
+    return row;
+  };
+
+  const eligible = async (sessions: Row[]) =>
+    (await makeInsightStub(sessions).gw.findEligibleForInsight(GATE)).map(
+      (s) => s.id,
+    );
+
+  const NOTHING_SAID = {
+    summary: 'Small talk.',
+    question: null,
+    outcome: 'unknown' as const,
+    topicIds: [],
+    insights: {
+      topics: [],
+      sentiment: 'neutral' as const,
+      resolved: false,
+      language: 'en',
+    },
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('takes a conversation that was never summarised, once it has been quiet for the cooldown', async () => {
+    expect(
+      await eligible([
+        chat('quiet'),
+        chat('still-going', { lastMessageAt: ago(HOUR - 1000) }),
+        chat('too-short', { userMessageCount: 2 }),
+        chat('heartbeat', { channel: 'internal' }),
+      ]),
+    ).toEqual(['quiet']);
+  });
+
+  // A conversation closed with New chat before its hour of quiet had passed
+  // was archived first and never summarised (research R7).
+  it('takes an archived conversation, once', async () => {
+    const sessions = [chat('closed', { archived: true })];
+    const { gw } = makeInsightStub(sessions);
+
+    expect((await gw.findEligibleForInsight(GATE)).map((s) => s.id)).toEqual([
+      'closed',
+    ]);
+
+    await gw.saveInsights('closed', NOTHING_SAID);
+
+    // Nothing is said in an archived conversation again, so nothing makes
+    // it due a second time.
+    expect(await gw.findEligibleForInsight(GATE)).toEqual([]);
+  });
+
+  it('takes a conversation again when something was said after its summary', async () => {
+    const continued = summarised('continued', 2);
+    continued.summaryAt = ago(5 * HOUR);
+    expect(await eligible([continued, summarised('settled', 2)])).toEqual([
+      'continued',
+    ]);
+  });
+
+  it('takes a version 1 summary again when the conversation was active in the last 180 days, and not an older one', async () => {
+    expect(
+      await eligible([
+        summarised('recent', 1, { lastMessageAt: ago(3 * DAY) }),
+        summarised('at-the-edge', 1, { lastMessageAt: ago(180 * DAY) }),
+        summarised('too-old', 1, { lastMessageAt: ago(180 * DAY + 1000) }),
+        summarised('already-current', 2, { lastMessageAt: ago(3 * DAY) }),
+      ]),
+    ).toEqual(['recent', 'at-the-edge']);
+  });
+
+  // A summary the previous release wrote after the migration ran and before
+  // it was replaced: it has a time and no version. It is an old summary.
+  it('takes a summary with no version as an old one', async () => {
+    expect(
+      await eligible([
+        summarised('unversioned', 0, { lastMessageAt: ago(3 * DAY) }),
+      ]),
+    ).toEqual(['unversioned']);
+  });
+
+  it('takes an archived version 1 summary of the last 180 days too', async () => {
+    expect(
+      await eligible([
+        summarised('closed-v1', 1, {
+          archived: true,
+          lastMessageAt: ago(3 * DAY),
+        }),
+      ]),
+    ).toEqual(['closed-v1']);
+  });
+
+  it('takes the newest first, new conversations and old summaries together, up to the cap', async () => {
+    const sessions = [
+      summarised('v1-older', 1, { lastMessageAt: ago(9 * DAY) }),
+      chat('new-newest', { lastMessageAt: ago(2 * HOUR) }),
+      summarised('v1-newer', 1, { lastMessageAt: ago(1 * DAY) }),
+      chat('new-oldest', { lastMessageAt: ago(400 * DAY) }),
+    ];
+    const { gw } = makeInsightStub(sessions);
+
+    expect(
+      (await gw.findEligibleForInsight({ ...GATE, limit: 3 })).map((s) => s.id),
+    ).toEqual(['new-newest', 'v1-newer', 'v1-older']);
+  });
+
+  /**
+   * The conversations the batch has set aside (CLEAN-270, review): ones it
+   * could make no summary of, which are eligible still as far as these rows
+   * say. Past a number of them the batch no longer reads them in order to
+   * skip them, and names them here instead.
+   */
+  describe('with conversations to leave out', () => {
+    const sessions = () => [
+      chat('aside', { lastMessageAt: ago(3 * HOUR) }),
+      chat('other', { lastMessageAt: ago(4 * HOUR) }),
+    ];
+
+    it('leaves out a conversation it is told to, as it stood then', async () => {
+      const { gw } = makeInsightStub(sessions());
+
+      expect(
+        (
+          await gw.findEligibleForInsight({
+            ...GATE,
+            exclude: [{ id: 'aside', lastMessageAt: ago(3 * HOUR) }],
+          })
+        ).map((s) => s.id),
+      ).toEqual(['other']);
+    });
+
+    // By the id alone it would stay left out after the person wrote again,
+    // which is the moment it is to be tried again.
+    it('takes it once something new was said in it', async () => {
+      const { gw } = makeInsightStub(sessions());
+
+      expect(
+        (
+          await gw.findEligibleForInsight({
+            ...GATE,
+            // Set aside when its last message was a day older.
+            exclude: [{ id: 'aside', lastMessageAt: ago(27 * HOUR) }],
+          })
+        ).map((s) => s.id),
+      ).toEqual(['aside', 'other']);
+    });
+
+    it('does not count the ones left out against the cap', async () => {
+      const { gw } = makeInsightStub(sessions());
+
+      expect(
+        (
+          await gw.findEligibleForInsight({
+            ...GATE,
+            limit: 1,
+            exclude: [{ id: 'aside', lastMessageAt: ago(3 * HOUR) }],
+          })
+        ).map((s) => s.id),
+      ).toEqual(['other']);
+    });
+
+    it('adds no condition when there is nobody to leave out', async () => {
+      const { gw, chatSession } = makeInsightStub(sessions());
+
+      await gw.findEligibleForInsight(GATE);
+      await gw.findEligibleForInsight({ ...GATE, exclude: [] });
+
+      for (const [args] of chatSession.findMany.mock.calls) {
+        expect(args.where).not.toHaveProperty('NOT');
+      }
+    });
+  });
+
+  it('writes the summary with its outcome, question and topics, as version 2', async () => {
+    const sessions = [summarised('c1', 1, { outcome: 'open' })];
+    const { gw, chatSession } = makeInsightStub(sessions);
+
+    await gw.saveInsights('c1', {
+      summary: 'Asked about a refund and got it.',
+      question: 'Как вернуть деньги?',
+      outcome: 'resolved',
+      topicIds: ['topic-refunds', 'topic-billing'],
+      insights: {
+        topics: ['Refunds', 'Billing'],
+        sentiment: 'positive',
+        resolved: true,
+        language: 'ru',
+      },
+    });
+
+    expect(chatSession.update).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: {
+        summary: 'Asked about a refund and got it.',
+        question: 'Как вернуть деньги?',
+        outcome: 'resolved',
+        topicIds: ['topic-refunds', 'topic-billing'],
+        insightVersion: 2,
+        insights: {
+          topics: ['Refunds', 'Billing'],
+          sentiment: 'positive',
+          resolved: true,
+          language: 'ru',
+        },
+        summaryAt: NOW,
+      },
+    });
+    // And it is read back as the conversation's own fields.
+    expect(new ChatMapper().toEntity(sessions[0] as never)).toMatchObject({
+      outcome: 'resolved',
+      question: 'Как вернуть деньги?',
+      topicIds: ['topic-refunds', 'topic-billing'],
+      insightVersion: 2,
+    });
+  });
+
+  it('writes "no question" and "no topic" as such, over what an earlier summary said', async () => {
+    const sessions = [
+      summarised('c1', 2, {
+        question: 'An old question?',
+        topicIds: ['topic-billing'],
+        outcome: 'open',
+      }),
+    ];
+    const { gw } = makeInsightStub(sessions);
+
+    await gw.saveInsights('c1', NOTHING_SAID);
+
+    expect(sessions[0]).toMatchObject({
+      question: null,
+      topicIds: [],
+      outcome: 'unknown',
+    });
   });
 });

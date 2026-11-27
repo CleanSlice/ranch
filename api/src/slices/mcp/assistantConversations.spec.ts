@@ -41,7 +41,7 @@ import type { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import type { IAgentData } from '#/agent/agent/domain/agent.types';
 import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { ChatTool } from '#/chat/chat.tool';
-import type { IChatSessionData } from '#/chat/domain';
+import type { IChatSessionData, IChatTopicData } from '#/chat/domain';
 import {
   ADMIN,
   ADMIN2,
@@ -113,7 +113,18 @@ const NO_CHAT = 'chat-zzz';
 /** In every field of the assistant's chat that could carry what was said. */
 const SECRET = 'OWNER-ONLY';
 
-const chat = (id: string, agentId: string, said: string): IChatSessionData =>
+// The topics their summaries gave them (CLEAN-270). One subject the Owner
+// raised with the assistant alone: its name is what was said there, too.
+const TOPIC_SHARED = 'topic-billing';
+const TOPIC_OF_B = 'topic-bravo';
+const TOPIC_OF_RANCH = 'topic-owner';
+
+const chat = (
+  id: string,
+  agentId: string,
+  said: string,
+  topicIds: string[],
+): IChatSessionData =>
   ({
     id,
     agentId,
@@ -129,15 +140,32 @@ const chat = (id: string, agentId: string, said: string): IChatSessionData =>
     summary: `${said} summary`,
     summaryAt: null,
     insights: null,
+    outcome: null,
+    question: null,
+    topicIds,
+    insightVersion: 2,
     archived: false,
     createdAt: new Date('2026-11-20T09:00:00.000Z'),
     updatedAt: new Date('2026-11-27T09:00:00.000Z'),
   }) as unknown as IChatSessionData;
 
 const CHATS = [
-  chat(CHAT_OF_A, A, 'alpha'),
-  chat(CHAT_OF_B, B, 'bravo'),
-  chat(CHAT_OF_RANCH, RANCH, SECRET),
+  chat(CHAT_OF_A, A, 'alpha', [TOPIC_SHARED]),
+  chat(CHAT_OF_B, B, 'bravo', [TOPIC_OF_B]),
+  chat(CHAT_OF_RANCH, RANCH, SECRET, [TOPIC_SHARED, TOPIC_OF_RANCH]),
+];
+
+const topic = (id: string, key: string, label: string): IChatTopicData => ({
+  id,
+  key,
+  labels: { en: label },
+  mergedIntoId: null,
+  createdAt: new Date('2026-11-20T09:00:00.000Z'),
+});
+const TOPICS = [
+  topic(TOPIC_SHARED, 'billing', 'Billing'),
+  topic(TOPIC_OF_B, 'bravo-things', 'bravo things'),
+  topic(TOPIC_OF_RANCH, 'owner-plans', `${SECRET} plans`),
 ];
 
 interface IScope {
@@ -198,6 +226,33 @@ const insight = {
   summarize: jest.fn((id: string) =>
     Promise.resolve(CHATS.find((c) => c.id === id)!),
   ),
+  isEnabled: () => Promise.resolve(true),
+};
+const topics = {
+  findByIds: jest.fn((ids: readonly string[]) =>
+    Promise.resolve(
+      new Map(TOPICS.filter((t) => ids.includes(t.id)).map((t) => [t.id, t])),
+    ),
+  ),
+  findByKey: jest.fn((key: string) =>
+    Promise.resolve(TOPICS.find((t) => t.key === key) ?? null),
+  ),
+  /** Counted over the conversations of the scope, as the gateway counts. */
+  listWithCounts: jest.fn((scope?: IScope) =>
+    Promise.resolve(
+      TOPICS.map((t) => ({
+        topic: t,
+        conversations: CHATS.filter(
+          (c) =>
+            c.topicIds.includes(t.id) &&
+            (!scope?.in || scope.in.includes(c.agentId)) &&
+            !scope?.notIn?.includes(c.agentId),
+        ).length,
+        merged: [],
+      })),
+    ),
+  ),
+  merge: jest.fn(() => Promise.resolve()),
 };
 
 // ── The tools: the real class, read the way the registry reads it ──
@@ -223,6 +278,7 @@ const chatTool = new ChatTool(
   access,
   permission,
   agents,
+  topics as never,
 );
 const proto = ChatTool.prototype as unknown as Record<string, unknown>;
 for (const method of Object.getOwnPropertyNames(proto)) {
@@ -253,6 +309,12 @@ const takes = (name: string, parameter: string) => {
 };
 const BY_AGENT = CHAT_TOOLS.filter((name) => takes(name, 'agentId'));
 const BY_CHAT = CHAT_TOOLS.filter((name) => takes(name, 'id'));
+/**
+ * The two that name no conversation (CLEAN-270): they read the topics the
+ * summaries coined, and count the conversations under each. What they
+ * answer about the assistant's is walked in a describe of its own, below.
+ */
+const BY_TOPIC = ['list_chat_topics', 'merge_chat_topics'];
 
 // ── The application around them ──────────────────────────────
 
@@ -422,6 +484,10 @@ beforeEach(() => {
     reader.read,
     sync.syncAll,
     insight.summarize,
+    topics.findByIds,
+    topics.findByKey,
+    topics.listWithCounts,
+    topics.merge,
   ]) {
     mock.mockClear();
   }
@@ -433,7 +499,9 @@ it('loads every chat tool, and each of them names a conversation by an agent or 
       'export_chat',
       'get_chat',
       'get_chat_messages',
+      'list_chat_topics',
       'list_chats',
+      'merge_chat_topics',
       'summarize_chat',
       'sync_chats',
     ].sort(),
@@ -441,10 +509,15 @@ it('loads every chat tool, and each of them names a conversation by an agent or 
   // A new chat tool takes one of the two, and is walked below by having it.
   // One that takes neither reads conversations some other way: say here
   // what it answers for the assistant's, before it ships.
+  //
+  // The topic tools take neither. A topic is a subject somebody raised, and
+  // its count is a count of conversations, so for anybody but the Owner the
+  // assistant's conversations are in no count, a subject raised only there
+  // is a topic that does not exist, and the list says they were left out.
   for (const name of CHAT_TOOLS) {
     expect([name, takes(name, 'agentId') || takes(name, 'id')]).toEqual([
       name,
-      true,
+      !BY_TOPIC.includes(name),
     ]);
   }
   expect(registered.every((t) => t.audience === 'admin')).toBe(true);
@@ -689,6 +762,126 @@ describe('a list over every agent says what it left out', () => {
       expect(result.scannedAgents).toBe(2);
       expect(result).not.toHaveProperty('notIncluded');
     });
+  });
+});
+
+/**
+ * CLEAN-270. The summaries sort conversations under topics, and two tools
+ * read them: a list with a count of conversations per topic, and a merge.
+ * Neither names an agent or a chat, so neither can be asked "about the
+ * assistant"; what they must not do is count its conversations, or name a
+ * subject that was raised only with it.
+ */
+describe('the topics of the summaries', () => {
+  interface ITopics {
+    topics: { key: string; conversations: number; labels: { en: string } }[];
+    total: number;
+    notIncluded?: string;
+  }
+  const listed = async (said: Promise<string>) =>
+    JSON.parse(await said) as ITopics;
+  const counts = (result: ITopics) =>
+    Object.fromEntries(result.topics.map((t) => [t.key, t.conversations]));
+  const TOPIC_NOT_FOUND = (key: string) =>
+    json({
+      error: `Topic ${key} not found — call list_chat_topics to find the key`,
+    });
+
+  it('an Admin: counted over the conversations they read, no subject of the assistant’s alone, and a field that says what was left out', async () => {
+    const said = asAdmin('list_chat_topics', {});
+    const result = await listed(said);
+
+    // `billing` is carried by alpha's chat and by the assistant's: one.
+    expect(counts(result)).toEqual({ billing: 1 });
+    expect(result.total).toBe(1);
+    expect(result.notIncluded).toBe(LEFT_OUT);
+    expect(await said).not.toContain(SECRET);
+    expect(await said).not.toContain('bravo');
+    expect(topics.listWithCounts).toHaveBeenCalledWith({ in: [A] });
+  });
+
+  it('the Owner, and the assistant for itself: every topic, every conversation, and no field', async () => {
+    for (const actor of [as('owner'), TRUSTED]) {
+      const result = await listed(
+        session().call('list_chat_topics', {}, actor),
+      );
+
+      expect(counts(result)).toEqual({
+        billing: 2,
+        'bravo-things': 1,
+        'owner-plans': 1,
+      });
+      expect(result).not.toHaveProperty('notIncluded');
+    }
+  });
+
+  it('an Admin the assistant is switched off for: their agents’ topics, and its existence is not announced', async () => {
+    const said = await withoutAssistant('list_chat_topics', {});
+    const result = JSON.parse(said) as ITopics;
+
+    expect(counts(result)).toEqual({ billing: 1, 'bravo-things': 1 });
+    expect(result).not.toHaveProperty('notIncluded');
+    expect(said).not.toMatch(/Owner|assistant|Rancher/);
+    expect(said).not.toContain(SECRET);
+  });
+
+  it('an Admin cannot merge a subject raised only with the assistant: it is a topic that does not exist', async () => {
+    const hidden = await asAdmin('merge_chat_topics', {
+      from: 'owner-plans',
+      into: 'billing',
+      confirm: true,
+    });
+    const unknown = await asAdmin('merge_chat_topics', {
+      from: 'no-such',
+      into: 'billing',
+      confirm: true,
+    });
+
+    expect(hidden).toBe(TOPIC_NOT_FOUND('owner-plans'));
+    expect(unknown).toBe(TOPIC_NOT_FOUND('no-such'));
+    expect(hidden).not.toMatch(/Owner|assistant|owner_only/);
+    expect(hidden).not.toContain(SECRET);
+    // Nor as the topic that stays, nor one of an agent out of reach.
+    expect(
+      await asAdmin('merge_chat_topics', {
+        from: 'billing',
+        into: 'owner-plans',
+        confirm: true,
+      }),
+    ).toBe(TOPIC_NOT_FOUND('owner-plans'));
+    expect(
+      await asAdmin('merge_chat_topics', {
+        from: 'bravo-things',
+        into: 'billing',
+        confirm: true,
+      }),
+    ).toBe(TOPIC_NOT_FOUND('bravo-things'));
+    expect(topics.merge).not.toHaveBeenCalled();
+  });
+
+  it('the Owner merges it, once confirmed', async () => {
+    const asked = await asOwner('merge_chat_topics', {
+      from: 'owner-plans',
+      into: 'billing',
+    });
+    expect(asked).toContain('confirm: true');
+    expect(topics.merge).not.toHaveBeenCalled();
+
+    await asOwner('merge_chat_topics', {
+      from: 'owner-plans',
+      into: 'billing',
+      confirm: true,
+    });
+    expect(topics.merge).toHaveBeenCalledWith(TOPIC_OF_RANCH, TOPIC_SHARED);
+  });
+
+  it('a chat row names its topics, and an Admin’s rows carry none of the assistant’s', async () => {
+    const said = await asAdmin('list_chats', {});
+    const rows = (JSON.parse(said) as { items: { topics: string[] }[] }).items;
+
+    expect(rows.map((row) => row.topics)).toEqual([['Billing']]);
+    // Asked for the topics of the rows it shows, and no other.
+    expect(topics.findByIds).toHaveBeenCalledWith([TOPIC_SHARED]);
   });
 });
 

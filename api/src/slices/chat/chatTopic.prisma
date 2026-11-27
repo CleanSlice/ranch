@@ -1,0 +1,41 @@
+// One subject, as the installation's conversation summaries name it
+// (CLEAN-270, spec 038 research R7).
+//
+// Version 1 of the summary wrote "short topic tags": free text, a new
+// spelling per conversation, so two conversations about one thing did not
+// meet in any count. From version 2 the model chooses among the topics that
+// already exist, by `key`, and may propose one new topic when none fits.
+// ChatSession.topicIds holds what it chose.
+//
+// A topic is created only by the summary batch, one at a time: the batch is
+// sequential and reads the vocabulary again for each conversation, so the
+// topic one conversation coined is offered to the next.
+//
+// At most 100 of them stand (not merged) at once: past that a proposal is
+// dropped and its conversation has no topic (`TOPICS_STANDING_MAX`, with
+// the reason for the number). And none is coined from a conversation with
+// an agent only the Owner manages: the vocabulary is shown to every
+// operator, and such a conversation is nobody else's to read
+// (`ChatInsightService`).
+//
+// `labels` is what people read, one entry per language of the app console
+// ({ "en": "…", "ru": "…" }), 1 to 3 words each, written when the topic is
+// coined. A reader that finds no entry for its language shows `en`.
+//
+// `mergedIntoId` is set when an operator folds this topic into another
+// (merge_chat_topics): two labels turned out to mean one subject. Readers
+// follow it once, and a merged topic is never offered to the model again.
+// A plain column, no relation: nothing deletes a topic, and merging re-points
+// whatever was folded into the merged one, so one step always arrives.
+//
+// No conversation count here. How much a topic is used is read from the
+// conversations that carry it; a counter would be a second truth
+// (docs/statistics.md).
+model ChatTopic {
+  id           String   @id @default(uuid())
+  // Lower-case English slug; what the model chooses between.
+  key          String   @unique
+  labels       Json
+  mergedIntoId String?
+  createdAt    DateTime @default(now())
+}

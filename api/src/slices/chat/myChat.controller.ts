@@ -33,10 +33,13 @@ import {
 } from '#/agent/file/domain';
 import {
   IChatGateway,
+  IChatTopicGateway,
   ChatSourceService,
   IChatSessionData,
   ChatSyncService,
   formatChatExport,
+  topicLabelsFor,
+  topicLanguageOf,
 } from './domain';
 import {
   ChatFeedbackDto,
@@ -44,6 +47,7 @@ import {
   ChatMessagesQueryDto,
   ChatMessagesResponseDto,
   ChatSessionDto,
+  toChatSessionDto,
   CreateChatFeedbackDto,
   ExportChatQueryDto,
   MyChatsQueryDto,
@@ -86,7 +90,32 @@ export class MyChatController {
     private readonly sync: ChatSyncService,
     private readonly sources: ChatSourceService,
     private readonly access: AgentAccessService,
+    private readonly topics: IChatTopicGateway,
   ) {}
+
+  /**
+   * The conversations with the topics of each one's summary, by label
+   * (CLEAN-270). The app console has more than one language, so the label
+   * is in the one the request asks for (`Accept-Language`), English when
+   * the console does not have it. One read of the topics for the page.
+   *
+   * What comes out is the DTO, field by field (`toChatSessionDto`), never
+   * the row with its topics added: the row has columns no DTO declares.
+   */
+  private async withTopics(
+    sessions: IChatSessionData[],
+    req: AuthedRequest,
+  ): Promise<ChatSessionDto[]> {
+    const header = req.headers?.['accept-language'];
+    const labelsOf = await topicLabelsFor(
+      this.topics,
+      sessions,
+      topicLanguageOf(typeof header === 'string' ? header : undefined),
+    );
+    return sessions.map((session) =>
+      toChatSessionDto(session, { topics: labelsOf(session) }),
+    );
+  }
 
   @ApiOperation({
     description:
@@ -121,7 +150,12 @@ export class MyChatController {
       page,
       perPage,
     });
-    return { items, total, page, perPage };
+    return {
+      items: await this.withTopics(items, req),
+      total,
+      page,
+      perPage,
+    };
   }
 
   @ApiOperation({
@@ -134,7 +168,11 @@ export class MyChatController {
     @Param('id') id: string,
     @Req() req: AuthedRequest,
   ): Promise<ChatSessionDto> {
-    return this.requireOwned(id, this.ownExternalId(req), req);
+    const [session] = await this.withTopics(
+      [await this.requireOwned(id, this.ownExternalId(req), req)],
+      req,
+    );
+    return session;
   }
 
   @ApiOperation({

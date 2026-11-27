@@ -2,9 +2,16 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Request } from 'express';
+import { DECORATORS } from '@nestjs/swagger/dist/constants';
 import { MyChatController } from './myChat.controller';
-import { MyChatsQueryDto } from './dtos';
-import { IChatGateway, IChatSessionData, ChatSyncService } from './domain';
+import { ChatSessionDto, MyChatsQueryDto } from './dtos';
+import {
+  IChatGateway,
+  IChatSessionData,
+  IChatTopicData,
+  IChatTopicGateway,
+  ChatSyncService,
+} from './domain';
 import { TranscriptReaderService } from '#/agent/file/domain';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { UserRoleTypes } from '#/user/user/domain';
@@ -29,10 +36,51 @@ const OWNED: IChatSessionData = {
   summary: null,
   summaryAt: null,
   insights: null,
+  outcome: null,
+  question: null,
+  topicIds: [],
+  insightVersion: 0,
   archived: false,
   createdAt: new Date(0),
   updatedAt: new Date(0),
 };
+
+/**
+ * A conversation as these routes answer it (CLEAN-270, review): what
+ * `ChatSessionDto` declares, with its topics by label. The row's own
+ * bookkeeping stays in: the ids of its topics, the version of the prompt
+ * that summarised it, and what the reconcile last indexed.
+ */
+const BOOKKEEPING = [
+  'topicIds',
+  'insightVersion',
+  'lastIndexedEventId',
+  'lastIndexedSize',
+];
+const shown = (session: IChatSessionData, topics: string[] = []) => ({
+  ...Object.fromEntries(
+    Object.entries(session).filter(([key]) => !BOOKKEEPING.includes(key)),
+  ),
+  topics,
+});
+
+/** The one topic there is, as the gateway answers it for any id asked. */
+const BILLING: IChatTopicData = {
+  id: 'topic-billing',
+  key: 'billing',
+  labels: { en: 'Billing', ru: 'Оплата' },
+  mergedIntoId: null,
+  createdAt: new Date(0),
+};
+const topicsStub = () =>
+  ({
+    findByIds: jest.fn(
+      async (ids: readonly string[]) =>
+        new Map(
+          ids.filter((id) => id === BILLING.id).map((id) => [id, BILLING]),
+        ),
+    ),
+  }) as unknown as IChatTopicGateway;
 
 function makeChats(findById: jest.Mock) {
   const list = jest.fn(async () => ({ items: [OWNED], total: 1 }));
@@ -78,9 +126,14 @@ function syncStub(fn?: jest.Mock) {
   return { sync, syncForExternalUser };
 }
 
-const req = (sub?: string, roles: UserRoleTypes[] = []) =>
+const req = (
+  sub?: string,
+  roles: UserRoleTypes[] = [],
+  acceptLanguage?: string,
+) =>
   ({
     user: sub ? ({ sub, roles, email: '' } as IAuthTokenPayload) : undefined,
+    headers: acceptLanguage ? { 'accept-language': acceptLanguage } : {},
   }) as Request & { user?: IAuthTokenPayload };
 
 function makeController(findById: jest.Mock, read?: jest.Mock) {
@@ -93,9 +146,61 @@ function makeController(findById: jest.Mock, read?: jest.Mock) {
     sync,
     sources,
     openAccess(),
+    topicsStub(),
   );
   return { ctrl, list, syncForExternalUser, upsertFeedback, deleteFeedback };
 }
+
+/**
+ * CLEAN-270. A conversation carries what its summary says: the outcome and
+ * the question as they are stored, the topics by label. This console has two
+ * languages, so the label is the one the request asks for.
+ */
+describe('MyChatController, what a summary says', () => {
+  const SUMMARISED: IChatSessionData = {
+    ...OWNED,
+    summary: 'Asked about an invoice.',
+    summaryAt: new Date(3000),
+    outcome: 'open',
+    question: 'Где мой счёт за октябрь?',
+    topicIds: [BILLING.id, 'topic-gone'],
+    insightVersion: 2,
+  };
+
+  it('names the topics in the language the request asks for', async () => {
+    const { ctrl } = makeController(jest.fn(async () => SUMMARISED));
+
+    const one = await ctrl.detail(
+      'c1',
+      req(SUB, [], 'ru-RU,ru;q=0.9,en;q=0.8'),
+    );
+
+    expect(one).toMatchObject({
+      outcome: 'open',
+      question: 'Где мой счёт за октябрь?',
+      topics: ['Оплата'],
+    });
+  });
+
+  it('names them in English for a language the console does not have, and for no header', async () => {
+    const { ctrl } = makeController(jest.fn(async () => SUMMARISED));
+
+    expect((await ctrl.detail('c1', req(SUB, [], 'de-DE'))).topics).toEqual([
+      'Billing',
+    ]);
+    expect((await ctrl.detail('c1', req(SUB))).topics).toEqual(['Billing']);
+  });
+
+  it('gives every listed conversation its topics, none for one with no summary', async () => {
+    const { ctrl, list } = makeController(jest.fn());
+    list.mockResolvedValue({ items: [SUMMARISED, OWNED], total: 2 });
+
+    const res = await ctrl.list({}, req(SUB, [], 'ru'));
+
+    expect(res.items.map((item) => item.topics)).toEqual([['Оплата'], []]);
+    expect(res.items[1]).toMatchObject({ outcome: null, question: null });
+  });
+});
 
 describe('MyChatController.list', () => {
   it('scopes the query to a regular caller (bridle + their sub)', async () => {
@@ -110,7 +215,14 @@ describe('MyChatController.list', () => {
       page: 2,
       perPage: 10,
     });
-    expect(res).toEqual({ items: [OWNED], total: 1, page: 2, perPage: 10 });
+    // Each row as it is stored, with its topics by label (CLEAN-270): none
+    // here, the conversation has no summary.
+    expect(res).toEqual({
+      items: [shown(OWNED)],
+      total: 1,
+      page: 2,
+      perPage: 10,
+    });
   });
 
   it("scopes an owner/admin to the shared 'admin' channel", async () => {
@@ -204,7 +316,43 @@ describe('MyChatsQueryDto', () => {
 describe('MyChatController.detail', () => {
   it('returns the session when a regular caller owns it', async () => {
     const { ctrl } = makeController(jest.fn(async () => OWNED));
-    await expect(ctrl.detail('c1', req(SUB))).resolves.toEqual(OWNED);
+    await expect(ctrl.detail('c1', req(SUB))).resolves.toEqual(shown(OWNED));
+  });
+
+  // The whole row used to be spread into the answer, so its bookkeeping
+  // left the API though no DTO declares it.
+  it('answers what the DTO declares and nothing else, on the chat and on the list', async () => {
+    const declared = (
+      Reflect.getMetadata(
+        DECORATORS.API_MODEL_PROPERTIES_ARRAY,
+        ChatSessionDto.prototype,
+      ) as string[]
+    ).map((property) => property.replace(/^:/, ''));
+    const row = {
+      ...OWNED,
+      topicIds: [BILLING.id],
+      insightVersion: 2,
+      lastIndexedEventId: 'event-9',
+      // A column nobody has declared yet.
+      somethingNew: 'not for the wire',
+    };
+    const { ctrl, list } = makeController(jest.fn(async () => row));
+    list.mockResolvedValue({ items: [row], total: 1 });
+
+    const answers = [
+      await ctrl.detail('c1', req(SUB)),
+      (await ctrl.list({} as never, req(SUB))).items[0],
+    ];
+
+    for (const answer of answers) {
+      expect(
+        Object.keys(answer).filter((key) => !declared.includes(key)),
+      ).toEqual([]);
+      for (const kept of [...BOOKKEEPING, 'somethingNew']) {
+        expect(answer).not.toHaveProperty(kept);
+      }
+      expect(answer).toEqual(shown(OWNED, ['Billing']));
+    }
   });
 
   // CLEAN-236. `admin` was the conversation of every Owner and Admin; it is
@@ -214,7 +362,7 @@ describe('MyChatController.detail', () => {
     const { ctrl } = makeController(jest.fn(async () => adminChat));
     await expect(
       ctrl.detail('c1', req(SUB, [UserRoleTypes.Owner])),
-    ).resolves.toEqual(adminChat);
+    ).resolves.toEqual(shown(adminChat));
   });
 
   it("answers an Admin for the 'admin' session as for a chat that does not exist", async () => {
@@ -229,7 +377,7 @@ describe('MyChatController.detail', () => {
     const { ctrl } = makeController(jest.fn(async () => OWNED));
     await expect(
       ctrl.detail('c1', req(SUB, [UserRoleTypes.Admin])),
-    ).resolves.toEqual(OWNED);
+    ).resolves.toEqual(shown(OWNED));
   });
 
   it('404s when the chat belongs to someone else (no existence leak)', async () => {

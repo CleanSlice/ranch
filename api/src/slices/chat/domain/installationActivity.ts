@@ -3,6 +3,7 @@ import {
   ActivityChannelTypes,
   ChatChannelTypes,
   IAgentChannelConversations,
+  IAgentOutcomeCounts,
   IChatAgentScope,
   IInstallationActivity,
 } from './chat.types';
@@ -86,6 +87,13 @@ export interface IConversationCountRow {
   share: boolean;
   /** `COUNT(*)`: a bigint from Postgres. */
   conversations: bigint | number;
+  /**
+   * How many of them have a summary, and how many of those were left open
+   * (CLEAN-270). Present only when the statement was asked for the
+   * outcomes: where summaries are off it has no such columns.
+   */
+  summarised?: bigint | number;
+  open?: bigint | number;
 }
 
 /** The row of the people query. */
@@ -118,6 +126,31 @@ export function conversationsFromRows(
     (a, b) =>
       a.agentId.localeCompare(b.agentId) || a.channel.localeCompare(b.channel),
   );
+}
+
+/**
+ * How each agent's conversations ended, from the same rows: the agent's
+ * channels added together. An agent none of whose conversations has a
+ * summary is absent, and so is every agent when the rows carry no outcome.
+ * By agent id, so that the same rows give the same order.
+ */
+export function outcomesFromRows(
+  rows: readonly IConversationCountRow[],
+): IAgentOutcomeCounts[] {
+  const byAgent = new Map<string, IAgentOutcomeCounts>();
+  for (const row of rows) {
+    const entry = byAgent.get(row.agentId) ?? {
+      agentId: row.agentId,
+      summarised: 0,
+      open: 0,
+    };
+    entry.summarised += Number(row.summarised ?? 0);
+    entry.open += Number(row.open ?? 0);
+    byAgent.set(row.agentId, entry);
+  }
+  return [...byAgent.values()]
+    .filter((entry) => entry.summarised > 0)
+    .sort((a, b) => a.agentId.localeCompare(b.agentId));
 }
 
 export function peopleFromRows(

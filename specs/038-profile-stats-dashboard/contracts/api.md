@@ -24,26 +24,30 @@ The signed-in person's own statistics.
 | `period` | `7` \| `30` \| `90` | `30` | anything else → 400 |
 | `tz` | IANA zone name | `UTC` | unknown or malformed → treated as `UTC`, and the response says which zone was used |
 
+| Header | Read for | Notes |
+|--------|----------|-------|
+| `Accept-Language` | the language topics are named in | the language with the highest weight among the console's (`en`, `ru`; `TOPIC_LABEL_LANGUAGES`), region ignored; `en` when it names none of them or is absent. Nothing else in the answer depends on it. The tool `get_my_stats` has no such header and names topics in English |
+
 **Response**
 
 | Field | Meaning |
 |-------|---------|
 | `period`, `timeZone`, `range { from, to, previousFrom }` | what was computed; instants in ISO form |
 | `notes[]` | `{ figure, completeSince }` for each figure whose history starts inside the requested or previous period |
-| `summaries { enabled, summarised, waiting, tooShort }` | whether the installation produces summaries, and for the period's conversations how many have one, how many will get one, how many never will |
+| `summaries { enabled, summarised, waiting, tooShort }` | whether the installation produces summaries (`ChatInsightService.isEnabled()`: the batch is scheduled, an Anthropic credential is active and the provider did not refuse it), and for the period's conversations how many have one (`summaryAt` set), how many will get one, how many never will as they stand: under three messages from the person in the whole conversation (`INSIGHT_MIN_USER_MESSAGES`). The three add up to `board.conversations.value`. A conversation whose transcript the batch could not read is among `waiting`: nothing is stored that tells it apart |
 | `board.conversations { value, previous }` | conversations the person wrote in |
 | `board.messages { value, previous }` | the person's own messages |
 | `board.agents { value, reachable }` | agents that answered; agents the person reaches now |
-| `board.resolved { resolved, summarised }` | for the share and its coverage; both 0 when summaries are off |
+| `board.resolved { resolved, summarised }` | for the share and its coverage; both 0 when summaries are off. `summarised` is `summaries.summarised` |
 | `activity.days[]` | 91 entries `{ date, conversations }`, oldest first, in the viewer's days, ending today |
 | `activity.weekdays[7]` | conversations by weekday within the period, Monday first |
 | `activity.activeDays` | days with at least one conversation within the period |
-| `agents[]` | `{ agentId, name, messages, conversations, resolved, summarised, model, lastMessageAt }`, by messages, descending |
-| `topics[]` | up to 8: `{ id, label, conversations, resolved, open, questions[] }`; `label` in the request's language (`Accept-Language`, falling back to `en`); `questions` up to 4 distinct, newest first: `{ chatId, agentId, agentName, question, at, outcome }` |
-| `outcome { resolved, open, unknown, notSummarised }` | parts of `board.conversations.value` |
-| `outcome.sentiment { positive, neutral, mixed, negative }` | counts among summarised conversations |
-| `outcome.languages[]` | `{ code, conversations }` |
-| `openQuestions { items[], more }` | up to 4 `{ chatId, agentId, agentName, question, topic, at }`, newest first; `more` is the remainder |
+| `agents[]` | `{ agentId, name, messages, conversations, resolved, summarised, model, lastMessageAt }`, by messages, descending. `resolved` and `summarised` are of the agent's `conversations`, both 0 when summaries are off |
+| `topics[]` | up to 8, most conversations first, equal ones by label: `{ id, label, conversations, resolved, open, questions[] }`. `id` is the topic that stands: a merged topic is counted under the one it was folded into (followed once), and a conversation that carries both is counted once. `label` in the request's language (`Accept-Language`, falling back to `en`, then to the key). `conversations` are summarised conversations of the period; `resolved` and `open` are of them, and `unknown` is in neither, so the two can add up to less. `questions` up to 4, each wording once (compared without case and spacing), newest first by the conversation's last message: `{ chatId, agentId, agentName, question, at, outcome }`, where `at` is that last message and `outcome` one of `resolved`, `open`, `unknown`; a conversation whose summary quotes no question takes no place |
+| `outcome { resolved, open, unknown, notSummarised }` | parts of `board.conversations.value`: they add up to it. `unknown` is a summarised conversation whose summary could not tell, or stored no outcome; `notSummarised` is `summaries.waiting + summaries.tooShort` |
+| `outcome.sentiment { positive, neutral, mixed, negative }` | counts among summarised conversations; a summary that stored no tone is in none |
+| `outcome.languages[]` | `{ code, conversations }` among summarised conversations, most first |
+| `openQuestions { items[], more }` | up to 4 `{ chatId, agentId, agentName, question, topic, at }`, newest first; `more` is the remainder, so `items` and `more` together are `outcome.open`. `question` is null when the summary left the conversation open and quoted no question; `topic` is the label of the conversation's first topic, or null; `at` is the conversation's last message |
 | `help.cited { conversations, sources[] }` | conversations with at least one cited source; up to 2 `{ name, citations }`, a knowledge base by its name, the web as `web` |
 | `help.handovers { total, answered, topPeer }` | `topPeer` is `{ name, count }` or null |
 | `help.ratings { up, down }` | the person's ratings given in the period |
@@ -51,6 +55,21 @@ The signed-in person's own statistics.
 
 `topics`, `outcome` and `openQuestions` are empty when
 `summaries.enabled` is false; the page shows one card instead (FR-011).
+Empty means the same shape with nothing in it: `topics` is `[]`,
+`openQuestions` is `{ items: [], more: 0 }`, every number of `outcome`,
+`summaries`, `board.resolved` and of `resolved` / `summarised` per agent is
+0 and `outcome.languages` is `[]`. No field is absent or null. Nothing is
+computed then, whatever a summary made by hand left on a conversation, so
+the parts of `outcome` do not add up to anything: `summaries.enabled` is
+the only field that says which case it is.
+
+**How the summaries are read.** By the ids of the conversations the
+person's hour rows of the period named (`findOutcomesForSessions`, by
+primary key, 1000 ids a statement), in place of the read that brought each
+conversation's agent and last message; `ChatSession` is never searched.
+The topics those conversations carry are then read by id. The main
+question is the person's own words (FR-033): it is in this answer because
+the answer is its owner's, and in no other route or tool of this slice.
 
 **Errors**: 401 without a token; 400 for a bad `period`. Never 403 or 404:
 there is nothing here that belongs to someone else.
@@ -83,8 +102,9 @@ The installation, through the agents the caller reaches.
 |-------|--------|---------|
 | `period` | `7` \| `30` \| `90` | `30` |
 
-Shipped as PR 4 (CLEAN-265) before PR 3, so `quality[]` goes out without
-`open` and `summarised`; PR 3 adds the two fields.
+Shipped as PR 4 (CLEAN-265) before PR 3, so `quality[]` went out without
+`open` and `summarised`; PR 3 (CLEAN-270) adds the two fields, and
+`summaries { enabled }` beside them.
 
 **Response**
 
@@ -93,6 +113,7 @@ Shipped as PR 4 (CLEAN-265) before PR 3, so `quality[]` goes out without
 | `period`, `range { from, to, previousFrom }` | UTC days |
 | `reach { limited, agents, ownerOnly[] }` | whether the caller sees a part of the installation, and how many agents they reach. `ownerOnly` holds the names, as the agents list shows them, of the reached agents whose conversations are left out of the conversation figures; empty for the Owner, for a trusted party, and for a caller who does not reach the assistant. `limited` and `agents` are of the plain reach and do not change with it |
 | `notes[]` | as above |
+| `summaries { enabled }` | whether the installation produces conversation summaries, as in `GET /me/stats`. The one field: it is what tells a `quality[]` row with `open` 0 because nobody was left without an answer from one where nothing was counted |
 | `board.tokens { input, output }` | |
 | `board.calls { value, previous }` | |
 | `board.cost { value, previous, unpriced[] }` | USD from the product's price list; `unpriced` names the models left out of it |
@@ -104,16 +125,29 @@ Shipped as PR 4 (CLEAN-265) before PR 3, so `quality[]` goes out without
 | `health.incidents[]` | `{ number, agentName, open, reason, openedAt, closedAt }` opened in the period or still open, newest first, at most `INCIDENTS_SHOWN` of them (`installationStats.service.ts`, where the cap has its reason) |
 | `health.incidentsTotal` | how many there are, the ones the cap left out included, so a cut list never reads as "that was all" |
 | `health.refusals[]` | `{ agentId, name, refused }` where `refused > 0` |
-| `quality[]` | `{ agentId, name, conversations, down, rated }`, most conversations first. `conversations` are those a person wrote in during the period; `down` and `rated` are every rating made in the period on conversations of the agents counted here (see *Which agents*), so `rated` can exceed what `conversations` suggests. `open` and `summarised` come with PR 3 |
+| `quality[]` | `{ agentId, name, conversations, down, rated }`, most conversations first. `conversations` are those a person wrote in during the period; `down` and `rated` are every rating made in the period on conversations of the agents counted here (see *Which agents*), so `rated` can exceed what `conversations` suggests. `summarised` is how many of `conversations` have a summary and `open` how many of those it left open (`unknown` is not open): the open share is `open / summarised`, and `summarised` is shown with it, because a share over 3 conversations is not the news it is over 300. All three are counts of the same rows of one statement, so `open` is never more than `summarised` and `summarised` never more than `conversations`. Both 0 when `summaries.enabled` is false, where no summary is read |
 | `channels[]` | `{ channel, conversations }`, channels with at least one conversation, most first. `channel` is `console` for a stored `bridle`, or `share` when the identity starts with `share-`; `telegram`; `slack`; anything else `other` |
 
 No field carries a person's name, identity, question or message (FR-021).
+The open share is two counts per agent: the statement that makes them reads
+`summaryAt` and `outcome` of `ChatSession` and no column a person's words
+are in.
 
 **How the two counts are read.** People and conversations are distinct
 counts over `ChatActivityHour`, made in the database by two statements that
 run side by side, each in its own transaction with a 30 s timeout
 (`api/src/slices/chat/data/chatActivity.gateway.ts`, which carries the
-measured numbers). At most two of these statements run at once in the API
+measured numbers). Where summaries are produced, the conversations statement
+also counts how those conversations ended: each row of its one-row-per-
+conversation inner query is joined to `ChatSession` by primary key, for
+`summaryAt` and `outcome`, and `summarised` and `open` are two more counts
+of the same rows. There is no statement of its own for that: one was tried,
+scanned and hashed the same hour rows a second time, and took the 90-day
+view from 0.65 s to about 1.65 s on a database of a million conversations.
+Folded in, the conversations statement takes about 1.0 s there (0.3 s
+without the join), beside 0.6 s for people. Where summaries are off the
+statement is the one of CLEAN-265, unchanged, and `ChatSession` is not
+read. At most two of these statements run at once in the API
 process (`AGGREGATE_CONCURRENCY`, one view's pair) and later ones wait their
 turn in order of arrival, so that a few operators switching periods cannot
 hold the whole Prisma pool while chat and sign-in wait for a connection; the
@@ -163,7 +197,11 @@ A third tool lives with the fact it changes, in
 conversations under the second and the summary call is no longer offered it.
 It is the remedy when two labels turn out to mean one subject; there is no
 console screen for it. `list_chat_topics` (`admin`, read) returns keys,
-labels and conversation counts so the operator can see what to merge.
+labels and conversation counts so the operator can see what to merge. The
+keys already folded into a topic (`merged`) go only to a caller who reads
+every conversation; for a caller whose scope is narrower the field is left
+out, because the counts arrive folded and a folded key may have no
+conversation that caller may read.
 
 - `title` / `template`: "Your statistics" / "How many conversations did I
   have this month?"; "Installation statistics" / "What did the agents cost

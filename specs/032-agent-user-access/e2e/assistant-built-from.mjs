@@ -119,6 +119,24 @@ async function withTemplateFiles(page) {
   });
 }
 
+/**
+ * The Knowledges page lists the bases once the retrieval service is set up,
+ * and shows its setup steps until then. The local stack has no retrieval
+ * service, so the status is passed on as the API answered it with the setup
+ * marked done: the list under test reads the bases from the database and
+ * nothing of the service.
+ */
+async function withKnowledgeSetUp(page) {
+  await page.route('**/knowledges/status', async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    const status = json?.data ?? json;
+    status.enabled = true;
+    for (const key of Object.keys(status.setup ?? {})) status.setup[key] = true;
+    await route.fulfill({ response, json });
+  });
+}
+
 /** Open the one file of the Files tab; a phone keeps the tree in a sheet. */
 async function openSoul(page, width) {
   await until(async () => (await bodyText(page)).includes('1 files in'), { timeout: 20000 });
@@ -306,6 +324,7 @@ try {
     {
       const { context, page, problems } = await watchedPage(browser, { width, height });
       await withTemplateFiles(page);
+      await withKnowledgeSetUp(page);
       await loginAs(page, ADMIN_USER, ADMIN);
 
       section(`Management console, ${width} px, as an Admin: the template`);
@@ -442,7 +461,7 @@ try {
       clean(problems, 'the credential pages');
 
       section(`Management console, ${width} px, as an Admin: the knowledge base`);
-      await open(page, '/knowledges', async () => (await bodyText(page)).includes(R.knowledge.name));
+      await open(page, '/knowledges', async () => (await count(page, `a[href="/knowledges/${R.knowledge.id}"]`)) > 0);
       for (const [name, id, locked] of [[R.knowledge.name, R.knowledge.id, true], [O.knowledge.name, O.knowledge.id, false]]) {
         const row = page.locator(`tr:has(a[href="/knowledges/${id}"])`).first();
         const texts = (await row.locator('a, button').allInnerTexts()).map((t) => t.trim()).filter(Boolean);

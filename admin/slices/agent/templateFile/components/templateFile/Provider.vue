@@ -224,7 +224,7 @@ await useAsyncData(`admin-template-files-${props.id}`, async () => {
       </div>
     </div>
 
-    <p class="text-xs text-muted-foreground">
+    <p v-if="!readOnly" class="text-xs text-muted-foreground">
       Uploading a folder replaces all existing template files. Only
       <code>.md</code> and <code>.json</code> are editable in the browser.
     </p>

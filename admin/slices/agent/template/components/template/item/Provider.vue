@@ -471,6 +471,7 @@ async function onRemove() {
         :agents="templateAgents"
         :skills="attachedSkills"
         :mcps="attachedMcps"
+        :read-only="locked"
         @manage-skills="selectTab('skills')"
         @manage-mcps="selectTab('mcp')"
       />

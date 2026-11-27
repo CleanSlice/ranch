@@ -341,8 +341,8 @@ provide('knowledge-refresh', refresh);
       class="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700"
     >
       {{ queuedCount }} {{ queuedCount === 1 ? 'source is' : 'sources are' }}
-      not searchable yet — press <span class="font-medium">Index</span> to
-      process {{ queuedCount === 1 ? 'it' : 'them' }}. Agents only see what
+      not searchable yet<template v-if="!locked"> — press <span class="font-medium">Index</span> to
+      process {{ queuedCount === 1 ? 'it' : 'them' }}</template>. Agents only see what
       has been indexed.
     </div>
 

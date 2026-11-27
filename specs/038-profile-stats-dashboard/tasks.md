@@ -306,7 +306,7 @@ Paths are relative to the repository root. `admin/` and `app/` files are patched
 
 ### Phase 7 (PR 4, CLEAN-265), 2026-11-27
 
-- **Gates**: whole API suite once (`cd api && NODE_OPTIONS=--experimental-vm-modules npx jest`), 257 suites and 4554 tests, green; `bun run build`, green; `bun test slices` in `app`, 672 tests in 60 files, green; `npx nuxt typecheck` in `app` and in `admin`, no errors; `bun run locale:check`, 1 250 files, no findings; `bun run i18n:check`, 9 pairs in sync, 783 keys; `bun run test:scripts`, 113 passed.
+- **Gates**: whole API suite once (`cd api && NODE_OPTIONS=--experimental-vm-modules npx jest`), 259 suites and 4767 tests, green, on the branch rebased onto `main` at 0.3.113; `bun run build`, green; `bun test slices` in `app`, 690 tests in 60 files, green; `npx nuxt typecheck` in `app` and in `admin`, no errors; `bun run locale:check`, 1 251 files, no findings; `bun run i18n:check`, 9 pairs in sync, 794 keys; `bun run test:scripts`, 113 passed.
 - **Recount**, independent SQL against the same database, with explicit UTC bounds, compared with `GET /stats/installation` as the Owner:
   - *`ranch-e2e-258d`, the volume database*, after the time zone fix below: 7 days 16 472 conversations (8 279 Front Desk, 8 193 Back Office), people 14 937, previous 16 326; 30 days 79 833 conversations; 90 days 245 133. All equal to the route.
   - *`ranch-e2e-265s`*, seeded with other channels, share visitors, internal and peer traffic, refusals and incidents, 30 days: people 837, previous 858; conversations Front Desk 854, Back Office 426; channels console 874, telegram 244, slack 87, share 60, other 15, with 14 internal and 8 peer conversations left out; refusals Front Desk 66, Back Office 9; ratings 2 down of 4. All equal to the route.

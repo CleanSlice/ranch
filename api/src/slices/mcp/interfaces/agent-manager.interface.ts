@@ -20,10 +20,11 @@ export interface IAgentManagerResolver {
   /**
    * The Ranch assistant, for a caller who reaches it and may not manage it
    * because it is the Owner's alone; null for everybody else (CLEAN-263).
-   * The handler asks on tools/call of a `manage-agent` tool and notes the
-   * answer, so that a refusal for that one agent says who manages it and not
-   * "not found". Missing, or throwing, leaves nothing noted and the refusal
-   * at not-found: this fails towards saying less.
+   * The handler asks on every tools/call and notes the answer, so that a
+   * refusal for that one agent says whose it is and not "not found": who
+   * manages it, for a `manage-agent` tool, and who reads its conversations,
+   * for a chat tool (CLEAN-267). Missing, or throwing, leaves nothing noted
+   * and the refusal at not-found: this fails towards saying less.
    */
   ownerOnlyAgentFor?(
     caller: ICallerParty,

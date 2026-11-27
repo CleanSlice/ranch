@@ -147,6 +147,13 @@ export class AgentPermissionService implements IAgentManagerResolver {
    * What a list scoped by reach takes out when the question is one of
    * managing, such as reading the conversations people had with an agent
    * (CLEAN-236).
+   *
+   * Whoever takes an agent out with this owes the caller the reason
+   * (CLEAN-267): a person who has the assistant is told that its
+   * conversations are the Owner's to read, never that it was not found or
+   * that there are none. The chat tools say it through `agentNotFound` /
+   * `ownerOnlyRefusal` with the kind `conversations`, from the same note
+   * `ownerOnlyAgentFor` gives the MCP handler.
    */
   async ownerOnlyIds(caller: ICallerParty): Promise<string[]> {
     if (caller.kind === 'trusted') return [];

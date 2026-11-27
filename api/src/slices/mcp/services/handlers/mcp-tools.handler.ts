@@ -278,16 +278,28 @@ export class McpToolsHandler extends McpHandlerBase {
    * not manage, and for one agent that is a lie the person can see through:
    * the Ranch assistant, which they are talking to and which only the Owner
    * manages (CLEAN-263). Whether this caller is such a person is a fact
-   * about roles and reach, so the agent slice is asked, once per call of
-   * such a tool, and the answer noted on the call's view, where
-   * `agentNotFound` reads it.
+   * about roles and reach, so the agent slice is asked, once per call, and
+   * the answer noted on the call's view, where `agentNotFound` reads it.
+   *
+   * Every call, not only one of a `manage-agent` tool (CLEAN-267): the
+   * tools that read an agent's conversations are `admin` tools, leave the
+   * assistant out for the same person, and owe them the same kind of
+   * answer. A tool of any audience may name the assistant, so the note is
+   * there for all of them and costs one agent row and one look at the
+   * access lists; the Owner, a trusted party and a guest are answered
+   * before either. `managing` goes with it: only a `manage-agent` tool says
+   * "only the Owner can restart, stop or change it" by default, because
+   * only such a tool refuses the assistant for that reason.
    *
    * Asked as `manageCaller` sees the caller, the same party the tool will
    * ask `manageable` about. Nothing is noted for anybody but a person; no
    * resolver, or one that throws, leaves nothing noted and the refusal at
    * not-found.
    */
-  private async noteOwnerOnlyAgent(callRequest: Request): Promise<void> {
+  private async noteOwnerOnlyAgent(
+    callRequest: Request,
+    managing: boolean,
+  ): Promise<void> {
     const caller = manageCaller(callRequest);
     if (caller.kind !== 'person') return;
     let agent: { id: string; name: string } | null = null;
@@ -308,7 +320,7 @@ export class McpToolsHandler extends McpHandlerBase {
         }`,
       );
     }
-    setCallerOwnerOnlyAgent(callRequest, agent);
+    setCallerOwnerOnlyAgent(callRequest, agent, managing);
   }
 
   /**
@@ -419,9 +431,10 @@ export class McpToolsHandler extends McpHandlerBase {
           ) {
             return notAvailable();
           }
-          if (toolInfo.audience === 'manage-agent') {
-            await this.noteOwnerOnlyAgent(callRequest);
-          }
+          await this.noteOwnerOnlyAgent(
+            callRequest,
+            toolInfo.audience === 'manage-agent',
+          );
 
           const contextId = ContextIdFactory.getByRequest(callRequest);
           this.moduleRef.registerRequestByContextId(callRequest, contextId);

@@ -16,7 +16,9 @@ import {
   callerParty,
   callerPerson,
   manageCaller,
+  OWNER_ONLY_LEFT_OUT_FIELD,
   OWNER_ONLY_REASON,
+  ownerOnlyConversationsLeftOut,
   ownerOnlyRefusal,
   ownerOnlyText,
   requirePerson,
@@ -301,6 +303,91 @@ describe('ownerOnlyRefusal', () => {
     expect(jsonOf(agentNotFound(caller, 'agent-ranch')).error).toBe(
       'This agent is the Ranch assistant. Only the Owner can restart, stop or change it.',
     );
+  });
+});
+
+// A refusal says what the tool was asked to do (CLEAN-267): the assistant's
+// conversations are the Owner's to read, and "restart, stop or change" is
+// not what a chat tool was asked for.
+describe('ownerOnlyRefusal, by kind', () => {
+  const ranch = () => request('agent:agent-ranch', [UserRoleTypes.Owner]);
+  const jsonOf = (r: { content: { text: string }[] }) =>
+    JSON.parse(r.content[0].text) as Record<string, unknown>;
+  /** As the handler notes it: for a tool that manages an agent, or not. */
+  const noted = (managing: boolean, name = 'Rancher') => {
+    const caller = asPerson(ranch(), UserRoleTypes.Admin);
+    setCallerOwnerOnlyAgent(caller, { id: 'agent-ranch', name }, managing);
+    return caller;
+  };
+  const READ = {
+    error:
+      'Rancher is the Ranch assistant. Only the Owner can read its conversations.',
+    reason: 'owner_only',
+  };
+
+  it('a tool that reads conversations says who reads them, whatever its audience', () => {
+    for (const caller of [noted(false), noted(true)]) {
+      expect(
+        jsonOf(agentNotFound(caller, 'agent-ranch', 'conversations')),
+      ).toEqual(READ);
+      expect(
+        jsonOf(ownerOnlyRefusal(caller, ' rancher ', 'conversations')!),
+      ).toEqual(READ);
+    }
+    expect(ownerOnlyText('Rancher', 'conversations')).not.toMatch(
+      /not found|list_|again|later|retry|another|restart|stop|change/i,
+    );
+  });
+
+  it('a tool that does not manage an agent keeps its not-found: nobody asked it to restart anything', () => {
+    // An `admin` tool that reads an agent by id, handed the assistant's
+    // name where the id belongs. The Admin may read it, by its id.
+    for (const ref of ['agent-ranch', 'Rancher']) {
+      expect(ownerOnlyRefusal(noted(false), ref)).toBeNull();
+      expect(jsonOf(agentNotFound(noted(false), ref))).toEqual({
+        error: `Agent ${ref} not found — call list_agents to find the id`,
+      });
+    }
+    // A manage-agent tool is answered as it was (CLEAN-263).
+    expect(jsonOf(agentNotFound(noted(true), 'agent-ranch')).error).toBe(
+      'Rancher is the Ranch assistant. Only the Owner can restart, stop or change it.',
+    );
+  });
+
+  it('every other agent is not found, for either kind', () => {
+    for (const caller of [noted(false), noted(true)]) {
+      expect(ownerOnlyRefusal(caller, 'agent-x', 'conversations')).toBeNull();
+      expect(jsonOf(agentNotFound(caller, 'agent-x', 'conversations'))).toEqual(
+        { error: 'Agent agent-x not found — call list_agents to find the id' },
+      );
+    }
+  });
+
+  it('a list that left the assistant’s conversations out has a sentence to say so, for the same person only', () => {
+    expect(ownerOnlyConversationsLeftOut(noted(false))).toBe(
+      'The conversations of Rancher, the Ranch assistant, are not included: ' +
+        'only the Owner can read them. That is an access limit, not an empty list.',
+    );
+    expect(ownerOnlyConversationsLeftOut(noted(false, ''))).toBe(
+      'The conversations of the Ranch assistant are not included: ' +
+        'only the Owner can read them. That is an access limit, not an empty list.',
+    );
+    expect(OWNER_ONLY_LEFT_OUT_FIELD).toBe('notIncluded');
+
+    const cleared = asPerson(ranch(), UserRoleTypes.Admin);
+    setCallerOwnerOnlyAgent(cleared, null);
+    for (const caller of [
+      cleared,
+      asPerson(ranch(), UserRoleTypes.Owner),
+      asTrustedAgent(ranch()),
+      asGuest(ranch()),
+      {} as Request,
+    ]) {
+      expect(ownerOnlyConversationsLeftOut(caller)).toBeNull();
+      expect(
+        ownerOnlyRefusal(caller, 'agent-ranch', 'conversations'),
+      ).toBeNull();
+    }
   });
 });
 

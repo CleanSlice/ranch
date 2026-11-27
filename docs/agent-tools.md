@@ -58,7 +58,8 @@ Shared helpers: `api/src/slices/mcp/tooling.ts` — `ok`, `err`,
 `requireOperator`, `requireOwner`, `requirePerson`, `requireAgent`,
 `callerIsOperator`, `callerIsOwner`, `callerPerson`, `callerAgentId`,
 `audienceAllows`, `confirmed`, `stripSecrets`, `CONFIRM_SENTENCE`,
-`agentNotFound`, `ownerOnlyRefusal`, `OWNER_MANAGED_NOTE`. For
+`agentNotFound`, `ownerOnlyRefusal`, `ownerOnlyConversationsLeftOut`,
+`OWNER_MANAGED_NOTE`. For
 specs, `api/src/slices/mcp/testing.ts` has `asTrustedAgent`, `asPerson`,
 `asGuest`.
 
@@ -105,7 +106,15 @@ specs, `api/src/slices/mcp/testing.ts` has `asTrustedAgent`, `asPerson`,
   found": the Ranch assistant, for a person who has it and is not the Owner
   (CLEAN-263, see "Managing one agent"). A tool that answers with
   `agentNotFound` has it without doing anything; a tool with a "not found"
-  of its own asks `ownerOnlyRefusal(httpRequest, id)` first.
+  of its own asks `ownerOnlyRefusal(httpRequest, id)` first. A tool that
+  reads the assistant's conversations says so with a third argument,
+  `'conversations'`, and the sentence fits what was asked (CLEAN-267, see
+  "Reading the assistant's conversations").
+- **A list that left something out says so.** A result that is silent about
+  rows the caller may not read is read as "there are none". When what was
+  left out is something the caller knows exists, the result carries a field
+  that says it was left out and whose it is (`notIncluded`), and the
+  description tells the model what the field means.
 
 ## Audiences
 
@@ -416,11 +425,16 @@ access limit". For that one agent and that one caller the answer is:
   by the Owner."
 
 The seam is one place. The MCP handler asks the agent slice once per
-`tools/call` of a `manage-agent` tool (`AGENT_MANAGER_RESOLVER`, the way it
-asks who manages any agent) and notes the answer on the call's request;
+`tools/call` (`AGENT_MANAGER_RESOLVER`, the way it asks who manages any
+agent) and notes the answer on the call's request, together with whether
+the tool being called is a `manage-agent` tool;
 `agentNotFound(httpRequest, ref)` reads the note and answers the sentence
-when `ref` is that agent's id or its name. So a `manage-agent` tool written
-as above needs nothing more, and a new one has it from its first line. The
+when `ref` is that agent's id or its name and the tool manages an agent. So
+a `manage-agent` tool written as above needs nothing more, and a new one has
+it from its first line. A tool of another audience keeps its not-found for
+the same `ref`: an `admin` tool that reads an agent by id and was handed the
+assistant's name where the id belongs is not refusing the assistant, and
+"only the Owner can restart it" would answer a question nobody asked. The
 connection tools refuse with a sentence of their own and call
 `ownerOnlyRefusal` before it (`PeerAdminTool.guard`). No note, no resolver
 or a resolver that throws all leave the answer at not-found: it fails
@@ -435,6 +449,73 @@ manage it, and the descriptions of those two and of `restart_agent`,
 `stop_agent`, `start_agent`, `delete_agent` and `update_agent` say what the
 mark means (`OWNER_MANAGED_NOTE`). It is a field of the tools: the routes'
 `AgentDto` does not carry it.
+
+#### Reading the assistant's conversations (CLEAN-267)
+
+What people said to the Ranch assistant is the Owner's alone to read
+(CLEAN-236): the chat tools take it out of the agents a caller may read
+(`ChatTool.supervised`, the same rule as the `chats` routes). Taken out
+used to mean "not found", and the same thing happened as with restarting
+it. An Admin asked the assistant for its own conversations; `list_chats`
+with the assistant's id said the agent was not found; the model searched by
+the participant id instead, found the chat another agent had with that
+person, and presented it as the assistant's. Then it said the assistant had
+no conversations. So the same person gets the same kind of answer, with the
+words for what they asked:
+
+```json
+{
+  "error": "Rancher is the Ranch assistant. Only the Owner can read its conversations.",
+  "reason": "owner_only"
+}
+```
+
+- One sentence per kind of thing, never one per tool. `agentNotFound` and
+  `ownerOnlyRefusal` take the kind as their last argument: `'manage'` (the
+  default: restart, stop or change it) or `'conversations'`. A new kind is
+  a new entry in `OWNER_ONLY_CAN` in `#/mcp/tooling`, and nothing else.
+- Every chat tool answers it: `list_chats` and `sync_chats` for the
+  assistant's agent id (`agentNotFound(httpRequest, id, 'conversations')`),
+  `get_chat`, `get_chat_messages`, `summarize_chat` and `export_chat` for
+  the id of one of its chats (`ChatTool.chatFor`, which asks
+  `ownerOnlyRefusal` before its own "Chat … not found"). Nothing of the
+  conversation is in the answer, and nothing is read before it.
+- A chat id of the assistant's is confirmed to be one. That tells such a
+  person nothing they may not know: they talk to the assistant, are shown
+  it by `list_agents`, and are told by `list_chats` that its conversations
+  are left out. Chat ids cannot be listed or guessed, and the answer holds
+  no title, participant, count or date.
+- A list that left it out says so. `list_chats` and `sync_chats` called
+  without an agent id carry `notIncluded`: "The conversations of Rancher,
+  the Ranch assistant, are not included: only the Owner can read them.
+  That is an access limit, not an empty list."
+  (`ownerOnlyConversationsLeftOut`). An empty page carries it too. With an
+  agent id there is nothing left out and no field.
+- Who gets either: the person the note is made for, as above. The Owner
+  and the assistant acting for itself read everything and are told
+  nothing. A person the assistant is switched off for is told nothing
+  either: its id is not found, a chat of it is not found, and no list
+  mentions it. An agent out of reach and an id that names nothing are not
+  found, in the words they always had.
+- A row names its agent. `list_chats`, `get_chat`, `summarize_chat`,
+  `get_chat_messages` and `export_chat` carry `agentName` beside `agentId`,
+  read once per call for the agents of the page. Every chat that reaches a
+  result passed `supervised`, so a name is always one of an agent the
+  caller reaches. The description of `list_chats` says that a search
+  without an agent id matches across agents and where a row says whose it
+  is.
+- It changes what the tools say, never what they allow. The routes are as
+  they were: `GET /chats?agentId=` answers an empty page for the assistant
+  and `GET /chats/:id` a 404.
+
+No other tool takes the assistant out this way. Events, incidents, usage
+and evaluations of the assistant are read by whoever reaches it;
+`AgentPermissionService.ownerOnlyIds` has two callers, `ChatTool` and
+`ChatController`. A tool that starts hiding the assistant's records from
+an Admin gives its kind a sentence here.
+`api/src/slices/mcp/assistantConversations.spec.ts` calls every tool of
+`ChatTool` through the real handler, by the assistant's agent id and by a
+chat of it, and fails on a chat tool that takes neither.
 
 The `manage-agent` tools:
 
@@ -564,9 +645,10 @@ words as for an id that names nothing, never the agent's name, and nothing
 read or changed before the answer. The one agent a refusal names is one the
 caller does reach: the Ranch assistant, which a `manage-agent` tool refuses
 anybody but the Owner with "only the Owner can restart, stop or change it"
-and `reason: "owner_only"` (CLEAN-263, "Managing one agent"). With the
-assistant switched off for a person it is out of their reach, and not found
-like any other. `api/src/slices/mcp/toolReach.spec.ts`
+and `reason: "owner_only"` (CLEAN-263, "Managing one agent"), and a chat
+tool with "only the Owner can read its conversations" (CLEAN-267, "Reading
+the assistant's conversations"). With the assistant switched off for a
+person it is out of their reach, and not found like any other. `api/src/slices/mcp/toolReach.spec.ts`
 runs every tool that lists agents or takes an agent id as an Admin limited
 to two agents of three and holds each of them to that; a new such tool joins
 its tables.
@@ -579,10 +661,10 @@ its tables.
 | `get_user_agent_access`, `set_user_agent_access` (`admin`) | `AgentAccessService.view` / `adjust` as the party: an Admin sees and may name only agents they reach, and meets the ceiling |
 | the 35 `manage-agent` tools | through `manageable`; the Ranch assistant, for a person who reaches it, is refused as the Owner's and not as not found |
 | `list_agent_limits`, `list_skill_agents`, `get_usage_overview`, `llm_usage`, `list_paddock_evaluations`, `list_paddock_scenarios` | filtered; usage totals are of the reached agents |
-| `list_chats`, `list_agent_events`, `list_agent_incidents` | `agentScope` in the query; an `agentId` argument is checked |
+| `list_chats`, `list_agent_events`, `list_agent_incidents` | `agentScope` in the query; an `agentId` argument is checked. `list_chats` also leaves out the Ranch assistant for anybody but the Owner, says so in `notIncluded`, and names the agent of each row |
 | `get_my_stats` (`person`) | the statistics of the person the call is made for, over the agents that person reaches now: a conversation with an agent taken away is in no figure, and a colleague the person does not reach is counted but not named |
 | `agent_usage`, the four share-link tools, `sync_chats`, `start_mcp_oauth`, `run_paddock_evaluation`, `list_agent_paddock_scenarios`, `create_paddock_scenario`, `generate_paddock_scenarios` | the agent id is checked |
-| `get_chat`, `get_chat_messages`, `summarize_chat`, `export_chat`, the paddock evaluation tools by id, `get` / `update` / `delete_paddock_scenario` | the record's agent is checked |
+| `get_chat`, `get_chat_messages`, `summarize_chat`, `export_chat`, the paddock evaluation tools by id, `get` / `update` / `delete_paddock_scenario` | the record's agent is checked. A chat of the Ranch assistant is the Owner's to read: the four chat tools, and `list_chats` / `sync_chats` by its agent id, answer `reason: "owner_only"` to a person who has the assistant |
 | `delete_llm` | names the agents that would lose their model only when the caller reaches them; the rest are counted |
 | `restart_template_agents`, `redeploy_skill_agents` | an agent the caller may not manage is skipped and counted, never named |
 
@@ -769,6 +851,13 @@ puts the block back (it is idempotent and `make init` runs it).
   ticked User get the owner-only sentence for the Ranch assistant, and "not
   found" for an agent out of reach in the same words as for an id that does
   not exist.
+- Does the tool read what people said to an agent, or leave the Ranch
+  assistant out of what it reads for anybody but the Owner? Then asked for
+  the assistant it answers `agentNotFound(httpRequest, id, kind)` or
+  `ownerOnlyRefusal(httpRequest, id, kind)` with a kind whose sentence fits
+  what the tool does, a list over every agent says what it left out
+  (`notIncluded`), each row names its agent, and the tool is walked by
+  `assistantConversations.spec.ts`.
 - Does the tool list, name or use an agent's colleagues? Then it takes the
   caller's view from `PeerAccessService` (see "Whose colleague"), answers a
   hidden connection as one that does not exist, and a masked one without its

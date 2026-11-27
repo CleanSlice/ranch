@@ -476,7 +476,9 @@ words for what they asked:
 
 - One sentence per kind of thing, never one per tool. `agentNotFound` and
   `ownerOnlyRefusal` take the kind as their last argument: `'manage'` (the
-  default: restart, stop or change it), `'conversations'`, `'records'` or
+  default: restart, stop or change it), `'change'` (the same words, said
+  by a tool of another audience that changes the assistant: its public
+  link, an agent-wide tool server), `'conversations'`, `'records'` or
   `'evaluations'` (CLEAN-268, "The assistant's records" below). A new kind
   is a new entry in `OWNER_ONLY_CAN` in `#/mcp/tooling`, and nothing else.
 - Every chat tool answers it: `list_chats` and `sync_chats` for the
@@ -531,6 +533,7 @@ limited it, or what it was tested with.
 | Usage and cost: `agent_usage`; its rows and its share of the totals in `get_usage_overview` and `llm_usage` | `agent_usage` answers `reason: "owner_only"` ("Only the Owner can read its records."). The two sums leave it out of every row and every total and say so in `notIncluded` | What it spent is how much the whole installation leaned on it. It stays in the installation's totals for the Owner alone |
 | Request limits and load: its line in `list_agent_limits` | Left out, with `notIncluded` | `get_agent_limits` is `manage-agent` and already refused it; the fleet view showed the same values |
 | Paddock: every tool of `paddock/evaluation` and `paddock/scenario`, by its agent id, by the id of one of its evaluations or scenarios, and in the two lists | `reason: "owner_only"` ("Only the Owner can evaluate it or read its evaluations and scenarios."), nothing read, started, written or deleted. The lists leave its rows out and say so in `notIncluded` | An evaluation holds what was said to it in a test, what it answered and the tools it called; a scenario is what the Owner expects of it |
+| Its connections, as pairs: `GET /agent-links` | A pair with it at either end is left out | `list_agent_peers` already refused it; the route listed the same pairs |
 | Events and incidents | Open, as for any agent they reach | A row says that it was down, when, and who noticed: the status as reported (`reason`), the sender's name and the monitoring tool. No message, no tool argument, nothing the Owner configured; the same text goes to the team's channel |
 | Its row in `list_agents` / `get_agent` / `list_skill_agents`, `get_rancher_status` | Open: the reader view, marked `managedBy: "owner"` | A person needs its id and whether it is up in order to use it |
 | Files, secrets, env, MCP servers, logs, status and metrics, channels, peers and delegations, limits of one agent | Refused since CLEAN-263 (`manage-agent`) | |
@@ -554,6 +557,24 @@ the agent carries `@AgentScoped(source, { records: true })` and answers the
 404 of an agent that does not exist; a route that names a record answers
 its own 404; a list is filtered. `agentRecordsRoutes.spec.ts` holds each of
 them to it, `mcp/narrowedLists.spec.ts` the tools.
+
+**What is done TO the assistant outside the manage rule.** A few tools
+change something about an agent and are open for every agent the caller
+reaches, because for an ordinary agent reaching it is all it takes. For the
+assistant each is managing it:
+
+| Tool / route | For a person who has the assistant and is not the Owner |
+|---|---|
+| `get_share_link`, `create_share_link`, `regenerate_share_link`, `revoke_share_link`; the four `agents/:agentId/share-link` routes | `reason: "owner_only"` in the words of `manage`; the routes answer 404 (`@AgentScoped('agentId', { ownerManaged: true })`). The link decides who reaches the assistant from outside, and reading it is holding it. A link the Owner made keeps working: the visitor's side (`POST /share/resolve`, the chat's share headers) asks the token and nobody's account |
+| `start_mcp_oauth` without `subject` | the same refusal, also when no agent is named and the caller is the assistant: that connection is shared by everybody who talks to it. With `subject` it is one person's own account and stays theirs |
+
+Such a tool asks `reach.forChanges()` (the same cut as `forRecords`, named
+for what the caller does) and answers `agentNotFound(httpRequest, id,
+'change')`. What a person does for themselves in relation to an agent is
+not this: their pin, their own conversation, their own account on a tool
+server. `narrowedLists.spec.ts` reads every writing tool that names an
+agent, or asks the reach, without going through `manageable`, and fails
+until each is filed as one or the other.
 
 The `manage-agent` tools:
 
@@ -585,7 +606,7 @@ written once and no tool or route changes it.
 | `agent/peer/peerSelf.tool.ts` | `person` (CLEAN-236; it was `agent`, so a visitor with no account could connect and remove an agent's colleagues) | none: the colleagues of the agent the person is talking to, among the agents that person reaches |
 | `agent/peer/askAgent.tool.ts` | `agent` | none. The colleagues it offers and accepts are decided per call, for the party: see "Whose colleague" below |
 | `agent/secret/secret.tool.ts` | `manage-agent` | `agents/:agentId/secrets`: Admin by default, `@ManagesAgent` |
-| `agent/shareLink/shareLink.tool.ts` | `admin` | `agents/:agentId/share-link`: User. Narrower than the route until "who may manage this agent" exists |
+| `agent/shareLink/shareLink.tool.ts` | `admin` | `agents/:agentId/share-link`: User. Narrower than the route until "who may manage this agent" exists. The Ranch assistant's link is the Owner's on both (CLEAN-268) |
 | `agent/template/templateAdmin.tool.ts`, `agent/templateInstall/templateInstall.tool.ts` | `admin` | `templates`: no role stated |
 | `bridle/attachment.tool.ts` | `everyone` | none: reads an attachment of the calling agent |
 | `browser/browser.tool.ts` | `person` | `browser/sessions`: the caller's own sessions |
@@ -961,6 +982,11 @@ puts the block back (it is idempotent and `make init` runs it).
   `'records'` or `'evaluations'`, a list says what it left out
   (`ownerOnlyLeftOutField`), and the route beside it carries
   `@AgentScoped(source, { records: true })`.
+- Does the tool change something about an agent without going through
+  `manageable`? Then either it is the person's own (a pin, their own
+  account) or it asks `reach.forChanges()` and answers the assistant with
+  the kind `'change'`; either way it is filed in the last table of
+  `narrowedLists.spec.ts`.
 - Does the tool list, name or use an agent's colleagues? Then it takes the
   caller's view from `PeerAccessService` (see "Whose colleague"), answers a
   hidden connection as one that does not exist, and a masked one without its

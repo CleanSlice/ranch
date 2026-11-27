@@ -234,6 +234,22 @@ export class AgentReach {
    * handed back as it is. No query: the switch was read with the lists.
    */
   forRecords(): AgentReach {
+    return this.withoutAssistant();
+  }
+
+  /**
+   * This reach for an act that is done TO an agent and is not behind the
+   * manage rule, because for every other agent reaching it is enough:
+   * sharing it by a public link, connecting a tool server for everybody who
+   * talks to it (CLEAN-268). For the assistant such an act is managing it,
+   * and only the Owner manages it. Same cut as `forRecords`, named for what
+   * the caller is doing.
+   */
+  forChanges(): AgentReach {
+    return this.withoutAssistant();
+  }
+
+  private withoutAssistant(): AgentReach {
     return this.assistant?.enabled ? this.without([this.assistant.id]) : this;
   }
 

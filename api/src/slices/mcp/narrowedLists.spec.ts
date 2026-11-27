@@ -50,6 +50,10 @@ import type { IAgentData } from '#/agent/agent/domain/agent.types';
 import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
 import { AgentEventTool } from '#/agent/event/agentEvent.tool';
 import { AgentLimitTool } from '#/agent/limit/agentLimit.tool';
+import { ShareLinkService } from '#/agent/shareLink/domain';
+import type { IShareLinkData } from '#/agent/shareLink/domain/shareLink.types';
+import { ShareLinkTool } from '#/agent/shareLink/shareLink.tool';
+import { McpOauthTool } from '#/mcpServer/oauth/mcpOauth.tool';
 import { ChatTool } from '#/chat/chat.tool';
 import { LlmTool } from '#/llm/llm.tool';
 import { PaddockEvaluationTool } from '#/paddock/evaluation/evaluation.tool';
@@ -367,6 +371,74 @@ const limits = {
   getLimits: () => ({ perMinute: 5, perHour: 50, perDay: 500 }),
 };
 
+// The public links: the real service over rows held in memory, so that a
+// link the Owner made can be followed by a visitor after an Admin was
+// refused it.
+const linkRows = new Map<string, IShareLinkData>();
+let linkClock = Date.parse('2026-11-27T09:00:00.000Z');
+const linkRow = (
+  agentId: string,
+  token: string,
+  userId: string,
+  previous?: IShareLinkData,
+): IShareLinkData => {
+  const at = new Date((linkClock += 1000)).toISOString();
+  const row = {
+    id: `link-${agentId}`,
+    agentId,
+    token,
+    revokedAt: null,
+    rotatedAt: previous ? at : null,
+    rotationCount: previous ? previous.rotationCount + 1 : 0,
+    createdBy: previous?.createdBy ?? userId,
+    updatedBy: userId,
+    createdAt: previous?.createdAt ?? at,
+    updatedAt: at,
+  } as IShareLinkData;
+  linkRows.set(agentId, row);
+  return row;
+};
+const linkWrites = {
+  create: jest.fn((input: { agentId: string; token: string; userId: string }) =>
+    Promise.resolve(linkRow(input.agentId, input.token, input.userId)),
+  ),
+  rotate: jest.fn((agentId: string, token: string, userId: string) =>
+    Promise.resolve(linkRow(agentId, token, userId, linkRows.get(agentId))),
+  ),
+  revoke: jest.fn((agentId: string, userId: string) => {
+    const row = {
+      ...linkRows.get(agentId)!,
+      revokedAt: new Date((linkClock += 1000)).toISOString(),
+      updatedBy: userId,
+    };
+    linkRows.set(agentId, row);
+    return Promise.resolve(row);
+  }),
+};
+const linkReads = {
+  findByAgent: jest.fn((agentId: string) =>
+    Promise.resolve(linkRows.get(agentId) ?? null),
+  ),
+  findByToken: jest.fn((token: string) =>
+    Promise.resolve(
+      [...linkRows.values()].find((row) => row.token === token) ?? null,
+    ),
+  ),
+};
+const shareLinks = new ShareLinkService(
+  { ...linkReads, ...linkWrites } as never,
+  agents,
+  { findById: () => Promise.resolve(null) } as never,
+  { findByIds: () => Promise.resolve([]) } as never,
+  { getLimits: () => null } as never,
+);
+
+const oauth = {
+  start: jest.fn((input: { agentId: string }) =>
+    Promise.resolve({ authorizeUrl: `https://provider.test/${input.agentId}` }),
+  ),
+};
+
 // ── The tools: the real classes, read the way the registry reads them ──
 
 const unused = <T>(name: string): T =>
@@ -472,6 +544,8 @@ const instances = new Map<unknown, unknown>([
     ),
   ],
   [UsageTool, new UsageTool(usage as never, agents, access)],
+  [ShareLinkTool, new ShareLinkTool(shareLinks, agents, access)],
+  [McpOauthTool, new McpOauthTool(oauth as never, access)],
 ]);
 
 interface IRegistered {
@@ -650,6 +724,7 @@ const switchAssistantOff = (who: { id: string }) =>
   });
 
 beforeEach(() => {
+  linkRows.clear();
   assistantSettings.clear();
   EVENTS = IDS.map(event);
   INCIDENTS = IDS.map((id) => incident(id));
@@ -777,6 +852,11 @@ const NOT_A_LIST: Record<string, string> = {
   list_agents:
     'the reach itself: its rows are the agents this person can use, its description says the list is never every agent of the installation, and its shape (a bare array) is what every reader of it parses',
   summarize_chat: 'names one chat',
+  get_share_link: 'names one agent',
+  create_share_link: 'names one agent',
+  regenerate_share_link: 'names one agent',
+  revoke_share_link: 'names one agent',
+  start_mcp_oauth: 'names one agent',
 };
 
 describe('which tools narrow by the caller’s access lists', () => {
@@ -1440,5 +1520,310 @@ describe('what stays open about the assistant', () => {
   it('its row among the agents that use a skill: no more than list_agents shows', async () => {
     const said = await asOpen('list_skill_agents', { skillId: 'skill-1' });
     expect(said).toContain(RANCH);
+  });
+});
+
+// ── Part three: what is done TO the assistant is managing it ──
+//
+// Some tools change something about an agent and are open for every agent
+// the caller reaches, because for an ordinary agent that is all it takes:
+// its public link, an agent-wide connection to a tool server. For the
+// assistant each of them is managing it, and only the Owner manages it.
+
+const MANAGED = OWNER_ONLY('restart, stop or change it');
+
+describe('the public link of the assistant is the Owner’s to read and to change', () => {
+  const SHARE_TOOLS: Record<string, object> = {
+    get_share_link: {},
+    create_share_link: {},
+    regenerate_share_link: { confirm: true },
+    revoke_share_link: { confirm: true },
+  };
+  const VISITOR = 'visitor-1';
+
+  it('walks every tool of the class', () => {
+    expect(
+      registered
+        .filter((t) => t.providerClass === ShareLinkTool)
+        .map((t) => t.metadata.name)
+        .sort(),
+    ).toEqual(Object.keys(SHARE_TOOLS).sort());
+  });
+
+  describe.each(Object.keys(SHARE_TOOLS))('%s', (name) => {
+    const args = (agentId: string) => ({ ...SHARE_TOOLS[name], agentId });
+
+    it.each(['limited', 'open'] as const)(
+      'an Admin (%s lists) is told that only the Owner can, and the link is neither read nor touched',
+      async (who) => {
+        const said = await call(name, args(RANCH), as(who));
+
+        expect(JSON.parse(said)).toEqual(MANAGED);
+        expect(said).not.toMatch(/not found|list_agents|again|later|retry/i);
+        for (const spy of [
+          ...Object.values(linkReads),
+          ...Object.values(linkWrites),
+        ]) {
+          expect(spy).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    it('with their own console token, the same', async () => {
+      const said = await call(name, args(RANCH), undefined, consoleOf(ADMIN));
+      expect(JSON.parse(said)).toEqual(MANAGED);
+    });
+
+    it('an agent out of reach and an id that names nothing are not found, in the words they had', async () => {
+      expect(await asLimited(name, args(B))).toBe(AGENT_NOT_FOUND(B));
+      expect(await asLimited(name, args(GHOST))).toBe(AGENT_NOT_FOUND(GHOST));
+      for (const spy of Object.values(linkWrites)) {
+        expect(spy).not.toHaveBeenCalled();
+      }
+    });
+
+    it('an agent they reach is theirs to share, as before', async () => {
+      await asLimited('create_share_link', { agentId: A });
+      const said = await asLimited(name, args(A));
+
+      expect(said).not.toMatch(/owner_only|not found/);
+    });
+
+    it('the Owner, and the assistant for itself, are answered', async () => {
+      for (const ask of [asOwner, forItself]) {
+        const said = await ask(name, args(RANCH));
+        expect(said).not.toMatch(/owner_only|not found/);
+      }
+    });
+
+    it('an Admin the assistant is switched off for: not found, and nothing about it', async () => {
+      switchAssistantOff(ADMIN2);
+      const said = await call(name, args(RANCH), undefined, consoleOf(ADMIN2));
+
+      expect(said).toBe(AGENT_NOT_FOUND(RANCH));
+    });
+
+    it('says in its description that the assistant is the Owner’s', () => {
+      expect(descriptionOf(name)).toContain('managedBy: "owner"');
+    });
+  });
+
+  it('a link the Owner made keeps working for its visitors, whatever an Admin was refused', async () => {
+    const made = (await parsed(
+      asOwner('create_share_link', { agentId: RANCH }),
+    )) as { active: boolean };
+    expect(made.active).toBe(true);
+    const token = linkRows.get(RANCH)!.token;
+
+    // The visitor's side asks the token and nobody's account.
+    expect(await shareLinks.authorizeChat(token, RANCH, VISITOR)).toBe(
+      `share-${VISITOR}`,
+    );
+    expect(await shareLinks.resolveForVisitor(token)).toMatchObject({
+      agentId: RANCH,
+      agentName: 'Rancher',
+    });
+
+    // An Admin tries all four; the row is as the Owner left it.
+    for (const name of Object.keys(SHARE_TOOLS)) {
+      const said = await asOpen(name, { ...SHARE_TOOLS[name], agentId: RANCH });
+      expect(JSON.parse(said)).toEqual(MANAGED);
+      expect(said).not.toContain(token);
+    }
+    expect(linkRows.get(RANCH)).toMatchObject({ token, revokedAt: null });
+    expect(await shareLinks.authorizeChat(token, RANCH, VISITOR)).toBe(
+      `share-${VISITOR}`,
+    );
+
+    // And stops when the Owner says so.
+    await asOwner('revoke_share_link', { agentId: RANCH, confirm: true });
+    await expect(
+      shareLinks.authorizeChat(token, RANCH, VISITOR),
+    ).rejects.toThrow();
+  });
+});
+
+describe('a tool server is connected for the assistant by the Owner alone', () => {
+  const SERVER = { serverId: 'srv-1' };
+
+  it.each(['limited', 'open'] as const)(
+    'start_mcp_oauth: an Admin (%s lists) is refused the connection everybody who talks to it would share',
+    async (who) => {
+      // Named, and not named: through the assistant the calling agent is it.
+      for (const args of [{ ...SERVER, agentId: RANCH }, SERVER]) {
+        expect(await parsed(call('start_mcp_oauth', args, as(who)))).toEqual(
+          MANAGED,
+        );
+      }
+      expect(oauth.start).not.toHaveBeenCalled();
+    },
+  );
+
+  it('their own account on that server is theirs to connect: it changes nothing about the assistant', async () => {
+    const said = await asOpen('start_mcp_oauth', {
+      ...SERVER,
+      subject: ADMIN2.id,
+    });
+
+    expect(said).not.toMatch(/owner_only|not found/);
+    expect(oauth.start).toHaveBeenCalledWith({
+      serverId: 'srv-1',
+      agentId: RANCH,
+      subject: ADMIN2.id,
+    });
+  });
+
+  it('an agent they reach is theirs to connect; one out of reach is not found', async () => {
+    expect(
+      await asLimited('start_mcp_oauth', { ...SERVER, agentId: A }),
+    ).toContain(`https://provider.test/${A}`);
+    expect(await asLimited('start_mcp_oauth', { ...SERVER, agentId: B })).toBe(
+      AGENT_NOT_FOUND(B),
+    );
+    expect(
+      await asLimited('start_mcp_oauth', {
+        ...SERVER,
+        agentId: B,
+        subject: ADMIN.id,
+      }),
+    ).toBe(AGENT_NOT_FOUND(B));
+  });
+
+  it('the Owner, and the assistant for itself, connect it', async () => {
+    for (const ask of [asOwner, forItself]) {
+      expect(await ask('start_mcp_oauth', SERVER)).toContain(
+        `https://provider.test/${RANCH}`,
+      );
+    }
+  });
+
+  it('an Admin the assistant is switched off for: not found', async () => {
+    switchAssistantOff(ADMIN2);
+    expect(
+      await call(
+        'start_mcp_oauth',
+        { ...SERVER, agentId: RANCH },
+        undefined,
+        consoleOf(ADMIN2),
+      ),
+    ).toBe(AGENT_NOT_FOUND(RANCH));
+  });
+});
+
+// ── Which writing tools stand outside the manage rule: read off the source ──
+
+/**
+ * The writing tools that name an agent, or ask the reach, and do not go
+ * through `AgentPermissionService` (`manageable`, `canManage`): the ones
+ * the manage rule does not keep away from the assistant. Read the same way
+ * as `reachTools`.
+ */
+function writesOutsideTheManageRule(source: string): string[] {
+  const members: string[] = [];
+  let current: string[] = [];
+  for (const line of source.replace(/\r\n/g, '\n').split('\n')) {
+    current.push(line);
+    if (line === '  }') {
+      members.push(current.join('\n'));
+      current = [];
+    }
+  }
+  const nameOf = (member: string) =>
+    [
+      ...member.matchAll(
+        /^ {2}(?:private |protected |public )?(?:async )?(\w+)\(/gm,
+      ),
+    ].pop()?.[1] ?? null;
+  const calling = (patterns: string[]) => {
+    const found = new Set<string>();
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const member of members) {
+        const name = nameOf(member);
+        if (!name || found.has(name)) continue;
+        if (
+          patterns.some((pattern) => member.includes(pattern)) ||
+          [...found].some((helper) => member.includes(`this.${helper}(`))
+        ) {
+          found.add(name);
+          grew = true;
+        }
+      }
+    }
+    return found;
+  };
+  const managing = calling(['manageable(', 'canManage(']);
+  const reaching = calling(['reachableIds(', '.reaches(']);
+  return members
+    .filter((member) => member.includes('  @Tool({'))
+    .filter((member) => /effect: 'write'/.test(member))
+    .filter((member) => {
+      const method = nameOf(member) ?? '';
+      const namesAnAgent = /\b(agentId|peerAgentId)\b/.test(member);
+      return !managing.has(method) && (reaching.has(method) || namesAnAgent);
+    })
+    .map((member) => {
+      const name = /@Tool\(\{\s*name: (?:'([a-z_]+)'|(\w+))/.exec(member);
+      return name?.[1] ?? NAMED_TOOLS[name?.[2] ?? ''] ?? name?.[2] ?? '?';
+    });
+}
+
+/**
+ * Each of them, with what keeps it from being a way to manage the
+ * assistant: either the tool refuses the assistant to anybody but the Owner
+ * (and a suite above holds it to that), or what it does is the person's
+ * own and changes nothing about the agent.
+ */
+const OUTSIDE_THE_MANAGE_RULE: Record<string, string> = {
+  // Done TO the agent: Owner only for the assistant.
+  create_share_link: 'owner only for the assistant: `forChanges`',
+  regenerate_share_link: 'owner only for the assistant: `forChanges`',
+  revoke_share_link: 'owner only for the assistant: `forChanges`',
+  start_mcp_oauth:
+    'owner only for the assistant when agent-wide: `forChanges`; a person’s own account (`subject`) is theirs',
+  run_paddock_evaluation: 'owner only for the assistant: `forRecords`',
+  abort_paddock_evaluation: 'owner only for the assistant: `forRecords`',
+  rerun_paddock_evaluation: 'owner only for the assistant: `forRecords`',
+  create_paddock_scenario: 'owner only for the assistant: `forRecords`',
+  update_paddock_scenario: 'owner only for the assistant: `forRecords`',
+  delete_paddock_scenario: 'owner only for the assistant: `forRecords`',
+  generate_paddock_scenarios: 'owner only for the assistant: `forRecords`',
+  summarize_chat: 'owner only for the assistant: `supervised` (CLEAN-267)',
+  sync_chats: 'owner only for the assistant: `supervised` (CLEAN-267)',
+  connect_my_peer:
+    'owner only for the assistant: `isOwnersAgentForSomebodyElse` (CLEAN-232)',
+  connect_my_peer_from_card:
+    'owner only for the assistant: `isOwnersAgentForSomebodyElse` (CLEAN-232)',
+  import_my_peer_by_address:
+    'owner only for the assistant: `isOwnersAgentForSomebodyElse` (CLEAN-232)',
+  remove_my_peer:
+    'owner only for the assistant: `isOwnersAgentForSomebodyElse` (CLEAN-232)',
+  // The person's own, or not about one agent.
+  pin_agent: 'the person’s own pin: nothing about the agent changes',
+  ask_agent:
+    'the calling agent asks a colleague: a question, checked per connection by `PeerAccessService`',
+  delete_llm:
+    'deletes a credential, not an agent: the reach only decides which agents its sentence names',
+};
+
+describe('writing tools that name an agent and stand outside the manage rule', () => {
+  const found = toolFiles(SLICES)
+    .flatMap((file) => writesOutsideTheManageRule(readFileSync(file, 'utf8')))
+    .sort();
+
+  it('each is filed: Owner only for the assistant, or the person’s own', () => {
+    // A new one fails here. Before filing it, decide which it is: something
+    // done TO the agent refuses the assistant to anybody but the Owner
+    // (`manageable`, or `reach.forChanges()` and the kind `change`).
+    expect(found).toEqual(Object.keys(OUTSIDE_THE_MANAGE_RULE).sort());
+  });
+
+  it('the reading finds a tool of each kind, and leaves the managed ones out', () => {
+    expect(found).toEqual(
+      expect.arrayContaining(['pin_agent', 'create_share_link']),
+    );
+    for (const managed of ['restart_agent', 'set_agent_secret']) {
+      expect(found).not.toContain(managed);
+    }
   });
 });

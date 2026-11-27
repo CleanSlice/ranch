@@ -12,6 +12,7 @@ import {
   agentNotFound,
   callerIsOperator,
   CONFIRM_SENTENCE,
+  OWNER_MANAGED_NOTE,
   confirmed,
   ok,
   requireOperator,
@@ -124,13 +125,19 @@ export class ShareLinkTool implements IConditionallyListedTool {
   /**
    * The agent, when it exists and the caller reaches it (CLEAN-231). An
    * Admin whose access lists hide an agent cannot read or mint its link.
+   *
+   * Nor the link of the Ranch assistant, for anybody but the Owner
+   * (CLEAN-268): a public link decides who reaches it from outside, which
+   * is managing it, and reading the link is holding it. The four tools
+   * answer a null with `agentNotFound(…, 'change')`, so a person who has
+   * the assistant is told that only the Owner can, and everybody else that
+   * there is no such agent.
    */
   private async reachedAgent(httpRequest: Request, agentId: string) {
     const found = await this.agents.findById(agentId);
     if (!found) return null;
-    return (await this.access.reaches(callerParty(httpRequest), agentId))
-      ? found
-      : null;
+    const reach = await this.access.reachableIds(callerParty(httpRequest));
+    return reach.forChanges().has(agentId) ? found : null;
   }
 
   async isListedForRequest(httpRequest: Request): Promise<boolean> {
@@ -147,7 +154,8 @@ export class ShareLinkTool implements IConditionallyListedTool {
       'Whether an agent is publicly shared, and if so the link visitors ' +
       'open to chat with it, plus when it was created and last regenerated. ' +
       'Not shared or revoked: active false and no link. Takes the agent id ' +
-      '— resolve a name with list_agents first.',
+      '— resolve a name with list_agents first. ' +
+      OWNER_MANAGED_NOTE,
     parameters: z.object({
       agentId: z
         .string()
@@ -161,7 +169,7 @@ export class ShareLinkTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
     const agent = await this.reachedAgent(httpRequest, agentId);
-    if (!agent) return agentNotFound(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId, 'change');
     return this.guard(httpRequest, agentId, async () =>
       present(agent, await this.shareLinks.getState(agentId)),
     );
@@ -178,7 +186,8 @@ export class ShareLinkTool implements IConditionallyListedTool {
       'chat with it, no account needed. Idempotent — an agent that is ' +
       'already shared gets its existing link back unchanged, so this never ' +
       'invalidates a link already in circulation (use regenerate_share_link ' +
-      'for that). Takes the agent id — resolve a name with list_agents first.',
+      'for that). Takes the agent id — resolve a name with list_agents first. ' +
+      OWNER_MANAGED_NOTE,
     parameters: z.object({
       agentId: z
         .string()
@@ -193,7 +202,7 @@ export class ShareLinkTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const userId = requireSub(httpRequest);
     const agent = await this.reachedAgent(httpRequest, agentId);
-    if (!agent) return agentNotFound(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId, 'change');
     return this.guard(httpRequest, agentId, async () => {
       const state = await this.shareLinks.share(agentId, userId);
       this.logger.log(`Share link ensured through MCP: agent=${agentId}`);
@@ -213,7 +222,9 @@ export class ShareLinkTool implements IConditionallyListedTool {
       'in the same write, so everyone holding it loses access immediately; ' +
       'a revoked link is revived with the new address. Returns the new link. ' +
       'Takes the agent id — resolve a name with list_agents first. ' +
-      CONFIRM_SENTENCE,
+      CONFIRM_SENTENCE +
+      ' ' +
+      OWNER_MANAGED_NOTE,
     parameters: z.object({
       agentId: z
         .string()
@@ -232,7 +243,7 @@ export class ShareLinkTool implements IConditionallyListedTool {
     const userId = requireSub(httpRequest);
     const { agentId } = args;
     const agent = await this.reachedAgent(httpRequest, agentId);
-    if (!agent) return agentNotFound(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId, 'change');
     const refusal = confirmed(
       args,
       `regenerate the share link of agent «${agent.name}» — the current ` +
@@ -259,7 +270,9 @@ export class ShareLinkTool implements IConditionallyListedTool {
       'mints a different one. Revoking an agent that is not shared changes ' +
       'nothing and is not an error. Takes the agent id — resolve a name with ' +
       'list_agents first. ' +
-      CONFIRM_SENTENCE,
+      CONFIRM_SENTENCE +
+      ' ' +
+      OWNER_MANAGED_NOTE,
     parameters: z.object({
       agentId: z
         .string()
@@ -278,7 +291,7 @@ export class ShareLinkTool implements IConditionallyListedTool {
     const userId = requireSub(httpRequest);
     const { agentId } = args;
     const agent = await this.reachedAgent(httpRequest, agentId);
-    if (!agent) return agentNotFound(httpRequest, agentId);
+    if (!agent) return agentNotFound(httpRequest, agentId, 'change');
     const refusal = confirmed(
       args,
       `revoke the share link of agent «${agent.name}» — visitors are cut ` +
@@ -312,7 +325,7 @@ export class ShareLinkTool implements IConditionallyListedTool {
       return await run();
     } catch (err) {
       if (err instanceof NotFoundException) {
-        return agentNotFound(httpRequest, agentId);
+        return agentNotFound(httpRequest, agentId, 'change');
       }
       throw err;
     }

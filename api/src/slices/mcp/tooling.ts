@@ -594,6 +594,14 @@ const OWNER_ONLY_PROPERTY = 'ranchOwnerOnlyAgent';
  *
  *  - `manage`: restart, stop or change it. What a `manage-agent` tool does,
  *    and the kind `agentNotFound` assumes.
+ *  - `change`: the same thing, said by a tool of another audience: one
+ *    that is open for any agent the caller reaches and, for the assistant,
+ *    is managing it — sharing it by a public link, connecting a tool server
+ *    for everybody who talks to it (CLEAN-268). The words are those of
+ *    `manage`. It is a kind of its own because `manage` is answered on a
+ *    `manage-agent` tool only, so that a reading tool handed the
+ *    assistant's name does not refuse a change nobody asked for; a tool
+ *    that passes `change` has said that it is one.
  *  - `conversations`: read, replay, summarise, export or reindex what people
  *    said to it.
  *  - `records`: read what Ranch keeps about it and no person needs in order
@@ -605,6 +613,7 @@ const OWNER_ONLY_PROPERTY = 'ranchOwnerOnlyAgent';
  */
 export type OwnerOnlyKindTypes =
   | 'manage'
+  | 'change'
   | 'conversations'
   | 'records'
   | 'evaluations';
@@ -612,6 +621,7 @@ export type OwnerOnlyKindTypes =
 /** The half of the sentence after "Only the Owner can". */
 const OWNER_ONLY_CAN: Record<OwnerOnlyKindTypes, string> = {
   manage: 'restart, stop or change it',
+  change: 'restart, stop or change it',
   conversations: 'read its conversations',
   records: 'read its records',
   evaluations: 'evaluate it or read its evaluations and scenarios',

@@ -196,7 +196,16 @@ person reaches.
   whoever reaches the assistant: `GET /agents/:id` and the status routes,
   `GET /agents/:agentId/limits/enabled`, `/agents/:id/tools`,
   `/agent-events` and `/agent-incidents` (a row says that it was down and
-  who noticed, nothing anybody said to it), the share-link routes.
+  who noticed, nothing anybody said to it).
+
+- **What is done to the Ranch assistant outside the manage rule is the
+  Owner's too.** `@AgentScoped('agentId', { ownerManaged: true })` on the
+  four `/agents/:agentId/share-link` routes: 404 for the assistant to
+  anybody but the Owner, as its management routes answer. The visitor's
+  side is untouched, so an existing link keeps working until the Owner
+  revokes it. `GET /agent-links` leaves out a pair with the assistant at
+  either end. The tools: the four share-link tools and `start_mcp_oauth`
+  for the agent-wide connection answer `reason: "owner_only"`.
 
 Pinned by `api/src/slices/mcp/narrowedLists.spec.ts` and
 `api/src/slices/user/agentAccess/guards/agentRecordsRoutes.spec.ts`.

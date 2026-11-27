@@ -35,6 +35,15 @@ export interface IAgentScope {
    * does.
    */
   records?: boolean;
+  /**
+   * The route does something TO the agent that reaching it is enough for,
+   * except for the Ranch assistant, which only the Owner manages: sharing
+   * it by a public link (CLEAN-268). Anybody else gets the 404 the
+   * management routes of the assistant give (`AgentManageGuard`). A route
+   * that only an Owner or Admin may use on any agent carries
+   * `@ManagesAgent` instead.
+   */
+  ownerManaged?: boolean;
 }
 
 /**
@@ -49,5 +58,5 @@ export interface IAgentScope {
  */
 export const AgentScoped = (
   source: AgentScopeSources,
-  options: Pick<IAgentScope, 'notFound' | 'records'> = {},
+  options: Pick<IAgentScope, 'notFound' | 'records' | 'ownerManaged'> = {},
 ) => SetMetadata(AGENT_SCOPED_METADATA_KEY, { source, ...options });

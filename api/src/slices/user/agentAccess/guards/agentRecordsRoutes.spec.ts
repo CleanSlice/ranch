@@ -18,6 +18,8 @@ import { NotFoundException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { AgentLimitController } from '#/agent/limit/agentLimit.controller';
+import { PeerLinkController } from '#/agent/peer/peerLink.controller';
+import { ShareLinkController } from '#/agent/shareLink/shareLink.controller';
 import { PaddockEvaluationController } from '#/paddock/evaluation/evaluation.controller';
 import { PaddockScenarioController } from '#/paddock/scenario/scenario.controller';
 import { UsageController } from '#/usage/usage.controller';
@@ -163,15 +165,44 @@ const RECORD_ROUTES: Array<
     'generate',
     (agentId) => ({ body: { agentId } }),
   ],
+  // Done TO the agent, and open for any agent the caller reaches: for the
+  // assistant it is managing it, so the same 404.
+  [
+    'GET /agents/:agentId/share-link',
+    ShareLinkController,
+    'get',
+    (agentId) => ({ params: { agentId } }),
+  ],
+  [
+    'POST /agents/:agentId/share-link',
+    ShareLinkController,
+    'create',
+    (agentId) => ({ params: { agentId } }),
+  ],
+  [
+    'POST /agents/:agentId/share-link/regenerate',
+    ShareLinkController,
+    'regenerate',
+    (agentId) => ({ params: { agentId } }),
+  ],
+  [
+    'DELETE /agents/:agentId/share-link',
+    ShareLinkController,
+    'revoke',
+    (agentId) => ({ params: { agentId } }),
+  ],
 ];
 
 describe.each(RECORD_ROUTES)('%s', (_route, controller, handler, naming) => {
-  it('is marked as a route that returns records about the agent', () => {
-    const scope = Reflect.getMetadata(
+  it('is marked: it returns records about the agent, or does to it what only the Owner does to the assistant', () => {
+    // On the handler, or on its class.
+    const scope = (Reflect.getMetadata(
       AGENT_SCOPED_METADATA_KEY,
       (controller.prototype as Record<string, object>)[handler],
-    ) as IAgentScope | undefined;
-    expect(scope?.records).toBe(true);
+    ) ?? Reflect.getMetadata(AGENT_SCOPED_METADATA_KEY, controller)) as
+      | IAgentScope
+      | undefined;
+    expect(scope?.records ?? scope?.ownerManaged).toBe(true);
   });
 
   it.each([
@@ -350,6 +381,28 @@ describe('the totals', () => {
       expect(narrowed.totals.callCount).toBe(5);
     },
   );
+});
+
+describe('GET /agent-links', () => {
+  const links = new PeerLinkController(
+    {
+      listInternalLinks: () =>
+        Promise.resolve([
+          { agentId: A, peerAgentId: B },
+          { agentId: RANCH, peerAgentId: A },
+          { agentId: B, peerAgentId: RANCH },
+        ]),
+    } as never,
+    access,
+  );
+
+  it('a connection of the assistant is listed for the Owner alone', async () => {
+    expect(await links.list(req(OWNER))).toHaveLength(3);
+    expect(await links.list(req(ADMIN2))).toEqual([
+      { agentId: A, peerAgentId: B },
+    ]);
+    expect(await links.list(req(ADMIN))).toEqual([]);
+  });
 });
 
 describe('GET /agent-limits', () => {

@@ -24,6 +24,8 @@ import {
   IAgentNotificationData,
   IClosedNotificationPayload,
   ICreateAgentEventData,
+  IIncidentRange,
+  IIncidentRangeQuery,
   IJoinedNotificationPayload,
   INotificationDestination,
   INotificationPayload,
@@ -221,6 +223,31 @@ class FakeGateway extends IAgentEventGateway {
 
   async listIncidents(): Promise<IPage<IAgentIncidentView>> {
     return { items: [], nextCursor: null };
+  }
+
+  // As the table answers it: opened by the end of the range, and inside it
+  // or still open. An incident whose agent is gone has no agent id, and a
+  // NULL is neither in a list nor outside one.
+  async findIncidentsInRange(
+    query: IIncidentRangeQuery,
+  ): Promise<IIncidentRange> {
+    const scope = query.agentScope;
+    const matching = this.incidents
+      .filter(
+        (i) => i.openedAt <= query.to && (i.openedAt >= query.from || i.open),
+      )
+      .filter(
+        (i) =>
+          !scope ||
+          (i.agentId !== null &&
+            (scope.in === undefined || scope.in.includes(i.agentId)) &&
+            (scope.notIn === undefined || !scope.notIn.includes(i.agentId))),
+      )
+      .sort((a, b) => b.openedAt.getTime() - a.openedAt.getTime());
+    return {
+      items: matching.slice(0, query.limit).map((i) => ({ ...i })),
+      total: matching.length,
+    };
   }
 
   async setIncidentRoot(id: string, channel: string, ts: string) {
@@ -1858,5 +1885,70 @@ describe('the environment label (CLEAN-167)', () => {
     h.addAgent('a2', 'running', 'Agent a2');
     await h.worker.drainOutbox(() => minutes(2));
     expect(h.sent[1].text).toBe('[prod-eu] Agent failed: Agent a2');
+  });
+});
+
+describe('AgentEventService — the incidents of a period (CLEAN-265)', () => {
+  it('answers the incidents opened in the period, newest first, with how many there are', async () => {
+    const h = harness();
+    await h.incidents.attachFailure(failure('a1', T0));
+    await h.incidents.attachFailure(failure('a2', minutes(1)));
+    await h.incidents.attachFailure(failure('a3', minutes(2)));
+
+    const range = await h.service.incidentsInRange({
+      from: minutes(-60),
+      to: minutes(5),
+      limit: 2,
+    });
+
+    expect(range.items.map((i) => i.agentId)).toEqual(['a3', 'a2']);
+    expect(range.total).toBe(3);
+  });
+
+  it('keeps one that is still open from before the period, and drops one that closed before it', async () => {
+    const h = harness();
+    await h.incidents.attachFailure(failure('a1', minutes(-600)));
+    await h.incidents.attachFailure(failure('a2', minutes(-500)));
+    const closed = h.gateway.incidents.find((i) => i.agentId === 'a2');
+    expect(closed).toBeDefined();
+    await h.gateway.closeIncident(
+      closed?.id ?? '',
+      'recovered',
+      minutes(-400),
+      null,
+    );
+
+    const range = await h.service.incidentsInRange({
+      from: minutes(-60),
+      to: minutes(5),
+      limit: 50,
+    });
+
+    expect(range.items.map((i) => i.agentId)).toEqual(['a1']);
+    expect(range.items[0].open).toBe(true);
+    expect(range.total).toBe(1);
+  });
+
+  it('hands the caller’s reach on: only the incidents of those agents, total included', async () => {
+    const h = harness();
+    await h.incidents.attachFailure(failure('a1', T0));
+    await h.incidents.attachFailure(failure('a2', minutes(1)));
+
+    const limited = await h.service.incidentsInRange({
+      from: minutes(-60),
+      to: minutes(5),
+      agentScope: { in: ['a1'] },
+      limit: 50,
+    });
+    expect(limited.items.map((i) => i.agentId)).toEqual(['a1']);
+    expect(limited.total).toBe(1);
+
+    const excluding = await h.service.incidentsInRange({
+      from: minutes(-60),
+      to: minutes(5),
+      agentScope: { notIn: ['a1'] },
+      limit: 50,
+    });
+    expect(excluding.items.map((i) => i.agentId)).toEqual(['a2']);
   });
 });

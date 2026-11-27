@@ -6,6 +6,7 @@ import {
   activityFigure,
   citationsFigure,
   handoversFigure,
+  incidentsFigure,
   ratingsFigure,
   refusalsFigure,
   spendFigure,
@@ -36,13 +37,16 @@ describe('figure definitions', () => {
     expect(await figure.firstRecord?.()).toBe(first);
   });
 
-  // The figures read in place (CLEAN-262): spend, and the three of "How
-  // agents helped" (CLEAN-258). Their rows are the record, so there is no
-  // rebuild to name, which is what tells the registry to keep no row for
-  // them, and no first record to ask for: nothing came before the first row.
+  // The figures read in place (CLEAN-262): spend and incidents, and the
+  // three of "How agents helped" (CLEAN-258), of which the ratings are also
+  // what the installation's quality block reads (CLEAN-265). Their rows are
+  // the record, so there is no rebuild to name, which is what tells the
+  // registry to keep no row for them, and no first record to ask for:
+  // nothing came before the first row.
   it.each([
     ['spend', spendFigure, ['installation']],
-    ['ratings', ratingsFigure, ['personal']],
+    ['incidents', incidentsFigure, ['installation']],
+    ['ratings', ratingsFigure, ['personal', 'installation']],
     ['citations', citationsFigure, ['personal']],
     ['handovers', handoversFigure, ['personal']],
   ] as const)(
@@ -71,6 +75,7 @@ describe('figure definitions', () => {
       'activity',
       'refusals',
       'spend',
+      'incidents',
       'ratings',
       'citations',
       'handovers',

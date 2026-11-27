@@ -58,9 +58,15 @@
       "label": "Period",
       "days": "{count} days"
     },
+    "scope": {
+      "label": "Whose statistics",
+      "mine": "My conversations",
+      "installation": "Whole installation"
+    },
     "audience": {
       "only_you": "Only you see these figures.",
-      "owner": "Your conversations from both consoles: the owner's channel is shared between them."
+      "owner": "Your conversations from both consoles: the owner's channel is shared between them.",
+      "operators": "The owner and administrators see these figures."
     },
     "state": {
       "loading": "Loading statistics",
@@ -151,6 +157,111 @@
       "rated_down": "marked not useful",
       "ratings_share": "You marked {percent} of the answers you rated as useful",
       "ratings_none": "You have not rated answers yet"
+    },
+    "installation": {
+      "utc_days": "Days here are UTC days, the same for everyone who looks.",
+      "limited": "These figures cover no agents: you reach none. | These figures cover the {count} agent you reach, not the whole installation. | These figures cover the {count} agents you reach, not the whole installation.",
+      "owner_only": "No agent's conversations are left out of these figures. | Conversations with {names} are the owner's alone to read: the people, quality and channel figures here are counted without them. Its spend and health are counted in full. | Conversations with {names} are the owner's alone to read: the people, quality and channel figures here are counted without them. Their spend and health are counted in full.",
+      "activity_since": "People, conversations and channels are counted since {date}",
+      "forbidden_title": "These figures are for the owner and administrators",
+      "forbidden_text": "Your role does not include the installation's statistics. Your own figures are under My conversations.",
+      "empty_title": "Nothing was recorded in this period",
+      "empty_text": "No agent reported usage and nobody wrote in a conversation, in these days or in the days before them."
+    },
+    "iboard": {
+      "label": "The installation's figures for the period",
+      "tokens": "tokens | token | tokens",
+      "tokens_split": "{input} in · {output} out",
+      "calls": "model calls | model call | model calls",
+      "cost": "estimated cost",
+      "cost_excluding": "estimated cost, without the models that have no price",
+      "people": "people in conversations | person in conversations | people in conversations"
+    },
+    "daily": {
+      "title": "Spend by day",
+      "caption": "tokens by model",
+      "chart_label": "Tokens by day and model for {count} days. Left and right arrows move from day to day; the numbers are also in the table view.",
+      "table_label": "Tokens by day and model, as a table",
+      "table_day": "Day",
+      "table_cost": "Estimated cost",
+      "day_cost": "estimated cost",
+      "day_none": "no usage reported",
+      "cell_label": "{day}: {tokens}, estimated cost {cost}",
+      "cell_label_partial": "{day}: {tokens}, estimated cost {cost}, without the models that have no price",
+      "cell_label_no_price": "{day}: {tokens}, no price for any of its models",
+      "cell_label_none": "{day}: no usage reported",
+      "partial_tip": "Some of the day's models have no price; the cost is of the rest.",
+      "no_price": "no price",
+      "no_price_tip": "The price list does not have this model. Its tokens are counted; its cost is in no sum here.",
+      "today": "Today's spend appears once agents report it, usually at the end of the UTC day.",
+      "none": "No agent reported usage in these {count} days."
+    },
+    "cost": {
+      "title": "Agents by cost",
+      "caption": "in {count} days",
+      "list_label": "Agents by estimated cost, most first",
+      "bar_label": "{name}: {cost}, {share} of the total",
+      "bar_label_no_share": "{name}: {cost}",
+      "bar_label_partial": "{name}: {cost} for its models that have a price, {share} of the total",
+      "bar_label_partial_no_share": "{name}: {cost} for its models that have a price",
+      "removed": "removed",
+      "tokens": "{count} tokens | {count} token | {count} tokens",
+      "calls": "{count} model calls | {count} model call | {count} model calls",
+      "no_price": "no price",
+      "no_price_tip": "The price list has none of this agent's models. Its tokens are counted; its cost is in no sum here.",
+      "partial_tip": "Some of this agent's models have no price; the cost is of the rest.",
+      "projection": "At this pace, 30 days come to {amount}.",
+      "projection_none": "Projection for 30 days: {amount}",
+      "projection_absent": "none yet",
+      "projection_tip": "A projection needs at least one finished day with usage.",
+      "disclaimer": "Prices come from the product's own price list, not from a provider's invoice."
+    },
+    "health": {
+      "title": "Health",
+      "caption": "incidents and limits",
+      "incidents_label": "Incidents",
+      "open": "open",
+      "closed": "closed",
+      "lasted": "lasted {span}",
+      "none": "No incidents in {count} days",
+      "more": "The latest {shown} of {total} are listed.",
+      "refusals": "Requests refused by limits",
+      "refusals_hint": "Visitors of public agents see these refusals. A limit is changed in the agent's settings.",
+      "refusals_none": "No requests were refused",
+      "refusals_since": "Refusals are counted since {date}"
+    },
+    "span": {
+      "under_minute": "under a minute",
+      "minutes": "{minutes} min",
+      "hours": "{hours} h",
+      "hours_minutes": "{hours} h {minutes} min",
+      "days": "{days} d",
+      "days_hours": "{days} d {hours} h"
+    },
+    "quality": {
+      "title": "Where people are unhappy",
+      "caption": "by the installation's conversations",
+      "table_label": "Conversations, share left open and share of thumbs down, by agent",
+      "agent": "Agent",
+      "conversations": "conversations",
+      "open": "left open",
+      "open_pending": "The share of conversations left open is not counted yet.",
+      "down": "thumbs down",
+      "down_of": "{down} of {count}",
+      "no_ratings": "no ratings",
+      "worst": "the highest share in this column",
+      "none": "Nobody wrote to an agent or rated an answer in these {count} days."
+    },
+    "channels": {
+      "title": "Where people write",
+      "caption": "conversations by channel",
+      "bar_label": "Conversations by channel: {values}",
+      "conversations": "{count} conversations | {count} conversation | {count} conversations",
+      "console": "Console",
+      "telegram": "Telegram",
+      "slack": "Slack",
+      "share": "Share link",
+      "other": "Other"
     }
   }
 }

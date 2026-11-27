@@ -1169,6 +1169,40 @@ function makePeriodStub(sessions: Row[] = [], ratings: Row[] = []) {
   };
 
   const chatFeedback = {
+    // The installation's read (CLEAN-265): by time and agent, whoever the
+    // author is. A rating with no author has no `authorId` to compare, and
+    // nothing here compares one, so it is counted like any other.
+    findMany: jest.fn(
+      async ({
+        where,
+        select,
+      }: {
+        where: {
+          createdAt: { gte: Date; lte: Date };
+          session?: { agentId: AgentScope };
+        };
+        select: { rating: true; session: { select: { agentId: true } } };
+      }) => {
+        onlyKnown(where, ['createdAt', 'session']);
+        if (where.session) onlyKnown(where.session, ['agentId']);
+        onlyKnown(select, ['rating', 'session']);
+        onlyKnown(select.session.select, ['agentId']);
+        return ratings
+          .filter((r) => {
+            const at = (r.createdAt as Date).getTime();
+            if (at < where.createdAt.gte.getTime()) return false;
+            if (at > where.createdAt.lte.getTime()) return false;
+            const agentId = agentOf(r.sessionId);
+            // The foreign key: a rating without its conversation is no row.
+            if (agentId === undefined) return false;
+            return !where.session || inScope(agentId, where.session.agentId);
+          })
+          .map((r) => ({
+            rating: r.rating,
+            session: { agentId: agentOf(r.sessionId) },
+          }));
+      },
+    ),
     groupBy: jest.fn(
       async ({
         by,
@@ -1369,6 +1403,103 @@ describe('ChatGateway.countFeedbackByAuthor', () => {
       by: ['rating'],
       where: { authorId: 'u1', createdAt: { gte: FROM, lte: TO } },
       _count: { _all: true },
+    });
+  });
+});
+
+describe('ChatGateway.feedbackByAgent', () => {
+  const FROM = new Date('2026-10-29T00:00:00Z');
+  const TO = new Date('2026-11-27T10:30:00Z');
+  const SESSIONS: Row[] = [
+    { id: 'c1', agentId: 'agent-1' },
+    { id: 'c2', agentId: 'agent-1' },
+    { id: 'c3', agentId: 'agent-2' },
+    { id: 'c4', agentId: 'agent-3' },
+  ];
+  const rating = (
+    sessionId: string,
+    value: number,
+    iso: string,
+    authorId: string | null = 'u1',
+  ): Row => ({ sessionId, rating: value, createdAt: new Date(iso), authorId });
+
+  it('counts every rating and the ones that were down, by the agent of the conversation', async () => {
+    const { gw } = makePeriodStub(SESSIONS, [
+      rating('c1', 1, '2026-11-25T09:00:00Z'),
+      rating('c1', -1, '2026-11-25T09:05:00Z'),
+      // Another conversation of the same agent, another author.
+      rating('c2', -1, '2026-11-26T09:00:00Z', 'u2'),
+      rating('c3', 1, '2026-11-26T10:00:00Z'),
+    ]);
+
+    expect(await gw.feedbackByAgent(FROM, TO)).toEqual([
+      { agentId: 'agent-1', rated: 3, down: 2 },
+      { agentId: 'agent-2', rated: 1, down: 0 },
+    ]);
+  });
+
+  it('takes both ends of the range and nothing outside it', async () => {
+    const { gw } = makePeriodStub(SESSIONS, [
+      rating('c1', -1, '2026-10-29T00:00:00Z'),
+      rating('c1', -1, '2026-11-27T10:30:00Z'),
+      rating('c1', -1, '2026-10-28T23:59:59Z'),
+      rating('c1', -1, '2026-11-27T10:30:01Z'),
+    ]);
+
+    expect(await gw.feedbackByAgent(FROM, TO)).toEqual([
+      { agentId: 'agent-1', rated: 2, down: 2 },
+    ]);
+  });
+
+  // The personal read asks for one author and so never sees a rating with
+  // none. This one is about the agent: whoever rated, the answer was rated.
+  it('counts a rating nobody is recorded as the author of', async () => {
+    const { gw } = makePeriodStub(SESSIONS, [
+      rating('c3', -1, '2026-11-25T09:00:00Z', null),
+    ]);
+
+    expect(await gw.feedbackByAgent(FROM, TO)).toEqual([
+      { agentId: 'agent-2', rated: 1, down: 1 },
+    ]);
+  });
+
+  it('keeps to the agents of the scope', async () => {
+    const { gw } = makePeriodStub(SESSIONS, [
+      rating('c1', 1, '2026-11-25T09:00:00Z'),
+      rating('c3', -1, '2026-11-25T09:00:00Z'),
+      rating('c4', -1, '2026-11-25T09:00:00Z'),
+    ]);
+
+    expect(
+      await gw.feedbackByAgent(FROM, TO, { in: ['agent-1', 'agent-2'] }),
+    ).toEqual([
+      { agentId: 'agent-1', rated: 1, down: 0 },
+      { agentId: 'agent-2', rated: 1, down: 1 },
+    ]);
+    expect(await gw.feedbackByAgent(FROM, TO, { notIn: ['agent-1'] })).toEqual([
+      { agentId: 'agent-2', rated: 1, down: 1 },
+      { agentId: 'agent-3', rated: 1, down: 1 },
+    ]);
+    expect(await gw.feedbackByAgent(FROM, TO, { in: [] })).toEqual([]);
+  });
+
+  it('leaves out an agent nobody rated in the range', async () => {
+    const { gw } = makePeriodStub(SESSIONS, []);
+
+    expect(await gw.feedbackByAgent(FROM, TO)).toEqual([]);
+  });
+
+  // [createdAt] is the index. With no list of agents nothing else is in the
+  // condition; the conversation is read only for its agent, and nothing of
+  // the rating but its direction: no author, no comment, no message.
+  it('asks by time alone when there is no list of agents, and reads the direction and the agent only', async () => {
+    const { gw, prisma } = makePeriodStub(SESSIONS, []);
+
+    await gw.feedbackByAgent(FROM, TO);
+
+    expect(prisma.chatFeedback.findMany).toHaveBeenCalledWith({
+      where: { createdAt: { gte: FROM, lte: TO } },
+      select: { rating: true, session: { select: { agentId: true } } },
     });
   });
 });

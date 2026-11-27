@@ -105,7 +105,7 @@ const usefulShare = computed(() =>
               count: format.number(help.handovers.total),
             })
           }}
-          <i18n-t v-if="help.handovers.topPeer" keypath="stats.help.handovers_top" tag="span">
+          <i18n-t v-if="help.handovers.topPeer" scope="global" keypath="stats.help.handovers_top" tag="span">
             <template #name>
               <b>{{ help.handovers.topPeer.name }}</b>
             </template>

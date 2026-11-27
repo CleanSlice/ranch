@@ -25,6 +25,8 @@ import {
   IAgentIncidentView,
   IEventListFilter,
   IIncidentListFilter,
+  IIncidentRange,
+  IIncidentRangeQuery,
   IPage,
   RANCH_SENDER_NAME,
   AgentTroubleStatusTypes,
@@ -312,6 +314,16 @@ export class AgentEventService implements OnModuleInit, OnModuleDestroy {
     filter: IIncidentListFilter,
   ): Promise<IPage<IAgentIncidentView>> {
     return this.gateway.listIncidents(filter);
+  }
+
+  /**
+   * The incidents of a period, for a statistics view (CLEAN-265): opened in
+   * `[from, to]` or still open from before, newest first, at most `limit`,
+   * with how many there are in all. The caller passes its reach as
+   * `agentScope`, as it does to `listIncidents`.
+   */
+  incidentsInRange(query: IIncidentRangeQuery): Promise<IIncidentRange> {
+    return this.gateway.findIncidentsInRange(query);
   }
 
   private async onStatusChange(change: IAgentStatusChange): Promise<void> {

@@ -1,4 +1,10 @@
-import { ChatActivityGateway } from './chatActivity.gateway';
+import {
+  ChatActivityGateway,
+  AGGREGATE_CONCURRENCY,
+  AGGREGATE_WORK_MEM,
+  agentConversationsQuery,
+  peopleQuery,
+} from './chatActivity.gateway';
 
 type Row = Record<string, unknown>;
 type Limit = { lt?: number | Date };
@@ -517,5 +523,488 @@ describe('ChatActivityGateway.findHoursForPerson', () => {
       },
       orderBy: { hour: 'asc' },
     });
+  });
+});
+
+// ── The installation's activity (CLEAN-265) ───────────────────
+//
+// The two statements count in the database and cannot run here. What can
+// be held here is everything around them: which agents each is told to
+// keep, that every value is bound and none is written into the text, what
+// is made of the rows, and that a caller who reaches no agent costs no
+// query. The SQL itself is proven only against a real database.
+
+const PERIODS = {
+  from: new Date('2026-10-29T00:00:00.000Z'),
+  to: new Date('2026-11-27T10:30:00.000Z'),
+  previousFrom: new Date('2026-09-29T00:00:00.000Z'),
+};
+
+const EVERY_AGENT = { matchesAny: true, in: null, notIn: null };
+
+/** The statement on one line, so a condition can be looked for in it. */
+const flat = (text: string) => text.replace(/\s+/g, ' ').trim();
+
+/**
+ * A bound moment as the statements must write it: read as UTC whatever zone
+ * the database session is in. `hour` has no zone, a bound `Date` has one,
+ * and without this the comparison follows the session (CLEAN-265: two hours
+ * off on a session in Europe/Kyiv, with nothing failing).
+ */
+const UTC = (parameter: string) =>
+  `(${parameter}::timestamptz AT TIME ZONE 'UTC')`;
+
+describe('the bounds of both statements', () => {
+  it('are read as UTC, never in the zone of the session', () => {
+    for (const query of [
+      agentConversationsQuery(PERIODS, EVERY_AGENT),
+      peopleQuery(PERIODS, EVERY_AGENT),
+    ]) {
+      const text = flat(query.text);
+      // Every comparison of `hour` is with a moment written the UTC way:
+      // none is left with a bare parameter.
+      const compared = text.match(/"hour" (>=|<=|<|>) \S+/g) ?? [];
+      expect(compared.length).toBeGreaterThan(1);
+      for (const comparison of compared) {
+        expect(comparison).toMatch(/"hour" (>=|<=|<|>) \(\$\d+::timestamptz$/);
+      }
+      expect(text.match(/AT TIME ZONE 'UTC'/g)).toHaveLength(compared.length);
+    }
+  });
+});
+
+describe('agentConversationsQuery', () => {
+  it('reads the period only, bound by its two ends', () => {
+    const query = agentConversationsQuery(PERIODS, EVERY_AGENT);
+
+    expect(flat(query.text)).toContain(
+      `"hour" >= ${UTC('$2')} AND "hour" <= ${UTC('$3')}`,
+    );
+    expect(query.values).toEqual([
+      'share-%',
+      PERIODS.from,
+      PERIODS.to,
+      'internal',
+      'peer:%',
+    ]);
+  });
+
+  it('counts only hours a person wrote in, and leaves out scheduled jobs and other agents’ questions', () => {
+    const text = flat(agentConversationsQuery(PERIODS, EVERY_AGENT).text);
+
+    expect(text).toContain('"userMessages" > 0');
+    expect(text).toContain('"channel" <> $4');
+    expect(text).toContain('"externalUserId" NOT LIKE $5');
+  });
+
+  it('counts a conversation once, however many of its hours fall in the period', () => {
+    const text = flat(agentConversationsQuery(PERIODS, EVERY_AGENT).text);
+
+    // One row per conversation first, then the rows are counted.
+    expect(text).toContain(
+      'GROUP BY "sessionId", "agentId", "channel", "externalUserId"',
+    );
+    expect(text).toContain('COUNT(*) AS "conversations"');
+    expect(text).toContain('GROUP BY c."agentId", c."channel", c."share"');
+  });
+
+  it('names no agent for a caller nothing is hidden from', () => {
+    const text = flat(agentConversationsQuery(PERIODS, EVERY_AGENT).text);
+
+    expect(text).not.toContain('"agentId" IN');
+    expect(text).not.toContain('"agentId" NOT IN');
+  });
+
+  it('keeps a limited caller to their agents, each id bound', () => {
+    const query = agentConversationsQuery(PERIODS, {
+      matchesAny: true,
+      in: ['agent-1', 'agent-2'],
+      notIn: null,
+    });
+
+    expect(flat(query.text)).toContain('AND "agentId" IN ($6,$7)');
+    expect(flat(query.text)).not.toContain('NOT IN');
+    expect(query.values.slice(5)).toEqual(['agent-1', 'agent-2']);
+    expect(query.text).not.toContain('agent-1');
+  });
+
+  it('leaves out the denied agents of a caller who is not limited', () => {
+    const query = agentConversationsQuery(PERIODS, {
+      matchesAny: true,
+      in: null,
+      notIn: ['agent-3'],
+    });
+
+    expect(flat(query.text)).toContain('AND "agentId" NOT IN ($6)');
+    expect(flat(query.text)).not.toContain('"agentId" IN');
+    expect(query.values.slice(5)).toEqual(['agent-3']);
+  });
+
+  it('applies both lists when both are given', () => {
+    const query = agentConversationsQuery(PERIODS, {
+      matchesAny: true,
+      in: ['agent-1', 'agent-2'],
+      notIn: ['agent-2'],
+    });
+
+    expect(flat(query.text)).toContain(
+      'AND "agentId" IN ($6,$7) AND "agentId" NOT IN ($8)',
+    );
+    expect(query.values.slice(5)).toEqual(['agent-1', 'agent-2', 'agent-2']);
+  });
+
+  // An id is whatever the access lists hold. It travels as a value.
+  it('never writes an id into the statement, whatever it holds', () => {
+    const hostile = `x') OR 1=1 --`;
+    const query = agentConversationsQuery(PERIODS, {
+      matchesAny: true,
+      in: [hostile],
+      notIn: null,
+    });
+
+    expect(query.text).not.toContain('OR 1=1');
+    expect(query.values).toContain(hostile);
+  });
+});
+
+describe('peopleQuery', () => {
+  it('reads the period and the one before it in one pass, and tells them apart at the period’s start', () => {
+    const query = peopleQuery(PERIODS, EVERY_AGENT);
+    const text = flat(query.text);
+
+    expect(text).toContain(`"hour" >= ${UTC('$3')} AND "hour" <= ${UTC('$4')}`);
+    expect(text).toContain(`bool_or("hour" >= ${UTC('$1')}) AS "inPeriod"`);
+    expect(text).toContain(`bool_or("hour" < ${UTC('$2')}) AS "inPrevious"`);
+    expect(query.values).toEqual([
+      PERIODS.from,
+      PERIODS.from,
+      PERIODS.previousFrom,
+      PERIODS.to,
+      'internal',
+      'peer:%',
+    ]);
+  });
+
+  it('counts a person once per period, whichever agents and channels they wrote on', () => {
+    const text = flat(peopleQuery(PERIODS, EVERY_AGENT).text);
+
+    expect(text).toContain('GROUP BY "externalUserId"');
+    expect(text).toContain('COUNT(*) FILTER (WHERE p."inPeriod") AS "value"');
+    expect(text).toContain(
+      'COUNT(*) FILTER (WHERE p."inPrevious") AS "previous"',
+    );
+    // The identity is grouped on and never selected: nobody is named.
+    expect(text).not.toMatch(/SELECT[^()]*"externalUserId"/);
+  });
+
+  it('counts only people: hours somebody wrote in, no scheduled job, no other agent', () => {
+    const text = flat(peopleQuery(PERIODS, EVERY_AGENT).text);
+
+    expect(text).toContain('"userMessages" > 0');
+    expect(text).toContain('"channel" <> $5');
+    expect(text).toContain('"externalUserId" NOT LIKE $6');
+  });
+
+  it('carries the same agents as the conversations query', () => {
+    const limited = peopleQuery(PERIODS, {
+      matchesAny: true,
+      in: ['agent-1', 'agent-2'],
+      notIn: null,
+    });
+    expect(flat(limited.text)).toContain('AND "agentId" IN ($7,$8)');
+    expect(limited.values.slice(6)).toEqual(['agent-1', 'agent-2']);
+
+    const excluding = peopleQuery(PERIODS, {
+      matchesAny: true,
+      in: null,
+      notIn: ['agent-3'],
+    });
+    expect(flat(excluding.text)).toContain('AND "agentId" NOT IN ($7)');
+    expect(excluding.values.slice(6)).toEqual(['agent-3']);
+
+    const everyone = flat(peopleQuery(PERIODS, EVERY_AGENT).text);
+    expect(everyone).not.toContain('"agentId"');
+  });
+});
+
+describe('ChatActivityGateway.summaryForAgents', () => {
+  type Sql = { text: string; values: unknown[] };
+
+  /** `$queryRaw` that answers by which of the two statements it was given. */
+  function makeSummaryStub(
+    conversations: Row[] = [],
+    people: Row[] = [{ value: 0n, previous: 0n }],
+  ) {
+    const $queryRaw = jest.fn(async (query: Sql) =>
+      query.text.includes('"inPeriod"') ? people : conversations,
+    );
+    // What each transaction did, in order: the setting, then the statement.
+    const transactions: string[][] = [];
+    const $transaction = jest.fn(
+      async (
+        run: (tx: unknown) => Promise<unknown>,
+        _options?: { timeout?: number },
+      ) => {
+        const steps: string[] = [];
+        transactions.push(steps);
+        return run({
+          $executeRaw: jest.fn(
+            async (strings: TemplateStringsArray, ...values: unknown[]) => {
+              steps.push(`${strings.join('?')} <- ${values.join(',')}`);
+              return 1;
+            },
+          ),
+          $queryRaw: jest.fn(async (query: Sql) => {
+            steps.push('statement');
+            return $queryRaw(query);
+          }),
+        });
+      },
+    );
+    const gateway = new ChatActivityGateway({
+      $transaction,
+    } as unknown as ConstructorParameters<typeof ChatActivityGateway>[0]);
+    return { gateway, $queryRaw, $transaction, transactions };
+  }
+
+  it('gives each statement its memory in the statement’s own transaction, before it runs', async () => {
+    const { gateway, $transaction, transactions } = makeSummaryStub();
+
+    await gateway.summaryForAgents(PERIODS);
+
+    // Memory to hash in, and a plan made for the dates asked: both local to
+    // the transaction.
+    const SETTINGS =
+      "SELECT set_config('work_mem', ?, true), " +
+      "set_config('plan_cache_mode', 'force_custom_plan', true) <- " +
+      AGGREGATE_WORK_MEM;
+    // Two statements, a transaction each: neither waits for the other.
+    expect(transactions).toEqual([
+      [SETTINGS, 'statement'],
+      [SETTINGS, 'statement'],
+    ]);
+    // Longer than the five seconds a transaction gets by default: the first
+    // read after a restart scans from disk.
+    for (const [, options] of $transaction.mock.calls) {
+      expect(options?.timeout).toBeGreaterThan(5_000);
+    }
+  });
+
+  it('answers conversations by agent and channel, and the people of both periods, as numbers', async () => {
+    const { gateway } = makeSummaryStub(
+      [
+        { agentId: 'a1', channel: 'bridle', share: false, conversations: 12n },
+        { agentId: 'a1', channel: 'bridle', share: true, conversations: 2n },
+        { agentId: 'a2', channel: 'telegram', share: false, conversations: 5n },
+        { agentId: 'a2', channel: 'whatsapp', share: false, conversations: 1n },
+      ],
+      [{ value: 9n, previous: 7n }],
+    );
+
+    expect(await gateway.summaryForAgents(PERIODS)).toEqual({
+      conversations: [
+        { agentId: 'a1', channel: 'console', conversations: 12 },
+        { agentId: 'a1', channel: 'share', conversations: 2 },
+        { agentId: 'a2', channel: 'other', conversations: 1 },
+        { agentId: 'a2', channel: 'telegram', conversations: 5 },
+      ],
+      people: { value: 9, previous: 7 },
+    });
+  });
+
+  it('asks twice, once for conversations and once for people, each as a bound statement', async () => {
+    const { gateway, $queryRaw } = makeSummaryStub();
+
+    await gateway.summaryForAgents(PERIODS, { in: ['agent-1'] });
+
+    expect($queryRaw).toHaveBeenCalledTimes(2);
+    for (const [query] of $queryRaw.mock.calls) {
+      expect(flat(query.text)).toContain('FROM "ChatActivityHour"');
+      expect(flat(query.text)).toMatch(/AND "agentId" IN \(\$\d+\)/);
+      expect(query.values).toContain('agent-1');
+      expect(query.text).not.toContain('agent-1');
+    }
+  });
+
+  it('passes the denied agents of an unlimited caller to both statements', async () => {
+    const { gateway, $queryRaw } = makeSummaryStub();
+
+    await gateway.summaryForAgents(PERIODS, { notIn: ['agent-3'] });
+
+    for (const [query] of $queryRaw.mock.calls) {
+      expect(flat(query.text)).toMatch(/AND "agentId" NOT IN \(\$\d+\)/);
+      expect(query.values).toContain('agent-3');
+    }
+  });
+
+  it('names no agent when the caller reaches every one', async () => {
+    const { gateway, $queryRaw } = makeSummaryStub();
+
+    await gateway.summaryForAgents(PERIODS);
+    await gateway.summaryForAgents(PERIODS, { notIn: [] });
+
+    expect($queryRaw).toHaveBeenCalledTimes(4);
+    for (const [query] of $queryRaw.mock.calls) {
+      expect(query.text).not.toContain('"agentId" IN');
+      expect(query.text).not.toContain('"agentId" NOT IN');
+    }
+  });
+
+  it('answers empty for a caller who reaches no agent, and asks the database nothing', async () => {
+    const { gateway, $queryRaw } = makeSummaryStub(
+      [{ agentId: 'a1', channel: 'bridle', share: false, conversations: 12n }],
+      [{ value: 9n, previous: 7n }],
+    );
+
+    expect(await gateway.summaryForAgents(PERIODS, { in: [] })).toEqual({
+      conversations: [],
+      people: { value: 0, previous: 0 },
+    });
+    expect($queryRaw).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * From the second review of CLEAN-265. Each aggregate holds a connection of
+ * the pool, and memory to hash in, for as long as it runs; nothing capped
+ * how many ran. A few operators switching between 7, 30 and 90 days could
+ * hold every connection while chat and sign-in waited for one. The API is
+ * one process, so a limit kept in it is a limit.
+ */
+describe('ChatActivityGateway: aggregates wait their turn', () => {
+  type Sql = { text: string; values: unknown[] };
+
+  /** Let everything that can run without the spec's help run. */
+  const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+  /**
+   * A `$transaction` whose statement stays open until the spec ends it:
+   * which view each one let in belongs to, in the order they were let in,
+   * and how many were inside together at the most.
+   */
+  function makeHeldStub() {
+    const entered: string[] = [];
+    const end: Array<(error?: Error) => void> = [];
+    let inside = 0;
+    let peak = 0;
+    const $transaction = jest.fn(
+      async (
+        run: (tx: unknown) => Promise<unknown>,
+        _options?: { timeout?: number },
+      ) => {
+        inside += 1;
+        peak = Math.max(peak, inside);
+        try {
+          return await run({
+            $executeRaw: jest.fn(async () => 1),
+            $queryRaw: jest.fn(async (query: Sql) => {
+              // The agent id a view was asked with is its last bound value.
+              entered.push(String(query.values[query.values.length - 1]));
+              await new Promise<void>((resolve, reject) => {
+                end.push((error) => (error ? reject(error) : resolve()));
+              });
+              return query.text.includes('"inPeriod"')
+                ? [{ value: 0n, previous: 0n }]
+                : [];
+            }),
+          });
+        } finally {
+          inside -= 1;
+        }
+      },
+    );
+    const gateway = new ChatActivityGateway({
+      $transaction,
+    } as unknown as ConstructorParameters<typeof ChatActivityGateway>[0]);
+    return { gateway, $transaction, entered, end, peak: () => peak };
+  }
+
+  const viewOf = (gateway: ChatActivityGateway, n: number): Promise<unknown> =>
+    gateway.summaryForAgents(PERIODS, { in: [`view-${n}`] });
+
+  it('is two: the pair of statements one view runs', () => {
+    expect(AGGREGATE_CONCURRENCY).toBe(2);
+  });
+
+  it('lets in two at a time when five views arrive together, in the order they arrived, and answers all five', async () => {
+    const { gateway, entered, end, peak } = makeHeldStub();
+    const answered: number[] = [];
+
+    const views = [1, 2, 3, 4, 5].map((n) =>
+      viewOf(gateway, n).then(() => {
+        answered.push(n);
+      }),
+    );
+
+    // Ten statements. Before the n-th of them ends, exactly two more than
+    // have ended were let in: the rest are waiting, not inside.
+    for (let ended = 0; ended < 10; ended += 1) {
+      await settle();
+      expect(end).toHaveLength(Math.min(10, ended + AGGREGATE_CONCURRENCY));
+      end[ended]();
+    }
+    await Promise.all(views);
+
+    expect(peak()).toBe(AGGREGATE_CONCURRENCY);
+    expect(entered).toEqual([
+      'view-1',
+      'view-1',
+      'view-2',
+      'view-2',
+      'view-3',
+      'view-3',
+      'view-4',
+      'view-4',
+      'view-5',
+      'view-5',
+    ]);
+    expect(answered).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('gives the place of a statement that failed to the next one waiting', async () => {
+    const { gateway, entered, end, peak } = makeHeldStub();
+
+    const views = [1, 2, 3].map((n) => viewOf(gateway, n));
+    await settle();
+    expect(entered).toEqual(['view-1', 'view-1']);
+
+    end[0](new Error('canceling statement due to statement timeout'));
+    await expect(views[0]).rejects.toThrow('statement timeout');
+
+    for (let ended = 1; ended < 6; ended += 1) {
+      await settle();
+      expect(end).toHaveLength(Math.min(6, ended + AGGREGATE_CONCURRENCY));
+      end[ended]();
+    }
+    await expect(Promise.all([views[1], views[2]])).resolves.toHaveLength(2);
+    expect(peak()).toBe(AGGREGATE_CONCURRENCY);
+
+    // And nothing was left held: the next view runs at once.
+    const later = viewOf(gateway, 4);
+    await settle();
+    expect(entered.slice(6)).toEqual(['view-4', 'view-4']);
+    end[6]();
+    end[7]();
+    await later;
+  });
+
+  // The queue is before the transaction, so `maxWait` and `timeout` are
+  // counted from a statement's own turn, not from the moment it was asked.
+  it('opens a transaction only for a statement whose turn it is, with the same timeout as before', async () => {
+    const { gateway, $transaction, end } = makeHeldStub();
+
+    const views = [1, 2].map((n) => viewOf(gateway, n));
+    await settle();
+
+    expect($transaction).toHaveBeenCalledTimes(AGGREGATE_CONCURRENCY);
+    for (const [, options] of $transaction.mock.calls) {
+      expect(options?.timeout).toBe(30_000);
+    }
+    for (let ended = 0; ended < 4; ended += 1) {
+      await settle();
+      end[ended]();
+    }
+    await Promise.all(views);
+    expect($transaction).toHaveBeenCalledTimes(4);
   });
 });

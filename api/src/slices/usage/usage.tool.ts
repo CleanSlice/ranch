@@ -63,7 +63,9 @@ export class UsageTool implements IConditionallyListedTool {
       'most expensive agent first (a deleted agent is still listed, under ' +
       'the name it had). Reported usage only — the current day is included once each ' +
       'agent has posted its daily report. For one agent in detail, or a ' +
-      'different window, call agent_usage. The totals are of the agents ' +
+      'different window, call agent_usage. For every agent over 7 or 90 ' +
+      'days, with the period before it for comparison, call ' +
+      'get_installation_stats. The totals are of the agents ' +
       'in the result, never more: when it carries `notIncluded`, the Ranch ' +
       'assistant’s usage is the Owner’s to read and is in no figure here. ' +
       ACCESS_SCOPE_NOTE,

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, ChatFeedback } from '@prisma/client';
 import { PrismaService } from '#/setup/prisma/prisma.service';
 import {
+  IAgentFeedbackCounts,
   IChatGateway,
   IChatActivity,
   IChatAgentScope,
@@ -395,6 +396,39 @@ export class ChatGateway extends IChatGateway {
       else if (group.rating < 0) counts.down += group._count._all;
     }
     return counts;
+  }
+
+  async feedbackByAgent(
+    from: Date,
+    to: Date,
+    agentScope?: IChatAgentScope,
+  ): Promise<IAgentFeedbackCounts[]> {
+    // One row per rating of the range, two values each. Ratings are what
+    // people click, a few for every hundred answers, so the range of the
+    // index on [createdAt] is small where the hour rows of the same period
+    // are not; `groupBy` cannot group by the conversation's agent, and this
+    // does not need raw SQL to stay cheap.
+    const records = await this.prisma.chatFeedback.findMany({
+      where: {
+        createdAt: { gte: from, lte: to },
+        ...(agentScope ? { session: { agentId: agentScope } } : {}),
+      },
+      // The direction and the agent. Not the author, the comment or the
+      // message: an installation view names no person and shows no text.
+      select: { rating: true, session: { select: { agentId: true } } },
+    });
+    const byAgent = new Map<string, IAgentFeedbackCounts>();
+    for (const record of records) {
+      const agentId = record.session.agentId;
+      const counts = byAgent.get(agentId) ?? { agentId, rated: 0, down: 0 };
+      counts.rated += 1;
+      // The sign, as `countFeedbackByAuthor` reads it.
+      if (record.rating < 0) counts.down += 1;
+      byAgent.set(agentId, counts);
+    }
+    return [...byAgent.values()].sort((a, b) =>
+      a.agentId.localeCompare(b.agentId),
+    );
   }
 
   async firstFeedbackAt(): Promise<Date | null> {

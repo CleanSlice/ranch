@@ -3,6 +3,8 @@ import { agentInitials } from '#agent/utils/agentStatus';
 import { registryNumber } from '#profile/utils/registryNumber';
 import {
   PERIODS,
+  SCOPES,
+  canSeeInstallation,
   isCorrection,
   parseStatsView,
   statsLocation,
@@ -23,6 +25,11 @@ import {
  * as they were. Which tab and which period are shown is in the address, so a
  * reload, Back and a link all open the same view; the pass stays where it is
  * through every change.
+ *
+ * The owner and an administrator also have a scope on the Statistics tab
+ * (CLEAN-265): their own conversations or the whole installation. It is in
+ * the address like the rest. A User is never shown the switch, and an
+ * address that asks for the installation opens their own figures instead.
  *
  * Signed-out visits never reach this component: `/profile` is in the auth
  * middleware's protected prefixes.
@@ -70,12 +77,14 @@ const router = useRouter();
 // a moment on the way out, and must not correct somebody else's address.
 const HERE = route.path;
 
-// There is no installation scope on this page yet: the switch arrives with
-// the installation view. Until then every role is read as one that may not
-// see it, an operator's included, so a saved `?scope=installation` opens the
-// person's own figures and is taken out of the address.
-const ROLE_WITHOUT_INSTALLATION = null;
-const view = computed(() => parseStatsView(route.query, ROLE_WITHOUT_INSTALLATION));
+// The view is read with the role of whoever is signed in: `parseStatsView`
+// gives the installation scope to the owner and an administrator only, so a
+// saved `?scope=installation` opens a User's own figures and is taken out of
+// the address by the correction below.
+const role = computed(() => user.value?.role);
+const view = computed(() => parseStatsView(route.query, role.value));
+/** Whether the scope switch is offered at all: the same rule the address is read by. */
+const operator = computed(() => canSeeInstallation(role.value));
 
 /** A view's address, with whatever else the address carries left in place. */
 function locationOf(next: IStatsView) {
@@ -87,11 +96,34 @@ function locationOf(next: IStatsView) {
 // An address that spells a view wrongly (an unknown value, a default written
 // out, a scope that is not offered) is rewritten in place: a correction is
 // not a step for Back to return to.
+//
+// Both sides are watched: the address, and the view it resolves to. The view
+// also moves when the role does (an administrator made a User while the page
+// stands open), and the address would otherwise keep `scope=installation`
+// over a page that shows the person's own figures.
+//
+// It cannot loop. A correction writes `statsLocation(view)`, the address
+// `parseStatsView` reads back as the same view for the same role (the round
+// trip in `statsView.test.ts`), so the run it causes finds nothing to
+// correct. Keep that true of both functions.
+//
+// A change of account is not a correction. Signing out sets the user to null
+// before the caller's `navigateTo('/')`, and another account signing in is
+// sent to the landing by the `accountScope` plugin: a `replace` from here
+// would be the later navigation and would win over theirs. So the run a
+// change of account causes is skipped, and the new id is the one the next
+// runs are compared with.
+let account = user.value?.id ?? null;
 watch(
-  () => route.query,
-  (query) => {
+  () => [route.query, view.value] as const,
+  ([query, shown]) => {
     if (route.path !== HERE) return;
-    if (isCorrection(query, view.value)) void router.replace(locationOf(view.value));
+    const signedIn = user.value?.id ?? null;
+    if (signedIn !== account) {
+      account = signedIn;
+      return;
+    }
+    if (isCorrection(query, shown)) void router.replace(locationOf(shown));
   },
   { immediate: true },
 );
@@ -99,7 +131,13 @@ watch(
 // A choice made by the person is a step: Back returns to the view before it.
 function choose(change: Partial<IStatsView>) {
   const next = { ...view.value, ...change };
-  if (next.tab === view.value.tab && next.period === view.value.period) return;
+  if (
+    next.tab === view.value.tab &&
+    next.period === view.value.period &&
+    next.scope === view.value.scope
+  ) {
+    return;
+  }
   void router.push(locationOf(next));
 }
 
@@ -113,14 +151,21 @@ const PERIOD_OPTIONS = PERIODS.map((days) => ({
   params: { count: days },
 }));
 
-// Who sees the figures on screen (spec 038, FR-023). The Owner's line is a
-// different one: their conversations are the owner channel's, which the two
-// consoles share, so the figures cover both.
-const audienceKey = computed(() =>
-  user.value?.role?.toLowerCase() === UserRoleTypes.Owner.toLowerCase()
+const SCOPE_OPTIONS = SCOPES.map((scope) => ({
+  value: scope,
+  labelKey: `stats.scope.${scope}`,
+}));
+
+// Who sees the figures on screen (spec 038, FR-023). The installation's are
+// seen by the owner and every administrator. Of a person's own, the Owner's
+// line is a different one: their conversations are the owner channel's, which
+// the two consoles share, so the figures cover both.
+const audienceKey = computed(() => {
+  if (view.value.scope === 'installation') return 'stats.audience.operators';
+  return user.value?.role?.toLowerCase() === UserRoleTypes.Owner.toLowerCase()
     ? 'stats.audience.owner'
-    : 'stats.audience.only_you',
-);
+    : 'stats.audience.only_you';
+});
 
 // While it swings, the pass reaches past its column. Nothing inside the
 // page may cut it (an overflow clip on the page root sliced its left edge),
@@ -181,13 +226,26 @@ async function onLogout() {
         />
       </div>
 
-      <p
+      <!-- The scope line: the switch for the owner and administrators, and
+           for everyone the sentence that says who sees these figures. -->
+      <div
         v-if="view.tab === 'stats'"
-        class="-mt-1 text-xs text-[color:var(--stats-dim)]"
-        data-stats-audience
+        class="-mt-1 flex flex-wrap items-center gap-x-3 gap-y-2"
+        data-stats-scope-line
       >
-        {{ $t(audienceKey) }}
-      </p>
+        <ProfileStatsSegmented
+          v-if="operator"
+          size="sm"
+          name="scope"
+          :options="SCOPE_OPTIONS"
+          :model-value="view.scope"
+          :label="$t('stats.scope.label')"
+          @update:model-value="choose({ scope: $event })"
+        />
+        <p class="text-xs text-[color:var(--stats-dim)]" data-stats-audience>
+          {{ $t(audienceKey) }}
+        </p>
+      </div>
 
       <div
         id="profile-tab-panel"
@@ -197,6 +255,7 @@ async function onLogout() {
       >
         <ProfileStatsProvider
           v-if="view.tab === 'stats'"
+          :scope="view.scope"
           :period="view.period"
           :initials="initials"
         />

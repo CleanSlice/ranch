@@ -7061,6 +7061,506 @@ export const MyStatsDtoSchema = {
   ],
 } as const;
 
+export const InstallationStatsRangeDtoSchema = {
+  type: "object",
+  properties: {
+    from: {
+      format: "date-time",
+      type: "string",
+      description: "Start of the period's first UTC day.",
+      example: "2026-10-29T00:00:00.000Z",
+    },
+    to: {
+      format: "date-time",
+      type: "string",
+      description:
+        "The moment the view was computed: the period includes today so far.",
+      example: "2026-11-27T10:30:00.000Z",
+    },
+    previousFrom: {
+      format: "date-time",
+      type: "string",
+      description:
+        "Start of the period before this one, which has the same number of UTC days and ends where this one starts.",
+      example: "2026-09-29T00:00:00.000Z",
+    },
+  },
+  required: ["from", "to", "previousFrom"],
+} as const;
+
+export const InstallationStatsReachDtoSchema = {
+  type: "object",
+  properties: {
+    limited: {
+      type: "boolean",
+      description:
+        "True when some agent is hidden from the caller, so every figure here is of a part of the installation. The page says so.",
+    },
+    agents: {
+      type: "number",
+      description: "Agents the caller reaches now.",
+      example: 12,
+    },
+    ownerOnly: {
+      description:
+        "Names of the agents the caller reaches whose conversations are left out of `board.people`, `quality` and `channels`, because only the Owner manages them: for an Admin, the Ranch assistant. What such an agent spent, its incidents and its refused requests are counted as for any other agent. Empty for the Owner, and for a caller who does not reach such an agent. When it is not empty the page says whose conversations are not counted.",
+      example: ["Ranch"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["limited", "agents", "ownerOnly"],
+} as const;
+
+export const InstallationStatsNoteDtoSchema = {
+  type: "object",
+  properties: {
+    figure: {
+      type: "string",
+      description:
+        "Which figure is not complete over the whole of the requested and the previous period: `activity` is people, conversations and channels, `refusals` the requests refused by limits. Spend, ratings and incidents are read where they are recorded and never have one.",
+      enum: ["activity", "refusals"],
+      example: "activity",
+    },
+    completeSince: {
+      format: "date-time",
+      type: "string",
+      description:
+        'Since when it is counted. Later than `range.previousFrom`; the page says "counted since …" once for the block.',
+      example: "2026-11-24T08:00:00.000Z",
+    },
+  },
+  required: ["figure", "completeSince"],
+} as const;
+
+export const InstallationStatsTokensDtoSchema = {
+  type: "object",
+  properties: {
+    input: {
+      type: "number",
+      description: "Tokens sent to models.",
+      example: 48200000,
+    },
+    output: {
+      type: "number",
+      description: "Tokens models wrote.",
+      example: 3100000,
+    },
+  },
+  required: ["input", "output"],
+} as const;
+
+export const InstallationStatsCostDtoSchema = {
+  type: "object",
+  properties: {
+    value: {
+      type: "number",
+      description:
+        "USD in the period, from the product's own price list: an estimate, not an invoice. Models without a price are left out of it.",
+      example: 212.4,
+    },
+    previous: {
+      type: "number",
+      description: "The same for the period before it.",
+      example: 187.9,
+    },
+    unpriced: {
+      description:
+        'Models used in the period that the price list does not have, most tokens first. Their tokens are counted, their cost is in no sum here: show them as "no price", never as free.',
+      example: ["house-model-1"],
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+  },
+  required: ["value", "previous", "unpriced"],
+} as const;
+
+export const InstallationStatsBoardDtoSchema = {
+  type: "object",
+  properties: {
+    tokens: {
+      $ref: "#/components/schemas/InstallationStatsTokensDto",
+    },
+    calls: {
+      description: "Model calls.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/StatsComparedCountDto",
+        },
+      ],
+    },
+    cost: {
+      $ref: "#/components/schemas/InstallationStatsCostDto",
+    },
+    people: {
+      description:
+        "Distinct people who wrote in a conversation. Scheduled jobs and other agents' questions are not people and are not counted. A person who wrote in both periods is counted in both. Conversations with an agent named in `reach.ownerOnly` are not counted.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/StatsComparedCountDto",
+        },
+      ],
+    },
+  },
+  required: ["tokens", "calls", "cost", "people"],
+} as const;
+
+export const InstallationStatsDayModelDtoSchema = {
+  type: "object",
+  properties: {
+    model: {
+      type: "string",
+      description: "The model, shown as received.",
+      example: "claude-sonnet-4-6",
+    },
+    tokens: {
+      type: "number",
+      description: "Input and output tokens together.",
+      example: 1650000,
+    },
+  },
+  required: ["model", "tokens"],
+} as const;
+
+export const InstallationStatsDayDtoSchema = {
+  type: "object",
+  properties: {
+    date: {
+      type: "string",
+      description: "The UTC day.",
+      example: "2026-11-25",
+    },
+    cost: {
+      type: "number",
+      description:
+        "USD of the day's priced models. 0 for a day nobody reported usage for, and for a day of unpriced models alone.",
+      example: 7.35,
+    },
+    byModel: {
+      description:
+        "Tokens of the day by model, most first. Empty for a day with no usage. Today is usually short: an agent posts its usage at the end of the UTC day or when it shuts down.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallationStatsDayModelDto",
+      },
+    },
+  },
+  required: ["date", "cost", "byModel"],
+} as const;
+
+export const InstallationStatsModelDtoSchema = {
+  type: "object",
+  properties: {
+    model: {
+      type: "string",
+      example: "claude-sonnet-4-6",
+    },
+    priced: {
+      type: "boolean",
+      description: 'Whether the price list has it. False is "no price".',
+    },
+  },
+  required: ["model", "priced"],
+} as const;
+
+export const InstallationStatsAgentDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+      description:
+        "The name the agent has now. For one that no longer exists, the name its usage was last reported under.",
+      example: "Support Bot",
+    },
+    removed: {
+      type: "boolean",
+      description:
+        "True when the agent no longer exists. What it spent stays in the period it was spent in.",
+    },
+    model: {
+      type: "string",
+      description: "The model that took most of its tokens in the period.",
+      example: "claude-sonnet-4-6",
+    },
+    tokens: {
+      type: "number",
+      description: "Input and output tokens together.",
+      example: 9400000,
+    },
+    calls: {
+      type: "number",
+      description: "Model calls.",
+      example: 812,
+    },
+    cost: {
+      type: "number",
+      nullable: true,
+      description:
+        'USD over the models of this agent that have a price. Null when none of them has one: "no price", not zero.',
+      example: 61.2,
+    },
+    partial: {
+      type: "boolean",
+      description:
+        "True when `cost` leaves out a model of this agent that has no price: the figure is of the rest, not of everything it ran.",
+      example: false,
+    },
+  },
+  required: [
+    "agentId",
+    "name",
+    "removed",
+    "model",
+    "tokens",
+    "calls",
+    "cost",
+    "partial",
+  ],
+} as const;
+
+export const InstallationStatsIncidentDtoSchema = {
+  type: "object",
+  properties: {
+    number: {
+      type: "number",
+      description: 'The short handle people use: "#12".',
+      example: 12,
+    },
+    agentName: {
+      type: "string",
+      description: "The agent's name when the incident opened.",
+      example: "Support Bot",
+    },
+    open: {
+      type: "boolean",
+      description: "True while it is still going on.",
+    },
+    reason: {
+      type: "string",
+      nullable: true,
+      description:
+        "The first failure's cause, in the sender's words, shown as received. Null when none was given.",
+      example: "OOMKilled",
+    },
+    openedAt: {
+      format: "date-time",
+      type: "string",
+      example: "2026-11-25T08:02:11.000Z",
+    },
+    closedAt: {
+      type: "string",
+      format: "date-time",
+      nullable: true,
+      description: "Null while the incident is open.",
+      example: "2026-11-25T08:40:00.000Z",
+    },
+  },
+  required: ["number", "agentName", "open", "reason", "openedAt", "closedAt"],
+} as const;
+
+export const InstallationStatsRefusalsDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+      example: "Support Bot",
+    },
+    refused: {
+      type: "number",
+      description:
+        "Requests its limits refused in the period. Always above zero: an agent that refused nothing is not listed.",
+      example: 37,
+    },
+  },
+  required: ["agentId", "name", "refused"],
+} as const;
+
+export const InstallationStatsHealthDtoSchema = {
+  type: "object",
+  properties: {
+    incidents: {
+      maxItems: 50,
+      description:
+        "Incidents opened in the period, and older ones that are still open, newest first. At most 50; `incidentsTotal` says how many there are.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallationStatsIncidentDto",
+      },
+    },
+    incidentsTotal: {
+      type: "number",
+      description:
+        "How many incidents the period has, the ones not listed included.",
+      example: 3,
+    },
+    refusals: {
+      description:
+        "Agents whose limits refused at least one request, most first.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallationStatsRefusalsDto",
+      },
+    },
+  },
+  required: ["incidents", "incidentsTotal", "refusals"],
+} as const;
+
+export const InstallationStatsQualityDtoSchema = {
+  type: "object",
+  properties: {
+    agentId: {
+      type: "string",
+    },
+    name: {
+      type: "string",
+      example: "Support Bot",
+    },
+    conversations: {
+      type: "number",
+      description: "Conversations a person wrote in during the period.",
+      example: 240,
+    },
+    down: {
+      type: "number",
+      description: "Ratings of its answers that were down. Out of `rated`.",
+      example: 4,
+    },
+    rated: {
+      type: "number",
+      description:
+        "Every rating its answers got in the period, up or down. Ratings are read as they stand now: one withdrawn since is not counted.",
+      example: 31,
+    },
+  },
+  required: ["agentId", "name", "conversations", "down", "rated"],
+} as const;
+
+export const InstallationStatsChannelDtoSchema = {
+  type: "object",
+  properties: {
+    channel: {
+      type: "string",
+      enum: ["console", "telegram", "slack", "share", "other"],
+      description:
+        "Where people wrote from: `console` is the chat of the consoles, `share` a share link, `other` anything that is none of the four.",
+      example: "console",
+    },
+    conversations: {
+      type: "number",
+      description: "Conversations a person wrote in during the period.",
+      example: 512,
+    },
+  },
+  required: ["channel", "conversations"],
+} as const;
+
+export const InstallationStatsDtoSchema = {
+  type: "object",
+  properties: {
+    period: {
+      type: "number",
+      enum: [7, 30, 90],
+      example: 30,
+    },
+    range: {
+      description:
+        "UTC days, whoever is looking: the boundary spend is reported on.",
+      allOf: [
+        {
+          $ref: "#/components/schemas/InstallationStatsRangeDto",
+        },
+      ],
+    },
+    reach: {
+      $ref: "#/components/schemas/InstallationStatsReachDto",
+    },
+    notes: {
+      description:
+        "One entry for each figure whose history starts inside the requested or the previous period. Empty when every figure covers both.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallationStatsNoteDto",
+      },
+    },
+    board: {
+      $ref: "#/components/schemas/InstallationStatsBoardDto",
+    },
+    daily: {
+      description:
+        "One entry per UTC day of the period, oldest first, today last; a day with no usage is there with nothing.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallationStatsDayDto",
+      },
+    },
+    models: {
+      description:
+        "Every model used in the period, most tokens first: the legend of `daily`.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallationStatsModelDto",
+      },
+    },
+    agents: {
+      description:
+        "The agents that reported usage in the period, by cost, most first; agents with no price come after them, by tokens.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallationStatsAgentDto",
+      },
+    },
+    projection30d: {
+      type: "number",
+      nullable: true,
+      description: `USD for 30 days at the pace of the period's finished days: their priced cost, divided by their number, times 30. Today is left out, and so are the days before anybody reported usage. Null while no such day is finished, and when no model with a price ran in those days: "no projection yet", not zero.`,
+      example: 212.4,
+    },
+    health: {
+      $ref: "#/components/schemas/InstallationStatsHealthDto",
+    },
+    quality: {
+      description:
+        "Per agent with a conversation or a rating in the period: how many conversations, and how its answers were rated. Most conversations first.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallationStatsQualityDto",
+      },
+    },
+    channels: {
+      description:
+        "The period's conversations by channel, most first. A channel nobody wrote on is absent.",
+      type: "array",
+      items: {
+        $ref: "#/components/schemas/InstallationStatsChannelDto",
+      },
+    },
+  },
+  required: [
+    "period",
+    "range",
+    "reach",
+    "notes",
+    "board",
+    "daily",
+    "models",
+    "agents",
+    "projection30d",
+    "health",
+    "quality",
+    "channels",
+  ],
+} as const;
+
 export const StartMcpOauthDtoSchema = {
   type: "object",
   properties: {

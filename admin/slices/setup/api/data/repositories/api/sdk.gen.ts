@@ -353,6 +353,8 @@ import type {
   UsageControllerFindOverviewData,
   GetMyStatsData,
   GetMyStatsResponse,
+  GetInstallationStatsData,
+  GetInstallationStatsResponse,
   RancherControllerStatusData,
   RancherControllerEnsureTemplateData,
   UpgradeControllerStatusData,
@@ -4318,6 +4320,22 @@ export class StatsService {
       ThrowOnError
     >({
       url: "/me/stats",
+      ...options,
+    });
+  }
+
+  /**
+   * Statistics of the installation for the last 7, 30 or 90 days, over the agents the caller reaches, with the period before it for comparison: tokens in and out, model calls, estimated cost and distinct people in conversations; spend by day and model; agents by cost with a projection for 30 days; incidents and requests refused by limits; conversations and ratings per agent; conversations by channel. Counts, names of agents and models, and times only: no person's name, identity, question or message. Cost is computed from the product's price list, not from a provider's invoice; a model without a price is named and left out of it. Days are UTC days for every caller. Owner and Admin only.
+   */
+  public static getInstallationStats<ThrowOnError extends boolean = false>(
+    options?: Options<GetInstallationStatsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetInstallationStatsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/stats/installation",
       ...options,
     });
   }

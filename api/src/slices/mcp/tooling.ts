@@ -537,9 +537,124 @@ export function agentNotFoundText(httpRequest: Request, ref: string): string {
   return `Agent ${ref} not found — ${agentNotFoundAdvice(httpRequest)}`;
 }
 
-/** `agentNotFoundText` as the result a tool hands back. */
+/**
+ * `agentNotFoundText` as the result a tool hands back.
+ *
+ * One exception, decided here so that every tool has it (CLEAN-263): the
+ * Ranch assistant, named to a `manage-agent` tool by a person who is talking
+ * to it and is not the Owner. See `ownerOnlyRefusal`.
+ */
 export function agentNotFound(httpRequest: Request, ref: string): ToolResult {
-  return ok({ error: agentNotFoundText(httpRequest, ref) });
+  return (
+    ownerOnlyRefusal(httpRequest, ref) ??
+    ok({ error: agentNotFoundText(httpRequest, ref) })
+  );
+}
+
+// ── The agent that is the Owner's alone (CLEAN-263) ─────────
+//
+// The Ranch admin agent is the assistant every person talks to, and only the
+// Owner manages it. A person who reaches it is shown it by `list_agents`, so
+// "not found, call list_agents" for its id is a lie about an agent they are
+// looking at, and the model made a story of it: a fault, cause unknown, try
+// later. For that one agent and that one caller the refusal says what is
+// true. For everybody and everything else not-found stays as it was: an
+// agent out of reach, the assistant switched off for the person, an id that
+// names nothing.
+//
+// Whether the caller is such a person is a fact about roles and reach, which
+// the agent slice knows. The MCP handler asks it once per `manage-agent`
+// call (`AGENT_MANAGER_RESOLVER.ownerOnlyAgentFor`) and notes the answer on
+// the call's view, like the party. Nothing is noted for the Owner, for a
+// trusted party, for a guest, or for a person who does not reach the
+// assistant, so for them there is nothing to tell apart.
+
+const OWNER_ONLY_PROPERTY = 'ranchOwnerOnlyAgent';
+
+/** The Ranch assistant, as much of it as a refusal may say. */
+export interface IOwnerOnlyAgent {
+  id: string;
+  name: string;
+}
+
+/** What `reason` holds in an owner-only refusal; the model reads it. */
+export const OWNER_ONLY_REASON = 'owner_only';
+
+/** What a row of `list_agents` / `get_agent` carries for such an agent. */
+export const OWNER_MANAGED_MARK = 'owner';
+
+/**
+ * One sentence for the description of a tool that restarts, stops or changes
+ * an agent, so that the attempt is not made in the first place.
+ */
+export const OWNER_MANAGED_NOTE =
+  'An agent that list_agents marks `managedBy: "owner"` is the Ranch ' +
+  'assistant: only the Owner can restart, stop or change it, so do not ' +
+  'call this for it on behalf of anybody else.';
+
+/**
+ * Note the agent this caller reaches and may not manage because it is the
+ * Owner's alone. The handler does this on tools/call of a `manage-agent`
+ * tool, on the per-call view. Not enumerable, like the party.
+ */
+export function setCallerOwnerOnlyAgent(
+  httpRequest: Request,
+  agent: IOwnerOnlyAgent | null,
+): void {
+  Object.defineProperty(httpRequest, OWNER_ONLY_PROPERTY, {
+    value:
+      agent && typeof agent.id === 'string' && agent.id
+        ? { id: agent.id, name: String(agent.name ?? '') }
+        : null,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function ownerOnlyAgent(httpRequest: Request): IOwnerOnlyAgent | null {
+  const noted = (httpRequest as unknown as Record<string, unknown> | null)?.[
+    OWNER_ONLY_PROPERTY
+  ];
+  if (typeof noted !== 'object' || noted === null) return null;
+  const { id, name } = noted as { id?: unknown; name?: unknown };
+  return typeof id === 'string' && id
+    ? { id, name: typeof name === 'string' ? name : '' }
+    : null;
+}
+
+/**
+ * The whole refusal. Nothing follows it on purpose: no next move, no other
+ * id, no "later". There is none for this person.
+ */
+export function ownerOnlyText(name: string): string {
+  return (
+    `${name.trim() || 'This agent'} is the Ranch assistant. ` +
+    'Only the Owner can restart, stop or change it.'
+  );
+}
+
+/**
+ * The refusal for `ref` when it names the agent noted for this call, by id
+ * or by its exact name (case and outer spaces aside, as the tools that take
+ * a name read one); null for anything else, which is then not found.
+ *
+ * `agentNotFound` asks here, so a tool that answers with it needs nothing
+ * more. A tool with a "not found" of its own (the connection tools) asks
+ * here first.
+ */
+export function ownerOnlyRefusal(
+  httpRequest: Request,
+  ref: string,
+): ToolResult | null {
+  const agent = ownerOnlyAgent(httpRequest);
+  if (!agent || typeof ref !== 'string') return null;
+  const wanted = ref.trim().toLowerCase();
+  const named =
+    ref === agent.id ||
+    (wanted !== '' && wanted === agent.name.trim().toLowerCase());
+  if (!named) return null;
+  return ok({ error: ownerOnlyText(agent.name), reason: OWNER_ONLY_REASON });
 }
 
 /** A person, or an agent acting for itself, who lacks the role. */

@@ -1,3 +1,4 @@
+import type { ICallerParty } from '#/user/auth/domain/auth.types';
 import type { UserRoleTypes } from '#/user/user/domain';
 
 /**
@@ -15,4 +16,16 @@ export const AGENT_MANAGER_RESOLVER = Symbol('AGENT_MANAGER_RESOLVER');
 
 export interface IAgentManagerResolver {
   managesAny(person: { userId: string; role: UserRoleTypes }): Promise<boolean>;
+
+  /**
+   * The Ranch assistant, for a caller who reaches it and may not manage it
+   * because it is the Owner's alone; null for everybody else (CLEAN-263).
+   * The handler asks on tools/call of a `manage-agent` tool and notes the
+   * answer, so that a refusal for that one agent says who manages it and not
+   * "not found". Missing, or throwing, leaves nothing noted and the refusal
+   * at not-found: this fails towards saying less.
+   */
+  ownerOnlyAgentFor?(
+    caller: ICallerParty,
+  ): Promise<{ id: string; name: string } | null>;
 }

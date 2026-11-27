@@ -182,6 +182,21 @@ from one global guard (`AgentManageGuard`); the tools get `null` from
 `AgentPermissionService.manageable` for both and give their ordinary "not
 found".
 
+**Amended 2026-11-27 (CLEAN-263).** One refusal is told apart, in what a
+tool says and never in what it allows: the Ranch admin agent, named to a
+`manage-agent` tool by a person who is not the Owner and reaches it. That
+person is talking to it and is shown it by `list_agents`, so "not found"
+concealed nothing and was read as a fault. The tool answers
+`{ "error": "<name> is the Ranch assistant. Only the Owner can restart,
+stop or change it.", "reason": "owner_only" }` and nothing after it.
+Everything else is as above: an agent out of reach, an unknown id, and the
+assistant itself for a person it is switched off for, are not found in the
+same words; `manageable` still answers null; the routes still answer 404.
+`list_agents` and `get_agent` mark that agent `managedBy: "owner"` for
+whoever may not manage it. The MCP handler asks
+`AgentPermissionService.ownerOnlyAgentFor` once per call of such a tool and
+notes the answer; `agentNotFound` says it.
+
 `Agent.createdById` is written when an agent is created: from the console
 token on `POST /agents`, from the acting token on `create_agent`, null for a
 trusted party and for every agent that exists today. It is never updated, and

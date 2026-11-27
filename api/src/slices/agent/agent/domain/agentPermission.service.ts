@@ -83,6 +83,14 @@ const GUEST: ICallerParty = { kind: 'guest' };
  *
  * A refusal is never told apart from an unknown agent: `manageable` hands
  * back null for both, and callers answer their own "not found".
+ *
+ * One case is told apart, and only in what a tool says, never in what it
+ * allows (CLEAN-263): the Ranch admin agent, named by a person who is not
+ * the Owner and reaches it. That person is talking to it and is shown it by
+ * `list_agents`, so "not found" hid nothing and read as a fault. They are
+ * told that only the Owner can restart, stop or change it
+ * (`ownerOnlyAgentFor`, noted by the MCP handler, said by `agentNotFound`).
+ * The routes keep their 404; the consoles do not offer the action there.
  */
 @Injectable()
 export class AgentPermissionService implements IAgentManagerResolver {
@@ -147,6 +155,35 @@ export class AgentPermissionService implements IAgentManagerResolver {
     }
     const ranch = await this.agents.findAdmin();
     return ranch ? [ranch.id] : [];
+  }
+
+  /**
+   * The Ranch admin agent, for a caller who reaches it and still may not
+   * manage it: a person who is not the Owner and has the assistant
+   * (CLEAN-263). Null for the Owner and a trusted party, who manage it; for
+   * a guest; and for a person the assistant is switched off for, to whom it
+   * is an agent that does not exist.
+   *
+   * It is what lets a `manage-agent` tool tell that one person the truth,
+   * "only the Owner can", about the one agent they are talking to, where
+   * `manageable` answers null for it as for an unknown id. Reach is asked
+   * the way `canManage` asks it, so the assistant's own switch decides
+   * (`AgentAccessService`, CLEAN-240). `manageable` and `canManage` are
+   * untouched: this explains a refusal, it never allows anything.
+   */
+  async ownerOnlyAgentFor(
+    caller: ICallerParty,
+  ): Promise<{ id: string; name: string } | null> {
+    if (caller.kind !== 'person') return null;
+    if (caller.role === UserRoleTypes.Owner) return null;
+    const ranch = await this.agents.findAdmin();
+    if (!ranch) return null;
+    const reaches =
+      (await this.reach.reaches(
+        { userId: caller.userId, role: caller.role },
+        ranch.id,
+      )) === true;
+    return reaches ? { id: ranch.id, name: ranch.name } : null;
   }
 
   /**

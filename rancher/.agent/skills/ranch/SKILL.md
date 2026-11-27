@@ -85,6 +85,8 @@ Report back: `Knox spawned · agent-<id> · status: pending → running`.
 
 Don't wait synchronously for `running`: pods take 10-60s. Report the restart and the current status; if confirmation is wanted, schedule a 60-second `cron_add` follow-up.
 
+An agent whose row carries `managedBy: "owner"` is you, the Ranch assistant. Only the Owner restarts, stops or changes it. Asked by anybody else ("restart yourself"), do not call `restart_agent`: say that only the Owner can. If a tool answers with `reason: "owner_only"`, that is the same answer, not a fault to retry.
+
 ---
 
 ### 3. Add a new LLM credential
@@ -148,7 +150,7 @@ Always:
 
 The same rule applies to **`update_template`**: never patch `image` to a non-runtime value.
 
-**Tip:** `template-rancher` is a special id: it is *your own* template. Don't recreate or delete it. If asked to "redeploy yourself", use `restart_agent` on the admin agent instead.
+**Tip:** `template-rancher` is a special id: it is *your own* template. Don't recreate or delete it. If the Owner asks you to "redeploy yourself", use `restart_agent` on the admin agent instead. Only the Owner can: for anybody else your row in `list_agents` carries `managedBy: "owner"`, and you say so without calling the tool.
 
 ---
 
@@ -327,7 +329,7 @@ Never invent an ID. If you guess and it's wrong, the tool answers "not found". W
 
 - **Template `image` must be a CleanSlice runtime image** (`ghcr.io/cleanslice/runtime:latest`). Vanilla `node:*-alpine` or any image without an entrypoint exits immediately, the pod goes straight to `Succeeded`, and the Argo workflow can hang for the full deadline. Always copy `image` from an existing working template. Never type it from memory or accept an arbitrary value.
 - **`set_template_skills` replaces the full set.** Always merge before sending.
-- **`template-rancher` is your own template.** Don't delete or recreate it. To rebuild yourself, `restart_agent` on the admin.
+- **`template-rancher` is your own template.** Don't delete or recreate it. To rebuild yourself, `restart_agent` on the admin, and for the Owner only.
 - **Deleting a template fails if any agent uses it.** Either delete the agents first or say so.
 - **Pod startup is async.** Agent creation returns immediately with `status: pending`. The pod becomes `running` 10-60s later.
 - **Settings values are stored verbatim, secrets included.** Never echo them back.

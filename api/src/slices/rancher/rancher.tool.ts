@@ -14,6 +14,8 @@ import {
   managesByGrantOnly,
   ok,
   operatorOnly,
+  OWNER_MANAGED_MARK,
+  OWNER_MANAGED_NOTE,
   requireOperator,
   requireOwner,
   requirePersonOrOperator,
@@ -109,6 +111,13 @@ export class RancherTool {
    * person's own pin, and the bare creator id for operators only. Every
    * person is told whether they made the agent (`createdByMe`, CLEAN-259),
    * so the assistant can say "your agent" to a User without naming anybody.
+   *
+   * The Ranch admin agent carries `managedBy: 'owner'` for everybody who
+   * may not manage it, an Admin included (CLEAN-263): the row is where the
+   * model learns that restarting, stopping or changing this one is not this
+   * person's, before it tries. The Owner and the agent acting for itself
+   * manage it and get no mark. A field of the tools only: the routes'
+   * `AgentDto` is not touched.
    */
   private async asReadBy(agents: IAgentData[], httpRequest: Request) {
     const caller = manageCaller(httpRequest);
@@ -120,12 +129,14 @@ export class RancherTool {
     const operator = callerIsOperator(httpRequest);
     return Promise.all(
       agents.map(async (agent) => {
-        const view = (await this.permission.canManage(caller, agent))
-          ? agent
-          : toReaderView(agent);
+        const manages = await this.permission.canManage(caller, agent);
+        const view = manages ? agent : toReaderView(agent);
         const { createdById, ...rest } = view;
         return {
           ...rest,
+          ...(agent.isAdmin && !manages
+            ? { managedBy: OWNER_MANAGED_MARK }
+            : {}),
           pinned: pinned.has(agent.id),
           createdByMe:
             !!person && !!createdById && createdById === person.userId,
@@ -189,7 +200,10 @@ export class RancherTool {
       'agent the person may manage comes with its configuration; any ' +
       'other comes without it. `createdByMe` is true for an agent the ' +
       'person asking created: that one is theirs, and they may manage it ' +
-      'whatever their role. Agents the person has no access to are not ' +
+      'whatever their role. An agent marked `managedBy: "owner"` is the ' +
+      'Ranch assistant: only the Owner can restart, stop or change it, so ' +
+      'call no tool that does on it for this person, and say so instead. ' +
+      'Agents the person has no access to are not ' +
       'listed at all: do not assume there are others.',
     parameters: z.object({}),
   })
@@ -215,7 +229,9 @@ export class RancherTool {
       'Get a single agent by id, among the ones the person asking can use: ' +
       'current status, template and resources, whether the person asking ' +
       'created it (`createdByMe`), and for a person who may manage it ' +
-      'also its workflowId and config.',
+      'also its workflowId and config. `managedBy: "owner"` marks the Ranch ' +
+      'assistant for anybody but the Owner: only the Owner can restart, ' +
+      'stop or change it.',
     parameters: z.object({
       id: z.string().describe('Agent id, e.g. agent-abc123'),
     }),
@@ -246,7 +262,9 @@ export class RancherTool {
     title: 'Restart an agent',
     template: 'Restart the agent «name»',
     description:
-      'Restart an agent pod. Use after editing its files or LLM credential to apply changes.',
+      'Restart an agent pod. Use after editing its files or LLM credential ' +
+      'to apply changes. ' +
+      OWNER_MANAGED_NOTE,
     parameters: z.object({
       id: z.string(),
     }),
@@ -378,7 +396,8 @@ export class RancherTool {
       'restart — offer restart_agent. The credential and the knowledge ' +
       'bases are an Owner’s or Admin’s to change: for anybody else only ' +
       'the name and the description are, and a call that names the other ' +
-      'two is refused whole.',
+      'two is refused whole. ' +
+      OWNER_MANAGED_NOTE,
     parameters: z.object({
       id: z.string(),
       name: z.string().optional(),

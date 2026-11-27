@@ -16,8 +16,12 @@ import {
   callerParty,
   callerPerson,
   manageCaller,
+  OWNER_ONLY_REASON,
+  ownerOnlyRefusal,
+  ownerOnlyText,
   requirePerson,
   setCallerManagesAgents,
+  setCallerOwnerOnlyAgent,
   setCallerParty,
   stripSecrets,
 } from './tooling';
@@ -222,6 +226,80 @@ describe('agentNotFound', () => {
     );
     expect(agentNotFoundAdvice(below)).toBe(
       'there is no such agent for this caller',
+    );
+  });
+});
+
+// The Ranch assistant is the one agent a refusal names (CLEAN-263): a person
+// who is talking to it and is not the Owner is told who manages it. The
+// handler notes the agent on the call; without a note everything is not
+// found, as before.
+describe('ownerOnlyRefusal', () => {
+  const ranch = () => request('agent:agent-ranch', [UserRoleTypes.Owner]);
+  const jsonOf = (r: { content: { text: string }[] }) =>
+    JSON.parse(r.content[0].text) as Record<string, unknown>;
+  const noted = () => {
+    const caller = asPerson(ranch(), UserRoleTypes.User);
+    setCallerOwnerOnlyAgent(caller, { id: 'agent-ranch', name: 'Rancher' });
+    return caller;
+  };
+
+  it('says who manages the assistant, with a reason beside the sentence and nothing after it', () => {
+    const result = agentNotFound(noted(), 'agent-ranch');
+
+    expect(jsonOf(result)).toEqual({
+      error:
+        'Rancher is the Ranch assistant. Only the Owner can restart, stop or change it.',
+      reason: 'owner_only',
+    });
+    expect(OWNER_ONLY_REASON).toBe('owner_only');
+    expect(result.isError).toBeUndefined();
+    expect(ownerOnlyText('Rancher')).not.toMatch(
+      /not found|list_agents|again|later|retry|another/i,
+    );
+  });
+
+  it('knows the agent by its name too, as the tools that take a name read one', () => {
+    expect(jsonOf(agentNotFound(noted(), '  rancher '))).toMatchObject({
+      reason: 'owner_only',
+    });
+  });
+
+  it('leaves every other id not found, in the words it had', () => {
+    const result = agentNotFound(noted(), 'agent-x');
+
+    expect(jsonOf(result)).toEqual({
+      error: 'Agent agent-x not found — call list_agents to find the id',
+    });
+    expect(ownerOnlyRefusal(noted(), 'agent-x')).toBeNull();
+    expect(ownerOnlyRefusal(noted(), '')).toBeNull();
+  });
+
+  it('with nothing noted the assistant is not found like anything else', () => {
+    const unnoted = asPerson(ranch(), UserRoleTypes.User);
+    const cleared = asPerson(ranch(), UserRoleTypes.User);
+    setCallerOwnerOnlyAgent(cleared, null);
+
+    for (const caller of [unnoted, cleared, asGuest(ranch()), {} as Request]) {
+      expect(ownerOnlyRefusal(caller, 'agent-ranch')).toBeNull();
+      expect(jsonOf(agentNotFound(caller, 'agent-ranch'))).not.toHaveProperty(
+        'reason',
+      );
+    }
+  });
+
+  it('a note does not travel when the request is spread', () => {
+    expect(
+      ownerOnlyRefusal({ ...noted() } as Request, 'agent-ranch'),
+    ).toBeNull();
+  });
+
+  it('an agent without a name is still not called not found', () => {
+    const caller = asPerson(ranch(), UserRoleTypes.Admin);
+    setCallerOwnerOnlyAgent(caller, { id: 'agent-ranch', name: '' });
+
+    expect(jsonOf(agentNotFound(caller, 'agent-ranch')).error).toBe(
+      'This agent is the Ranch assistant. Only the Owner can restart, stop or change it.',
     );
   });
 });

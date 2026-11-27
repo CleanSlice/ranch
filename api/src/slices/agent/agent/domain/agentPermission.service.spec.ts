@@ -369,6 +369,80 @@ describe('ownerOnlyIds: the agents a caller reaches and still does not manage', 
 });
 
 /**
+ * The one refusal that is told apart (CLEAN-263): the Ranch admin agent, for
+ * a person who reaches it and is not the Owner. It explains a refusal and
+ * allows nothing, so it is asked beside `manageable`, never in place of it.
+ */
+describe('ownerOnlyAgentFor: the assistant, for a person who has it and does not manage it', () => {
+  const ranch = agent({ id: 'agent-ranch', name: 'Rancher', isAdmin: true });
+  const agents = [agent(), ranch];
+
+  it('is the Ranch admin agent, by id and name, for an Admin and a User who reach it', async () => {
+    const reach = new ListedReach();
+    const { service } = make({ agents, reach });
+
+    for (const caller of [admin, user]) {
+      expect(await service.ownerOnlyAgentFor(caller)).toEqual({
+        id: 'agent-ranch',
+        name: 'Rancher',
+      });
+      // And it stays one they do not manage.
+      expect(await service.manageable(caller, 'agent-ranch')).toBeNull();
+    }
+    expect(reach.asked).toEqual([
+      'user-Admin:agent-ranch',
+      'user-User:agent-ranch',
+    ]);
+  });
+
+  it('is nothing for a person the assistant is switched off for: it does not exist for them', async () => {
+    const { service } = make({
+      agents,
+      reach: new ListedReach(['user-User:agent-ranch']),
+    });
+
+    expect(await service.ownerOnlyAgentFor(user)).toBeNull();
+    expect(await service.ownerOnlyAgentFor(admin)).not.toBeNull();
+  });
+
+  it('is nothing for the Owner and the agent itself, who manage it, and for nobody', async () => {
+    const { service, gateway } = make({ agents });
+
+    for (const caller of [
+      owner,
+      trusted,
+      guest,
+      { kind: 'peer', chain: ['a'], connectionId: 'c' } as ICallerParty,
+    ]) {
+      expect(await service.ownerOnlyAgentFor(caller)).toBeNull();
+    }
+    expect(gateway.findAdmin).not.toHaveBeenCalled();
+  });
+
+  it('is nothing on an installation with no Ranch admin agent', async () => {
+    const { service } = make({ agents: [agent()] });
+
+    expect(await service.ownerOnlyAgentFor(admin)).toBeNull();
+  });
+
+  it('a tool the assistant setting gave changes nothing about it', async () => {
+    const { service } = make({ agents });
+    const granted: ICallerParty = {
+      kind: 'person',
+      userId: 'user-User',
+      role: UserRoleTypes.User,
+      grantedThroughAssistant: true,
+    };
+
+    expect(await service.ownerOnlyAgentFor(granted)).toEqual({
+      id: 'agent-ranch',
+      name: 'Rancher',
+    });
+    expect(await service.manageable(granted, 'agent-ranch')).toBeNull();
+  });
+});
+
+/**
  * Line four (CLEAN-254): the tool this call runs was given to the caller
  * through the assistant setting. `manageCaller` says so on the party; here
  * it is one more way past "neither Admin nor creator", and no way past

@@ -172,6 +172,8 @@ export interface IChatSyncResult {
   scannedFiles: number;
   upserted: number;
   skipped: number; // unchanged since last reconcile
+  /** Rows removed because their transcript file is gone (CLEAN-272). */
+  pruned: number;
 }
 
 /**

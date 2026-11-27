@@ -51,6 +51,17 @@ export abstract class IChatGateway {
    * monotonic counts (+1, dedup'd by eventId) and refresh
    * lastMessageAt/preview/lastRole. Realtime is the authoritative count owner.
    */
+  /**
+   * The conversation was deleted on purpose (a chat reset): its row goes with
+   * its file, ratings included. No row is the ordinary case of a conversation
+   * that was never indexed, and must not throw. Answers whether one was
+   * removed.
+   */
+  abstract deleteSession(agentId: string, sessionKey: string): Promise<boolean>;
+
+  /** Remove these rows (the reconcile's orphans). Answers how many went. */
+  abstract deleteSessions(ids: string[]): Promise<number>;
+
   abstract recordActivity(
     agentId: string,
     activity: IChatActivity,

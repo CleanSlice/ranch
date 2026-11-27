@@ -7,11 +7,24 @@ import {
 import { IFileGateway, TranscriptReaderService } from '#/agent/file/domain';
 import { IAgentGateway } from '#/agent/agent/domain/agent.gateway';
 import { IChatGateway } from './chat.gateway';
-import { IChatReconcileInput, IChatSyncResult } from './chat.types';
+import {
+  IChatReconcileInput,
+  IChatSessionData,
+  IChatSyncResult,
+} from './chat.types';
 import { captureBackgroundError } from '#/setup/sentry';
 
 const SESSIONS_PREFIX = 'data/sessions/';
 const PREVIEW_MAX = 200;
+/**
+ * How long a row may stand without its transcript file before the reconcile
+ * removes it. The live path writes the row at once and the agent pushes the
+ * file later, so the two are briefly out of step by design; a pod that is
+ * down or cannot reach storage stretches that to hours. A day is beyond
+ * either: a row whose last message is that old and has no file is not
+ * waiting for one.
+ */
+const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Reconciles the Postgres chat index against the agent runtimes' JSONL session
@@ -62,7 +75,13 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
   ): Promise<IChatSyncResult> {
     if (this.running) {
       this.logger.warn('reconcile already in progress — skipping');
-      return { scannedAgents: 0, scannedFiles: 0, upserted: 0, skipped: 0 };
+      return {
+        scannedAgents: 0,
+        scannedFiles: 0,
+        upserted: 0,
+        skipped: 0,
+        pruned: 0,
+      };
     }
     this.running = true;
     const result: IChatSyncResult = {
@@ -70,6 +89,7 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
       scannedFiles: 0,
       upserted: 0,
       skipped: 0,
+      pruned: 0,
     };
     try {
       const agentIds = (
@@ -84,7 +104,7 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     }
     this.logger.log(
       `reconcile done: agents=${result.scannedAgents} files=${result.scannedFiles} ` +
-        `upserted=${result.upserted} skipped=${result.skipped}`,
+        `upserted=${result.upserted} skipped=${result.skipped} pruned=${result.pruned}`,
     );
     return result;
   }
@@ -118,6 +138,7 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
       scannedFiles: 0,
       upserted: 0,
       skipped: 0,
+      pruned: 0,
     };
     const own = { channel: 'bridle', externalUserId };
     const sessions = await this.chats.list({ ...own, perPage: 100_000 });
@@ -156,9 +177,10 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     const sessionFiles = nodes.filter(
       (n) => n.path.startsWith(SESSIONS_PREFIX) && n.path.endsWith('.jsonl'),
     );
-    if (!sessionFiles.length) return;
 
     // One read of existing rows → size map, so we only re-read changed files.
+    // Read even when the agent has no session file left: that is exactly
+    // when its rows have nothing behind them (CLEAN-272).
     const existing = await this.chats.list({
       agentId,
       ...(own ?? { includeInternal: true }),
@@ -166,6 +188,13 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
     });
     const sizeByKey = new Map(
       existing.items.map((s) => [s.sessionKey, s.lastIndexedSize]),
+    );
+
+    await this.pruneOrphans(
+      agentId,
+      existing.items,
+      new Set(sessionFiles.map((n) => n.path)),
+      result,
     );
 
     for (const node of sessionFiles) {
@@ -199,6 +228,46 @@ export class ChatSyncService implements OnModuleInit, OnModuleDestroy {
           `reconcile ${agentId}/${node.path} failed: ${(err as Error).message}`,
         );
       }
+    }
+  }
+
+  /**
+   * Remove the rows whose transcript file is gone (CLEAN-272). A row with no
+   * file is a conversation nobody can read: both consoles list it, with its
+   * old counts, and it opens empty. It happens when the file is deleted
+   * behind the index's back — from the agent's Files, with the agent's
+   * storage, or by a chat reset that predates the route removing the row
+   * itself.
+   *
+   * A row is written by the live path before the agent has pushed the file,
+   * so a young row without a file is not an orphan yet: only one whose last
+   * message is older than the grace period goes. `rows` is whatever the
+   * caller was allowed to read, so one person's reconcile prunes only that
+   * person's rows.
+   */
+  private async pruneOrphans(
+    agentId: string,
+    rows: IChatSessionData[],
+    sessionPaths: Set<string>,
+    result: IChatSyncResult,
+  ): Promise<void> {
+    const before = Date.now() - ORPHAN_GRACE_MS;
+    const orphans = rows.filter(
+      (row) =>
+        !sessionPaths.has(`${SESSIONS_PREFIX}${row.sessionKey}.jsonl`) &&
+        row.lastMessageAt.getTime() < before,
+    );
+    if (!orphans.length) return;
+    try {
+      const removed = await this.chats.deleteSessions(orphans.map((o) => o.id));
+      result.pruned += removed;
+      this.logger.log(
+        `pruned ${removed} chat row(s) of ${agentId} whose transcript file is gone`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `prune failed for ${agentId}: ${(err as Error).message}`,
+      );
     }
   }
 

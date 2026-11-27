@@ -184,6 +184,17 @@ function makePrismaStub() {
         return { count };
       },
     ),
+    deleteMany: jest.fn(async ({ where }: { where: Record<string, any> }) => {
+      let count = 0;
+      for (const [id, r] of Object.entries(rows)) {
+        if (where.agentId && r.agentId !== where.agentId) continue;
+        if (where.sessionKey && r.sessionKey !== where.sessionKey) continue;
+        if (where.id?.in && !(where.id.in as string[]).includes(id)) continue;
+        delete rows[id];
+        count++;
+      }
+      return { count };
+    }),
     findMany: jest.fn(
       async ({
         where,
@@ -938,6 +949,50 @@ describe('ChatGateway.recordActivity, by the hour', () => {
  * its id, its ratings, its summary — so it moves to the archived key instead
  * of being left behind as a hollow duplicate of the archived file.
  */
+describe('ChatGateway.deleteSession', () => {
+  it('removes the conversation’s row and says so', async () => {
+    const { gw, rows } = newGateway();
+    await gw.reconcileUpsert(input({ sessionKey: 'bridle:admin' }));
+    await gw.reconcileUpsert(input({ sessionKey: 'bridle:user-2' }));
+
+    expect(await gw.deleteSession('agent-1', 'bridle:admin')).toBe(true);
+
+    expect(Object.values(rows).map((r) => r.sessionKey)).toEqual([
+      'bridle:user-2',
+    ]);
+  });
+
+  it('answers false, quietly, when the conversation was never indexed', async () => {
+    const { gw } = newGateway();
+    expect(await gw.deleteSession('agent-1', 'bridle:admin')).toBe(false);
+  });
+
+  it('leaves the same conversation key of another agent alone', async () => {
+    const { gw, rows } = newGateway();
+    await gw.reconcileUpsert(input({ agentId: 'agent-2' }));
+    expect(await gw.deleteSession('agent-1', 'bridle:admin')).toBe(false);
+    expect(Object.keys(rows)).toHaveLength(1);
+  });
+});
+
+describe('ChatGateway.deleteSessions', () => {
+  it('removes the rows named and counts them', async () => {
+    const { gw, rows } = newGateway();
+    const a = await gw.reconcileUpsert(input({ sessionKey: 'bridle:a' }));
+    const b = await gw.reconcileUpsert(input({ sessionKey: 'bridle:b' }));
+    await gw.reconcileUpsert(input({ sessionKey: 'bridle:c' }));
+
+    expect(await gw.deleteSessions([a.id, b.id])).toBe(2);
+    expect(Object.values(rows).map((r) => r.sessionKey)).toEqual(['bridle:c']);
+  });
+
+  it('does not ask the database about an empty list', async () => {
+    const { gw, prisma } = newGateway();
+    expect(await gw.deleteSessions([])).toBe(0);
+    expect(prisma.chatSession.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('ChatGateway.archiveSession', () => {
   const ARCHIVED = 'bridle:admin.2026-10-02T09-14-03-512Z.archived';
 

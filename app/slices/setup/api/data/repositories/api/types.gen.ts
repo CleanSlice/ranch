@@ -1916,6 +1916,10 @@ export type SyncChatsResponseDto = {
   scannedFiles: number;
   upserted: number;
   skipped: number;
+  /**
+   * Index rows removed because their transcript file no longer exists
+   */
+  pruned: number;
 };
 
 export type CreateChatFeedbackDto = {

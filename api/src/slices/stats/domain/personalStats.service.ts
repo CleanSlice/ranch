@@ -143,9 +143,12 @@ export class PersonalStatsService {
         ),
         // Each figure against the stretch it is shown for. Activity is on
         // screen as far back as the calendar or the previous period reach,
-        // whichever is further; ratings, citations and hand-overs only for
-        // the period itself, with no comparison, so a note about the time
-        // before it would warn about nothing that is shown.
+        // whichever is further. Ratings, citations and hand-overs are read
+        // in place and never carry a note (CLEAN-262): their rows are the
+        // source, so "none before that day" means nothing happened, not
+        // that something was missed. They are asked for all the same, for
+        // the period itself, so that a figure of this block that one day
+        // becomes a recorded one is noted without a change here.
         Promise.all([
           this.registry.notesFor(['activity'], readFrom),
           this.registry.notesFor(

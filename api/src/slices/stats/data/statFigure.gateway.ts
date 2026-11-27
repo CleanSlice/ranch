@@ -29,4 +29,10 @@ export class StatFigureGateway extends IStatFigureGateway {
       skipDuplicates: true,
     });
   }
+
+  async remove(key: string): Promise<void> {
+    // `deleteMany` rather than `delete`: a row that is already gone is not
+    // an error.
+    await this.prisma.statFigure.deleteMany({ where: { key } });
+  }
 }

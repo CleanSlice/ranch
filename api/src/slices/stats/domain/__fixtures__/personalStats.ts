@@ -112,7 +112,9 @@ export interface IStatsWorld {
   citations: IWorldCitation[];
   handovers: IWorldHandover[];
   usage: IWorldUsage[];
-  /** `StatFigure` rows: since when each figure is complete, ISO. */
+  /** `StatFigure` rows, key to ISO date. Only a recorded figure has one
+   *  (`activity` here); a row named for a figure read in place stands for a
+   *  stale one that boot has not removed yet (CLEAN-262). */
   completeSince: Record<string, string>;
 }
 
@@ -223,7 +225,6 @@ export function statsHarness(
         return Promise.resolve(counts);
       },
     ),
-    firstFeedbackAt: recorded(() => Promise.resolve(null)),
   };
 
   const sources = {
@@ -264,7 +265,6 @@ export function statsHarness(
         });
       },
     ),
-    firstRecordAt: recorded(() => Promise.resolve(null)),
   };
 
   const delegations = {
@@ -305,7 +305,6 @@ export function statsHarness(
         });
       },
     ),
-    firstRecordAt: recorded(() => Promise.resolve(null)),
   };
 
   const usage = {
@@ -381,13 +380,12 @@ export function statsHarness(
   const registry = new FigureRegistry({
     findAll: () => Promise.resolve(figureRows),
     createIfAbsent: () => Promise.resolve(),
+    remove: () => Promise.resolve(),
   } as IStatFigureGateway);
   registry.register(activityFigure);
-  registry.register(ratingsFigure(chats as unknown as IChatGateway));
-  registry.register(citationsFigure(sources as unknown as ChatSourceService));
-  registry.register(
-    handoversFigure(delegations as unknown as IDelegationGateway),
-  );
+  registry.register(ratingsFigure);
+  registry.register(citationsFigure);
+  registry.register(handoversFigure);
 
   const service = new PersonalStatsService(
     activity as unknown as IChatActivityGateway,

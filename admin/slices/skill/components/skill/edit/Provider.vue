@@ -2,6 +2,7 @@
 import { useEventListener } from '@vueuse/core';
 import type { ISkillInput } from '#skill/domain';
 import { useSkillLayout } from '#skill/composables/useSkillLayout';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 /**
  * Edit skill (CLEAN-205): the same form as New skill with "Save changes",
@@ -21,6 +22,11 @@ const { pending } = await useAsyncData(`admin-skill-${props.id}-edit`, () =>
   skillStore.fetchById(props.id),
 );
 const skill = computed(() => skillStore.byId(props.id));
+
+// A skill the Ranch assistant ships is the Owner's to change (CLEAN-271).
+// For anybody else this page is where it is read: the same form with every
+// field off, one line saying why, and no Save.
+const { locked, note } = useBuiltFrom(skill);
 
 interface FormHandle {
   submit: () => Promise<void>;
@@ -94,12 +100,15 @@ useEventListener(
     <template v-else-if="skill">
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div class="min-w-0">
-          <h1 class="text-2xl font-semibold">Edit skill</h1>
+          <h1 class="text-2xl font-semibold">{{ locked ? 'Skill' : 'Edit skill' }}</h1>
           <p class="text-sm text-muted-foreground [overflow-wrap:anywhere]">
             <code>{{ skill.name }}</code> · {{ skill.title }}
           </p>
         </div>
-        <div v-if="!isPhone" class="flex gap-2">
+        <div v-if="locked" class="flex gap-2">
+          <Button variant="outline" data-action="cancel" @click="backToSkills">Back to skills</Button>
+        </div>
+        <div v-else-if="!isPhone" class="flex gap-2">
           <Button variant="ghost" data-action="cancel" @click="backToSkills">Cancel</Button>
           <Button data-action="submit" :disabled="submitting || !formRef?.valid" @click="formRef?.submit()">
             {{ submitting ? 'Saving…' : 'Save changes' }}
@@ -109,6 +118,9 @@ useEventListener(
 
       <p v-if="errorMessage" role="alert" class="text-xs text-destructive">{{ errorMessage }}</p>
 
+      <AccessNote v-if="locked" data-built-from>{{ note }}</AccessNote>
+
+      <fieldset :disabled="locked" class="contents">
       <SkillItemForm
         ref="formRef"
         :key="skill.id"
@@ -127,6 +139,7 @@ useEventListener(
         :server-error="serverError"
         @submit="onSubmit"
       />
+      </fieldset>
 
       <SkillEditFilesCard
         v-if="skill.files?.length"
@@ -135,7 +148,7 @@ useEventListener(
       />
 
       <div
-        v-if="isPhone"
+        v-if="isPhone && !locked"
         class="fixed inset-x-0 bottom-0 z-40 flex gap-2 border-t bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
         <Button variant="outline" class="min-h-11 flex-1" data-action="cancel" @click="backToSkills">Cancel</Button>

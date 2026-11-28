@@ -27,8 +27,15 @@
 // the first User reaches everything but access-alpha. Pins of the four
 // accounts are removed.
 //
+// What each agent is built from (CLEAN-271), see BUILT_FROM in lib.mjs: the
+// Ranch admin agent has a template, a skill, a tool server, a model
+// credential and a knowledge base of its own; the ordinary agents share the
+// fixture template and credential, and access-alpha has a skill, a tool
+// server and a knowledge base. Put back to this on every run, so a check
+// that changed one of them starts from the same place.
+//
 // Reads DATABASE_URL from api/.env; prints no secrets.
-import { ADMIN_USER, AGENTS, LLM, OWNER, TEMPLATE, USER, USER2, apiEnv, requireFromApi } from './lib.mjs';
+import { ADMIN_USER, AGENTS, BUILT_FROM, LLM, OWNER, TEMPLATE, USER, USER2, apiEnv, requireFromApi } from './lib.mjs';
 
 if (!apiEnv.DATABASE_URL) {
   console.error('DATABASE_URL is missing in api/.env');
@@ -72,6 +79,88 @@ async function main() {
   };
   await prisma.llmCredential.upsert({ where: { id: LLM.id }, create: { id: LLM.id, ...llm }, update: llm });
 
+  // What the agents are built from (CLEAN-271). The skills and the tool
+  // servers go on by id and are attached below; `set` puts each template
+  // back to exactly these.
+  const B = BUILT_FROM;
+  await prisma.llmCredential.upsert({
+    where: { id: B.ranch.llm.id },
+    create: { ...llm, ...B.ranch.llm, apiKey: 'access-e2e-ranch-not-a-real-key' },
+    update: { ...llm, ...B.ranch.llm, apiKey: 'access-e2e-ranch-not-a-real-key' },
+  });
+  for (const skill of [B.ranch.skill, B.other.skill]) {
+    const row = {
+      name: skill.name,
+      title: skill.title,
+      description: 'Fixture skill for the built-from checks',
+      body: `# ${skill.title}\n\nWhat the fixture skill «${skill.name}» says.\n`,
+      files: [],
+      tokenEstimate: 12,
+    };
+    await prisma.skill.upsert({ where: { id: skill.id }, create: { id: skill.id, ...row }, update: row });
+  }
+  for (const server of [B.ranch.server, B.other.server]) {
+    const row = {
+      name: server.name,
+      description: 'Fixture tool server for the built-from checks; nothing listens there',
+      url: server.url,
+      transport: 'streamableHttp',
+      authType: 'bearer',
+      authValue: 'access-e2e-not-a-real-token',
+      enabled: true,
+      builtIn: false,
+    };
+    await prisma.mcpServer.upsert({ where: { id: server.id }, create: { id: server.id, ...row }, update: row });
+  }
+  for (const side of [B.ranch, B.other]) {
+    const base = {
+      name: side.knowledge.name,
+      description: 'Fixture knowledge base for the built-from checks',
+      workspace: side.knowledge.workspace,
+      indexStatus: 'idle',
+      readerAccess: 'closed',
+    };
+    await prisma.knowledge.upsert({
+      where: { id: side.knowledge.id },
+      create: { id: side.knowledge.id, ...base },
+      update: base,
+    });
+    const source = {
+      knowledgeId: side.knowledge.id,
+      type: 'text',
+      name: side.source.name,
+      content: `What «${side.knowledge.name}» says on page one.`,
+      indexState: 'queued',
+    };
+    await prisma.source.upsert({ where: { id: side.source.id }, create: { id: side.source.id, ...source }, update: source });
+  }
+  const ranchTemplate = await prisma.template.upsert({
+    where: { name: B.ranch.template.name },
+    create: B.ranch.template,
+    update: { description: B.ranch.template.description, image: B.ranch.template.image },
+  });
+  // The Ranch server is the API's own built-in; a database it has not seeded
+  // into yet simply has none to attach.
+  const ranchServer = await prisma.mcpServer.findUnique({ where: { id: 'mcp-ranch' } });
+  await prisma.template.update({
+    where: { id: ranchTemplate.id },
+    data: {
+      defaultKnowledgeIds: [],
+      toolAllowlist: null,
+      skills: { set: [{ id: B.ranch.skill.id }] },
+      mcpServers: { set: [...(ranchServer ? [{ id: ranchServer.id }] : []), { id: B.ranch.server.id }] },
+    },
+  });
+  await prisma.template.update({
+    where: { id: template.id },
+    data: {
+      defaultKnowledgeIds: [],
+      toolAllowlist: null,
+      skills: { set: [{ id: B.other.skill.id }] },
+      mcpServers: { set: [{ id: B.other.server.id }] },
+    },
+  });
+
   // Exactly one Ranch admin agent afterwards: ours.
   const demoted = await prisma.agent.updateMany({
     where: { isAdmin: true, NOT: { id: AGENTS.ranch.id } },
@@ -90,14 +179,14 @@ async function main() {
       isAdmin: row.isAdmin,
       // Set here and nowhere else: the API never rewrites a creator.
       createdById: row.createdById,
-      templateId: template.id,
-      llmCredentialId: LLM.id,
+      templateId: row.isAdmin ? ranchTemplate.id : template.id,
+      llmCredentialId: row.isAdmin ? B.ranch.llm.id : LLM.id,
       status: 'running',
       statusReason: null,
       workflowId: null,
       isPublic: false,
       allowedOrigins: [],
-      knowledgeIds: [],
+      knowledgeIds: row.isAdmin ? [B.ranch.knowledge.id] : row.id === AGENTS.a.id ? [B.other.knowledge.id] : [],
       // Something for a reader NOT to be shown (GET /agents, see routes.mjs).
       config: { e2eOperatorNote: `operator-only-${row.name}` },
       resources: { cpu: '500m', memory: '512Mi' },
@@ -132,6 +221,18 @@ async function main() {
   });
   await prisma.userAgentAccess.create({ data: { userId: user.id, limited: false } });
   await prisma.userAgentAccessEntry.create({ data: { userId: user.id, agentId: AGENTS.a.id, list: 'denied' } });
+
+  // The assistant setting (CLEAN-240) and the settings kept back from the
+  // assistant (CLEAN-271), back to an installation nobody configured: an
+  // Admin has the assistant at Full, a User at Basic, no account differs
+  // from its role, and no setting differs from what the Owner approved.
+  // Scripts change these for their own set-up (badge.mjs and ownership.mjs
+  // put Users and Admins on Standard, assistant-built-from.mjs has an Admin
+  // change settings); a seed that left them alone made every script after
+  // them depend on the order they ran in.
+  await prisma.assistantAccountAccess.deleteMany({});
+  await prisma.assistantRoleAccess.deleteMany({});
+  await prisma.assistantSettingPin.deleteMany({});
   // Something for a list to leave out (http.mjs): one day of usage per
   // ordinary agent, one conversation on the shared `admin` channel of each,
   // and the first User's own conversation with access-alpha, which that
@@ -190,7 +291,7 @@ async function main() {
   const admins = await prisma.agent.count({ where: { isAdmin: true } });
   if (admins !== 1) throw new Error(`expected exactly one Ranch admin agent, found ${admins}`);
   console.log(
-    `seeded 4 agents, 4 accounts (owner, admin, two users), 1 template, 1 LLM credential (dummy key).` +
+    `seeded 4 agents, 4 accounts (owner, admin, two users), 2 templates, 2 LLM credentials (dummy keys), 2 skills, 2 tool servers, 2 knowledge bases.` +
       (demoted.count ? ` ${demoted.count} other agent(s) lost the Ranch admin flag.` : ''),
   );
 }

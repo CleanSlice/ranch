@@ -48,6 +48,7 @@ import {
   mcpAs,
   requireFromApi,
   section,
+  setAssistantFor,
   sleep,
   tokenFor,
   until,
@@ -163,9 +164,19 @@ try {
       ...(body !== undefined ? { body: JSON.parse(JSON.stringify(body).split('{id}').join(id)) } : {}),
     });
 
+  // The Ranch admin agent is on nobody's list since CLEAN-240: it is the
+  // assistant, and a person has it by the assistant's own switch, which is
+  // on for an Admin unless the Owner says otherwise (specs/034,
+  // contracts/api.md, "Changed routes"). So "an Admin who does not reach
+  // it" is an Admin it is switched off for. That is what sections 1 and 2
+  // are run with; the Admin who has it follows in section 2b.
+  {
+    const off = await setAssistantFor(ids.admin, { enabled: false });
+    check(off.status === 200 && off.body?.enabled === false, `the Owner switches the assistant off for the Admin (${off.status})`);
+  }
   for (const [label, who, hidden] of [
     ['the limited Admin, access-charlie', ADMIN_USER, AGENTS.c],
-    ['the limited Admin, the Ranch admin agent', ADMIN_USER, AGENTS.ranch],
+    ['the limited Admin, the Ranch admin agent, switched off for them', ADMIN_USER, AGENTS.ranch],
     ['the User, access-alpha (denied)', USER, AGENTS.a],
   ]) {
     section(`1. Routes that name an agent: ${label}`);
@@ -263,6 +274,95 @@ try {
     Array.isArray(adminAgents) && adminAgents.map((a) => a.name).filter((n) => NAMES.includes(n)).sort().join() === 'access-alpha,access-bravo',
     `GET /agents for the Admin is exactly access-alpha and access-bravo of the fixtures (${adminAgents?.map?.((a) => a.name).join(', ')})`,
   );
+  // ------------------------------------- 2b. the Admin who has the assistant
+  section('2b. The Ranch admin agent for an Admin who has it as their assistant');
+  {
+    const on = await setAssistantFor(ids.admin, null);
+    check(on.status === 200 && on.body?.enabled === true && on.body?.source === 'role', `the Admin follows their role again: the assistant is on (${on.status})`);
+    // What a person who reaches an agent and does not manage it may call:
+    // the reader's view of it, their own pin, their own chat with it, and
+    // what an Admin reads of any agent they reach. Everything else of the
+    // 63 is the Owner's (CLEAN-232) and answers as for an id that names
+    // nothing. The list is pinned: a route that starts answering for the
+    // assistant is a decision, not a side effect.
+    const REACH = [
+      'GET /agents/{id}',
+      'GET /agents/{id}/tools',
+      'PUT /agents/{id}/pin',
+      'DELETE /agents/{id}/pin',
+      'GET /agents/{id}/limits/enabled',
+      'GET /agent-events?agentId={id}',
+      'GET /agent-incidents?agentId={id}',
+      'GET /chats?agentId={id}',
+      'POST /chats/sync',
+      'POST /me/chats/sync',
+      'POST /browser/extension/token',
+      'GET /api/agent/{id}/health',
+      'GET /api/agent/{id}/transcript',
+      'GET /api/agent/{id}/transcript?channel=anon-http-mjs',
+      'DELETE /api/agent/{id}/transcript',
+      'POST /api/agent/{id}/transcript/archive',
+      'POST /api/agent/{id}/message',
+      'POST /api/agent/{id}/message/sync',
+      'GET /api/agent/{id}/attachment/att-http-mjs',
+      'GET /api/agent/{id}/message/m-1/source/1/content',
+    ];
+    const reached = [];
+    const leaks = [];
+    for (const route of NAMED) {
+      const [h, g] = [await call(ADMIN_USER, route, AGENTS.ranch.id), await call(ADMIN_USER, route, GHOST)];
+      const name = `${route[0]} ${route[1]}`;
+      if (h.status !== g.status || shape(h, AGENTS.ranch.id) !== shape(g, GHOST)) reached.push(name);
+      if (textOf(h).includes('operator-only')) leaks.push(`${name}: carries the operator's configuration`);
+    }
+    const unexpected = reached.filter((name) => !REACH.includes(name));
+    const lost = REACH.filter((name) => !reached.includes(name));
+    check(
+      unexpected.length === 0 && lost.length === 0 && leaks.length === 0,
+      `${NAMED.length} routes: ${reached.length} are a reader's and answer, the other ${NAMED.length - reached.length} answer exactly as for an id that names nothing, and none carries its configuration` +
+        (unexpected.length ? `\n       ANSWERS, and is not on the reviewed list: ${unexpected.join('; ')}` : '') +
+        (lost.length ? `\n       no longer answers: ${lost.join('; ')}` : '') +
+        (leaks.length ? `\n       ${leaks.join('\n       ')}` : ''),
+    );
+    const OPERATOR_FIELDS = { config: {}, llmCredentialId: null, workflowId: null, statusReason: null, launchContext: null };
+    const isReaderView = (agent) =>
+      agent?.id === AGENTS.ranch.id && agent?.isAdmin === true && Object.entries(OPERATOR_FIELDS).every(([key, empty]) => JSON.stringify(agent?.[key]) === JSON.stringify(empty));
+    const current = await api('/agents/admin/current', { as: ADMIN_USER });
+    check(current.status === 200 && isReaderView(current.body), `GET /agents/admin/current: the reader's view of it, marked isAdmin, no configuration, credential or workflow (${current.status})`);
+    const rancher = await api('/rancher/status', { as: ADMIN_USER });
+    check(
+      rancher.status === 200 && rancher.body?.hasAdmin === true && isReaderView(rancher.body?.admin) && !textOf(rancher).includes('operator-only'),
+      `GET /rancher/status hands the Admin the same reader's view, by the other door (${rancher.status})`,
+    );
+    const env = await api(`/agents/${AGENTS.ranch.id}/env`, { as: ADMIN_USER });
+    const restart = await api(`/agents/${AGENTS.ranch.id}/restart`, { method: 'POST', as: ADMIN_USER });
+    check(env.status === 404 && restart.status === 404, `its environment and a restart stay the Owner's: 404 (${env.status}, ${restart.status})`);
+    const leaksInLists = [];
+    for (const path of LISTS) {
+      const res = await api(path, { as: ADMIN_USER });
+      if (res.status !== 200 && res.status !== 403) leaksInLists.push(`${path}: ${res.status}`);
+      if (mentions(res, AGENTS.c)) leaksInLists.push(`${path} mentions ${AGENTS.c.name}`);
+      if (textOf(res).includes('operator-only-access-ranch')) leaksInLists.push(`${path} carries the configuration of ${AGENTS.ranch.name}`);
+    }
+    check(leaksInLists.length === 0, `the ${LISTS.length} lists: none mentions ${AGENTS.c.name}, and none carries the configuration of the Ranch admin agent${leaksInLists.length ? `\n       ${leaksInLists.join('\n       ')}` : ''}`);
+    const withIt = (await api('/agents', { as: ADMIN_USER })).body;
+    check(
+      Array.isArray(withIt) && withIt.map((a) => a.name).filter((n) => NAMES.includes(n)).sort().join() === 'access-alpha,access-bravo,access-ranch',
+      `GET /agents for the Admin is access-alpha, access-bravo and the assistant, of the fixtures (${withIt?.map?.((a) => a.name).join(', ')})`,
+    );
+    // No list governs it: the access route refuses its id by name.
+    const view = (await api(`/users/${ids.admin}/agent-access`, { as: OWNER })).body;
+    const listed = await api(`/users/${ids.admin}/agent-access`, {
+      method: 'PUT',
+      as: OWNER,
+      body: { allowed: [AGENTS.a.id, AGENTS.b.id, AGENTS.ranch.id], denied: [], version: view?.version ?? null },
+    });
+    check(
+      listed.status === 422 && code(listed) === 'ASSISTANT_NOT_LISTED' && !JSON.stringify(view).includes(AGENTS.ranch.id),
+      `and it is on no access list: the Admin's does not name it, and a write that does is refused, 422 ASSISTANT_NOT_LISTED (${listed.status} ${code(listed)})`,
+    );
+  }
+
   const overviewOwner = (await api('/usage/overview', { as: OWNER })).body;
   const overviewAdmin = (await api('/usage/overview', { as: ADMIN_USER })).body;
   check(
@@ -320,6 +420,17 @@ try {
   check((await stored(ids.user2)).length === 2, 'and nothing of the refused request was saved');
 
   section('4. The ceiling: the limited Admin edits the second User');
+  // "Open" would hand the second User every agent that is not denied for
+  // them. The agent that made that more than the Admin has used to be the
+  // Ranch admin agent; no list governs it since CLEAN-240, so the ceiling
+  // no longer counts it. An ordinary agent outside the Admin's reach, and
+  // not denied for the second User, is what the ceiling is about: one is
+  // made here, the way the fixtures are, and removed after the refusals.
+  const ceilingTemplate = await prisma.template.findUnique({ where: { name: TEMPLATE.name } });
+  const delta = await prisma.agent.create({
+    data: { id: `agent-${crypto.randomUUID()}`, name: 'access-delta', templateId: ceilingTemplate.id, status: 'stopped', config: {}, resources: { cpu: '500m', memory: '512Mi' } },
+  });
+  check((await api(`/agents/${delta.id}`, { as: ADMIN_USER })).status === 404, 'an agent the Admin does not reach exists: access-delta (404 for them)');
   view = (await access(ids.user2, ADMIN_USER)).body;
   check(
     view?.allowed?.join() === AGENTS.a.id && view?.denied?.length === 0 && view?.hasEntriesOutsideView === true,
@@ -332,7 +443,19 @@ try {
   const outside = await put(ids.user2, ADMIN_USER, { allowed: [AGENTS.a.id, AGENTS.c.id], denied: [], version: view.version });
   const unknown = await put(ids.user2, ADMIN_USER, { allowed: [AGENTS.a.id, GHOST], denied: [], version: view.version });
   check(outside.status === 404 && shape(outside, AGENTS.c.id) === shape(unknown, GHOST), `a hand-made request naming charlie: refused as an unknown agent (${outside.status}, "${message(outside)}")`);
-  check((await access(ids.user2, OWNER)).body?.version === v1, 'none of the three refusals saved anything');
+  const named = await put(ids.user2, ADMIN_USER, { allowed: [AGENTS.a.id, delta.id], denied: [], version: view.version });
+  check(named.status === 404 && shape(named, delta.id) === shape(unknown, GHOST), `and one naming access-delta: the same unknown agent (${named.status})`);
+  check((await access(ids.user2, OWNER)).body?.version === v1, 'none of the four refusals saved anything');
+  // Without that agent the same request opens nothing the Admin lacks, and
+  // the ceiling has nothing to say: it is about outcomes, not about the
+  // word "open". Asked without the confirmation, so nothing is saved.
+  await prisma.agent.delete({ where: { id: delta.id } });
+  const within = await put(ids.user2, ADMIN_USER, { allowed: [], denied: [], version: view.version });
+  check(
+    within.status === 409 && code(within) === 'ACCESS_OPEN_NEEDS_CONFIRM',
+    `once access-delta is gone the same request is within the Admin's reach: it stops at the confirmation, not at the ceiling (${within.status} ${code(within)})`,
+  );
+  check((await access(ids.user2, OWNER)).body?.version === v1, 'and that saved nothing either');
   res = await put(ids.user2, ADMIN_USER, { allowed: [AGENTS.a.id, AGENTS.b.id], denied: [], version: view.version });
   check(res.status === 200 && res.body?.allowed?.length === 2, `adding bravo, which the Admin has: saved (${res.status})`);
   const afterAdmin = await stored(ids.user2);
@@ -386,12 +509,30 @@ try {
   view = (await access(ids.user2, OWNER)).body;
   res = await put(ids.user2, OWNER, { allowed: [throwaway.id], denied: [], version: view.version });
   check(res.status === 200 && res.body?.outcome?.kind === 'only' && res.body?.outcome?.count === 1, 'the second User is limited to a throwaway agent');
+  // The assistant is not an agent a list allows or takes away (CLEAN-240):
+  // a User has it by its own switch, on by default. So the second User's
+  // GET /agents is the one agent of their list and the assistant.
+  const ordinary = (list) => (Array.isArray(list) ? list.filter((a) => !a.isAdmin) : null);
+  const assistantOf = (list) => (Array.isArray(list) ? list.filter((a) => a.isAdmin).map((a) => a.id).join() : null);
   const before = (await api('/agents', { as: USER2 })).body;
-  check(before.length === 1 && before[0].id === throwaway.id, `and sees exactly that agent (${before.length})`);
+  check(
+    ordinary(before)?.length === 1 && ordinary(before)[0].id === throwaway.id && assistantOf(before) === AGENTS.ranch.id && before.length === 2,
+    `and sees exactly that agent, and the assistant (${before.length})`,
+  );
   const del = await api(`/agents/${throwaway.id}`, { method: 'DELETE', as: OWNER });
   check(del.status >= 200 && del.status < 300, `the Owner deletes it (${del.status})`);
   const after = (await api('/agents', { as: USER2 })).body;
-  check(Array.isArray(after) && after.length === 0, `the second User reaches no agents, not all of them (${after?.length})`);
+  check(
+    ordinary(after)?.length === 0 && assistantOf(after) === AGENTS.ranch.id && after.length === 1,
+    `the second User reaches no agent of the lists, not all of them: only the assistant is left (${after?.length})`,
+  );
+  {
+    const off = await setAssistantFor(ids.user2, { enabled: false });
+    const nothing = (await api('/agents', { as: USER2 })).body;
+    check(off.status === 200 && Array.isArray(nothing) && nothing.length === 0, `and with the assistant switched off for them, nothing at all (${nothing?.length})`);
+    const back = await setAssistantFor(ids.user2, null);
+    check(back.status === 200 && back.body?.source === 'role', `the second User follows their role again (${back.status})`);
+  }
   check((await api(`/agents/${AGENTS.b.id}`, { as: USER2 })).status === 404, 'access-bravo by direct link: 404');
   const mark = (await api(`/users/${ids.user2}`, { as: OWNER })).body?.agentAccess;
   check(mark?.kind === 'none' && mark?.needsReview === true, `GET /users/:id marks the account for review (${mark?.kind}, needsReview ${mark?.needsReview})`);
@@ -586,7 +727,29 @@ try {
     check(!userTools.includes('get_user_agent_access') && !userTools.includes('set_user_agent_access'), 'and neither access tool');
 
     let out = await adminMcp.call('list_agents');
-    check(out.text.includes(AGENTS.a.name) && out.text.includes(AGENTS.b.name) && !out.text.includes(AGENTS.c.name) && !out.text.includes(AGENTS.ranch.name), "list_agents for the Admin: alpha and bravo, neither charlie nor the Ranch admin agent");
+    check(
+      out.text.includes(AGENTS.a.name) && out.text.includes(AGENTS.b.name) && !out.text.includes(AGENTS.c.name) && !out.text.includes(AGENTS.c.id),
+      'list_agents for the Admin: alpha and bravo, not charlie',
+    );
+    check(
+      out.text.includes(AGENTS.ranch.name) && !out.text.includes('operator-only-access-ranch'),
+      'and the Ranch admin agent, which they have as their assistant (CLEAN-240), without its configuration',
+    );
+    {
+      await setAssistantFor(ids.admin, { enabled: false });
+      const without = await adminMcp.call('list_agents');
+      const one = await adminMcp.call('get_agent', { id: AGENTS.ranch.id });
+      const ghost = await adminMcp.call('get_agent', { id: GHOST });
+      check(
+        without.text.includes(AGENTS.a.name) && !without.text.includes(AGENTS.ranch.name) && !without.text.includes(AGENTS.ranch.id),
+        'switched off for the Admin, list_agents does not name it',
+      );
+      check(
+        /not found/i.test(one.text) && one.text.split(AGENTS.ranch.id).join('x') === ghost.text.split(GHOST).join('x'),
+        `and get_agent answers as for an id that names nothing ("${one.text.replace(/\s+/g, ' ').slice(0, 80)}")`,
+      );
+      await setAssistantFor(ids.admin, null);
+    }
     out = await userMcp.call('list_agents');
     check(!out.text.includes(AGENTS.a.name) && out.text.includes(AGENTS.b.name) && out.text.includes(AGENTS.c.name), 'list_agents for the User: everything but alpha');
     check(!out.text.includes('operator-only-access-bravo') && out.text.includes('operator-only-access-charlie'), "the User reads bravo without its configuration, and charlie, which they created, with it");
@@ -648,7 +811,11 @@ try {
     await prisma.userAgentAccessEntry.deleteMany({ where: { userId: user2.id } }).catch(() => undefined);
     await prisma.userAgentAccess.deleteMany({ where: { userId: user2.id } }).catch(() => undefined);
   }
-  await prisma.agent.deleteMany({ where: { name: 'access-throwaway' } }).catch(() => undefined);
+  await prisma.agent.deleteMany({ where: { name: { in: ['access-throwaway', 'access-delta'] } } }).catch(() => undefined);
+  // The assistant follows the role again for the accounts this script
+  // switched it off for, wherever it stopped.
+  const switched = await prisma.user.findMany({ where: { email: { in: [ADMIN_USER.email, USER2.email] } }, select: { id: true } }).catch(() => []);
+  await prisma.assistantAccountAccess.deleteMany({ where: { userId: { in: switched.map((u) => u.id) } } }).catch(() => undefined);
   await prisma.user.deleteMany({ where: { email: 'access-gone@ranch.test' } }).catch(() => undefined);
   await prisma.$disconnect();
 }

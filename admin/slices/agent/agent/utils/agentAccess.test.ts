@@ -1,13 +1,73 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  APPROVED_SETTINGS_TEXT,
   OWNER_MANAGED_TEXT,
+  builtFromText,
+  keptFromAssistant,
+  settingDriftLine,
   canManageAgent,
   canPinAgent,
   isOwnerRole,
   notAvailableText,
   ownerOnlyAssistant,
+  ownerOnlyIngredient,
   ownerOnlyLeftOutText,
 } from './agentAccess';
+
+describe('the settings the assistant is deployed from (CLEAN-271)', () => {
+  test('an Admin editing a setting the assistant is served is told it keeps the approved value', () => {
+    expect(keptFromAssistant('Admin', ['integrations'])).toBe(true);
+    expect(keptFromAssistant('Admin', ['organization', 'a2a'])).toBe(true);
+    expect(APPROVED_SETTINGS_TEXT).toBe(
+      'The Ranch assistant keeps the values the Owner approved; this change applies to other agents.',
+    );
+  });
+
+  test('not on a form of other settings, and never for the Owner', () => {
+    expect(keptFromAssistant('Admin', ['organization', 'auth'])).toBe(false);
+    expect(keptFromAssistant('Owner', ['integrations'])).toBe(false);
+  });
+
+  test('the Owner’s notice names the setting, what happened and who, never a value', () => {
+    expect(
+      settingDriftLine({ group: 'integrations', name: 's3_bucket', change: 'changed', changedByName: 'Ada' }),
+    ).toBe('integrations.s3_bucket: changed by Ada');
+    expect(
+      settingDriftLine({ group: 'integrations', name: 'bridle_url', change: 'removed', changedByName: null }),
+    ).toBe('integrations.bridle_url: removed');
+  });
+});
+
+describe('what the assistant is built from (CLEAN-271)', () => {
+  const ingredient = { assistantDependency: true };
+  const plain = { assistantDependency: false };
+
+  test('an Admin looks at an ingredient of the assistant and does not change it', () => {
+    expect(ownerOnlyIngredient('Admin', ingredient)).toBe(true);
+    expect(ownerOnlyIngredient('User', ingredient)).toBe(true);
+    expect(ownerOnlyIngredient(null, ingredient)).toBe(true);
+  });
+
+  test('the Owner changes everything', () => {
+    expect(ownerOnlyIngredient('Owner', ingredient)).toBe(false);
+  });
+
+  test('a resource the assistant does not use is an Admin’s as before', () => {
+    expect(ownerOnlyIngredient('Admin', plain)).toBe(false);
+    // An older API build sends no mark: nothing is locked by the console.
+    expect(ownerOnlyIngredient('Admin', {})).toBe(false);
+    expect(ownerOnlyIngredient('Admin', null)).toBe(false);
+  });
+
+  test('the line names the assistant to a viewer who has it', () => {
+    expect(builtFromText('Rancher')).toBe(
+      'Part of what Rancher, the Ranch assistant, is built from: only the Owner can change it.',
+    );
+    expect(builtFromText('  ')).toBe(
+      'Part of what the Ranch assistant is built from: only the Owner can change it.',
+    );
+  });
+});
 
 const ranchAdmin = { isAdmin: true };
 const ordinary = { isAdmin: false };

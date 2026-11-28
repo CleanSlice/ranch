@@ -4,7 +4,10 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   CONFIRM_SENTENCE,
+  OWNER_ONLY_REASON,
   callerIsOperator,
+  callerIsOwner,
+  callerPerson,
   confirmed,
   ok,
   requireOperator,
@@ -17,7 +20,9 @@ import {
   ISettingGateway,
   findSettingDefinition,
   nearestSettingDefinition,
+  ownerOnlySettingRefusal,
   settingKey,
+  writeSettingBy,
   type ISettingData,
 } from './domain';
 
@@ -117,6 +122,12 @@ export class SettingTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
     const { group, name } = args;
+    // The bookkeeping of the assistant's template is the Owner's
+    // (CLEAN-271): deleting it makes the next start reseed the template.
+    const ownerOnly = ownerOnlySettingRefusal(group, name);
+    if (ownerOnly && !callerIsOwner(httpRequest)) {
+      return ok({ error: ownerOnly, reason: OWNER_ONLY_REASON });
+    }
     const existing = await this.settings.findByKey(group, name);
     if (!existing) return ok(notFound(group, name));
     const refusal = confirmed(
@@ -125,7 +136,12 @@ export class SettingTool implements IConditionallyListedTool {
     );
     if (refusal) return refusal;
 
-    await this.settings.delete(group, name);
+    // When it is not the Owner who deletes, the Ranch assistant keeps the
+    // value this setting had (CLEAN-271).
+    await writeSettingBy(this.settings, group, name, null, {
+      userId: callerPerson(httpRequest)?.userId ?? null,
+      owner: callerIsOwner(httpRequest),
+    });
     // The controller drops the infra cache on this group so the next read
     // sees the env/default value instead of the row that no longer exists.
     if (group === 'infrastructure') this.infraConfig.invalidate();

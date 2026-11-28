@@ -46,6 +46,8 @@ const prisma = new PrismaClient();
 const REVIEW_TEXT = 'The last allowed agent was deleted. This account reaches no agents until you choose.';
 const CONFIRM_TEXT = 'This account will reach every agent that is not denied.';
 const THROWAWAY = 'access-throwaway-';
+/** Agents made only so that the editor has more than six rows. */
+const PADDING = 'access-padding-';
 
 const users = (await api('/users', { as: OWNER })).body;
 const user2 = users.find((u) => u.email === USER2.email).id;
@@ -109,7 +111,17 @@ try {
     check(await restore(), 'the second User starts open, as seed.mjs leaves it');
     const first = await throwaway(`${width}-one`);
     const second = await throwaway(`${width}-two`);
-    const total = (await api('/agents', { as: OWNER })).body.length;
+    // The editor has a row per agent of the lists, and the filter above six
+    // of them. The Ranch admin agent is not one (CLEAN-240), so the seeded
+    // three and the two above are five: enough more are made to pass six,
+    // and removed once the filter was looked at.
+    const listed = async () => (await api('/agents', { as: OWNER })).body.filter((a) => !a.isAdmin).length;
+    for (let n = 1; (await listed()) <= 6; n += 1) {
+      await prisma.agent.create({
+        data: { id: `agent-${crypto.randomUUID()}`, name: `${PADDING}${width}-${n}`, templateId: template.id, status: 'stopped', config: {}, resources: { cpu: '500m', memory: '512Mi' } },
+      });
+    }
+    const total = await listed();
 
     let view = await accessOf();
     let res = await putAccess({ allowed: [first.id], denied: [], version: view.version });
@@ -122,11 +134,12 @@ try {
     check((await count(page, '[data-access-review]')) === 0, 'no review banner while the allowed agent exists');
 
     // More than six agents: the filter.
-    check(total > 6 && (await count(page, '[data-access-search]')) === 1, `with ${total} agents the filter is shown`);
+    check(total > 6 && (await count(page, '[data-access-search]')) === 1 && (await count(page, '[data-access-row]')) === total, `with ${total} agents of the lists, a row each, the filter is shown`);
     await page.locator('[data-access-search]').fill(THROWAWAY);
     await until(async () => (await count(page, '[data-access-row]')) === 2, { timeout: 5000 });
     const shown = await page.locator('[data-access-row] [data-access-name]').allTextContents();
     check(shown.length === 2 && shown.every((n) => n.startsWith(THROWAWAY)), `typing "${THROWAWAY}" leaves the matching rows (${shown.join(', ')})`);
+    await prisma.agent.deleteMany({ where: { name: { startsWith: PADDING } } });
     await page.locator('[data-access-card]').scrollIntoViewIfNeeded();
     await shot(page, `deletion-filter-${width}`);
     await page.locator('[data-access-search]').fill('no such agent');
@@ -142,7 +155,12 @@ try {
     view = await accessOf();
     check(view.outcome.kind === 'none' && view.needsReview === true && view.allowed.length === 0, `the account did not open: ${view.outcome.kind}, needs review`);
     const reached = (await api('/agents', { as: USER2 })).body;
-    check(Array.isArray(reached) && reached.length === 0, `the second User reads no agents from GET /agents (${reached.length})`);
+    // The assistant is no agent of the lists (CLEAN-240): it stays, by its
+    // own switch, whatever the lists hold.
+    check(
+      Array.isArray(reached) && reached.filter((a) => !a.isAdmin).length === 0 && reached.length === 1 && reached[0].id === AGENTS.ranch.id,
+      `the second User reads no agent of the lists from GET /agents, only the assistant (${reached.length})`,
+    );
 
     let mark = await listMark(page);
     check(mark.kind === 'none' && mark.text === 'Restricted Needs review', `the list marks it "Restricted" and "Needs review" (${mark.kind}: "${mark.text}")`);
@@ -197,6 +215,7 @@ try {
   const back = await restore(found).catch(() => false);
   check(back, 'the second User’s access is put back exactly as this run found it');
   const left = await prisma.agent.deleteMany({ where: { id: { in: made } } }).catch(() => null);
+  await prisma.agent.deleteMany({ where: { name: { startsWith: PADDING } } }).catch(() => undefined);
   check(left !== null && (await prisma.agent.count({ where: { name: { startsWith: THROWAWAY } } })) === 0, 'no throwaway agent is left behind');
   await prisma.$disconnect();
 }

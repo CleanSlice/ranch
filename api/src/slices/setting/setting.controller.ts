@@ -2,14 +2,27 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   NotFoundException,
   Param,
   Put,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
+import { heldRoles, rolesAdmit } from '#/user/auth/guards/roles.guard';
+import { UserRoleTypes } from '#/user/user/domain';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '#/user/auth/guards';
-import { IInfraConfigGateway, ISettingGateway } from './domain';
+import {
+  IInfraConfigGateway,
+  ISettingGateway,
+  OWNER_ONLY_SETTING_CODE,
+  ownerOnlySettingRefusal,
+  writeSettingBy,
+  type ISettingWriter,
+} from './domain';
 import { UpsertSettingDto } from './dtos';
 
 /**
@@ -22,6 +35,17 @@ import { UpsertSettingDto } from './dtos';
  * group, so the rest of the settings stay behind the guard.
  */
 const PUBLIC_AUTH_SETTINGS = new Set(['registration_enabled']);
+
+/** Who writes: the account behind the request, and whether it is the Owner. */
+function writerOf(
+  req?: Request & { user?: IAuthTokenPayload },
+): ISettingWriter {
+  const sub = typeof req?.user?.sub === 'string' ? req.user.sub : '';
+  return {
+    userId: sub && !sub.startsWith('agent:') ? sub : null,
+    owner: rolesAdmit([UserRoleTypes.Owner], heldRoles(req?.user)),
+  };
+}
 
 @ApiTags('settings')
 @Controller('settings')
@@ -69,16 +93,53 @@ export class SettingController {
     @Param('group') group: string,
     @Param('name') name: string,
     @Body() dto: UpsertSettingDto,
+    @Req() req?: Request & { user?: IAuthTokenPayload },
   ) {
-    const result = await this.gateway.upsert(group, name, dto);
+    this.assertMayWrite(group, name, req);
+    // Through `writeBy`: when it is not the Owner who writes, the Ranch
+    // assistant keeps the value this setting had (CLEAN-271).
+    const result = await writeSettingBy(
+      this.gateway,
+      group,
+      name,
+      dto,
+      writerOf(req),
+    );
     if (group === 'infrastructure') this.infraConfig.invalidate();
     return result;
   }
 
   @Delete(':group/:name')
   @ApiOperation({ summary: 'Delete a setting' })
-  async remove(@Param('group') group: string, @Param('name') name: string) {
-    await this.gateway.delete(group, name);
+  async remove(
+    @Param('group') group: string,
+    @Param('name') name: string,
+    @Req() req?: Request & { user?: IAuthTokenPayload },
+  ) {
+    this.assertMayWrite(group, name, req);
+    await writeSettingBy(this.gateway, group, name, null, writerOf(req));
     if (group === 'infrastructure') this.infraConfig.invalidate();
+  }
+
+  /**
+   * The `rancher` group (the bookkeeping of the Ranch assistant's template)
+   * and `agent_defaults.image` (the image that template is generated with)
+   * are written by the Owner only (CLEAN-271, `ownerOnlySettings.ts`).
+   * Every other setting is as it was.
+   */
+  private assertMayWrite(
+    group: string,
+    name: string,
+    req?: Request & { user?: IAuthTokenPayload },
+  ): void {
+    const message = ownerOnlySettingRefusal(group, name);
+    if (!message) return;
+    if (rolesAdmit([UserRoleTypes.Owner], heldRoles(req?.user))) return;
+    throw new ForbiddenException({
+      statusCode: 403,
+      error: 'Forbidden',
+      code: OWNER_ONLY_SETTING_CODE,
+      message,
+    });
   }
 }

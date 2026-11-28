@@ -8,6 +8,19 @@ export const CLEANSLICE_MCP_ID = 'mcp-cleanslice';
 export const DOCUMENTS_MCP_ID = 'mcp-documents';
 
 /**
+ * The built-ins an agent is handed whatever its template attaches
+ * (`AgentMcpResolver`): CleanSlice and Documents always, Knowledge once the
+ * agent has a knowledge base. They are therefore part of what EVERY agent is
+ * built from, the Ranch assistant included, which is why only the Owner
+ * changes them (CLEAN-271, `AssistantBuildService`).
+ */
+export const INJECTED_MCP_IDS: readonly string[] = [
+  CLEANSLICE_MCP_ID,
+  DOCUMENTS_MCP_ID,
+  KNOWLEDGE_MCP_ID,
+];
+
+/**
  * The address every deployment was seeded with before this fix. It names a
  * host and a port that exist nowhere — not in the cluster, where the api
  * Service is `ranch-api` in `platform`, and not in the k3d local setup, whose

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 
 // Setup slices
@@ -11,6 +11,9 @@ import { InitModule } from './slices/setup/init/init.module';
 import { AgentModule } from './slices/agent/agent/agent.module';
 import { AgentPermissionModule } from './slices/agent/agent/agentPermission.module';
 import { AgentManageGuard } from './slices/agent/agent/guards';
+import { AssistantBuildModule } from './slices/agent/assistantBuild/assistantBuild.module';
+import { AssistantBuildGuard } from './slices/agent/assistantBuild/guards';
+import { AssistantSettingInterceptor } from './slices/agent/assistantBuild/assistantSetting.interceptor';
 import { AgentPinModule } from './slices/agent/pin/agentPin.module';
 import { AgentAccessModule } from './slices/user/agentAccess/agentAccess.module';
 import { AssistantAccessModule } from './slices/user/assistantAccess/assistantAccess.module';
@@ -79,6 +82,7 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     TemplateInstallModule,
     AgentModule,
     AgentPermissionModule,
+    AssistantBuildModule,
     AgentAccessModule,
     AssistantAccessModule,
     AgentPinModule,
@@ -176,6 +180,18 @@ import { UserBrowserStateModule } from './slices/user/browserState/browserState.
     // management. agentScopedRoutes.spec.ts pins that every route naming an
     // agent carries one of the two markers or a stated exemption.
     { provide: APP_GUARD, useClass: AgentAccessGuard },
+    // What the Ranch assistant is built from (CLEAN-271). Acts only on
+    // routes marked @ChangesAssistantIngredient(kind, param): a write to a
+    // template, skill, tool server, model credential or knowledge base the
+    // assistant is built from is the Owner's, and anybody else gets a 403
+    // with code ASSISTANT_BUILT_FROM. assistantBuildRoutes.spec.ts pins that
+    // every writing route of those slices carries the marker, asks the rule
+    // in its method, or is exempt with a reason.
+    { provide: APP_GUARD, useClass: AssistantBuildGuard },
+    // A request made for the Ranch assistant (it names the assistant, or
+    // carries its runtime's token) reads the settings the Owner approved,
+    // not the live ones (CLEAN-271). Costs nothing for any other request.
+    { provide: APP_INTERCEPTOR, useClass: AssistantSettingInterceptor },
   ],
 })
 export class AppModule {}

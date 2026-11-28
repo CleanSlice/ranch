@@ -15,6 +15,8 @@ const props = defineProps<{
   loadError: string | null;
   saveError: string | null;
   dirty: boolean;
+  /** The whole template is read-only for this viewer (CLEAN-271). */
+  readOnly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -23,7 +25,10 @@ const emit = defineEmits<{
 }>();
 
 const editable = computed(
-  () => !!props.path && (props.path.endsWith('.md') || props.path.endsWith('.json')),
+  () =>
+    !props.readOnly &&
+    !!props.path &&
+    (props.path.endsWith('.md') || props.path.endsWith('.json')),
 );
 
 function onInput(e: Event) {
@@ -69,13 +74,14 @@ function onInput(e: Event) {
           <p v-if="saveError" class="truncate text-xs text-destructive" :title="saveError">
             {{ saveError }}
           </p>
+          <p v-else-if="readOnly" class="text-xs text-muted-foreground">Read only</p>
           <p v-else-if="!editable" class="text-xs text-muted-foreground">
             Read only — only .md and .json template files can be edited
           </p>
           <p v-else-if="dirty" class="text-xs text-muted-foreground">Unsaved changes</p>
           <p v-else class="text-xs text-muted-foreground">Saved</p>
 
-          <Button size="sm" :disabled="!editable || !dirty || saving" @click="emit('save')">
+          <Button v-if="!readOnly" size="sm" :disabled="!editable || !dirty || saving" @click="emit('save')">
             <IconDeviceFloppy class="size-4" :class="saving && 'animate-pulse'" />
             Save
           </Button>

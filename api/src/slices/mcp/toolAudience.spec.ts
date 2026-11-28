@@ -51,6 +51,8 @@ const SLICES = join(__dirname, '..');
 const CLASS_AUDIENCE: Record<string, ToolAudienceTypes> = {
   'agent/agent/agentAdmin.tool.ts': 'admin',
   'agent/agentChannel/agentChannel.tool.ts': 'manage-agent',
+  // GET /rancher/settings, POST /rancher/settings/apply: @Roles(Owner) (CLEAN-271).
+  'agent/assistantBuild/assistantSetting.tool.ts': 'owner',
   'agent/event/agentEvent.tool.ts': 'admin',
   'agent/file/file.tool.ts': 'manage-agent',
   'agent/limit/agentLimit.tool.ts': 'admin',

@@ -7,6 +7,7 @@ import { groupMeta } from '#skill/domain/skill.groups';
 import type { SkillLayout } from '#skill/composables/useSkillLayout';
 import { isRecent } from '#skill/utils/editTime';
 import { formatTokens } from '#skill/utils/formatTokens';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 const props = defineProps<{
   skill: ISkillData;
@@ -25,6 +26,10 @@ const props = defineProps<{
   /** Ticks once a minute so the green dot ages out without a reload. */
   now: Date;
 }>();
+
+// A skill the Ranch assistant ships is the Owner's to change (CLEAN-271):
+// for anybody else the row opens it to read, and offers no Delete.
+const { locked } = useBuiltFrom(() => props.skill);
 
 const emit = defineEmits<{
   select: [];
@@ -128,7 +133,7 @@ const showHandle = computed(() => props.layout !== 'phone' || props.dragEnabled)
 
     <div class="shrink-0 self-start" @click.stop>
       <Button v-if="layout !== 'phone'" size="sm" variant="outline" as-child>
-        <NuxtLink :to="`/skills/${skill.id}/edit`">Edit</NuxtLink>
+        <NuxtLink :to="`/skills/${skill.id}/edit`">{{ locked ? 'View' : 'Edit' }}</NuxtLink>
       </Button>
       <DropdownMenu v-else>
         <DropdownMenuTrigger as-child>
@@ -144,9 +149,9 @@ const showHandle = computed(() => props.layout !== 'phone' || props.dragEnabled)
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem as-child>
-            <NuxtLink :to="`/skills/${skill.id}/edit`">Edit</NuxtLink>
+            <NuxtLink :to="`/skills/${skill.id}/edit`">{{ locked ? 'View' : 'Edit' }}</NuxtLink>
           </DropdownMenuItem>
-          <DropdownMenuItem class="text-destructive" @select="emit('delete')">Delete</DropdownMenuItem>
+          <DropdownMenuItem v-if="!locked" class="text-destructive" @select="emit('delete')">Delete</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

@@ -57,7 +57,11 @@ const CHANGED_TEXT = 'Someone else changed this access in the meantime. Reload i
 const users = (await api('/users', { as: OWNER })).body;
 const idOf = (who) => users.find((u) => u.email === who.email)?.id;
 const ids = { owner: idOf(OWNER), admin: idOf(ADMIN_USER), user: idOf(USER), user2: idOf(USER2) };
-const agents = (await api('/agents', { as: OWNER })).body;
+// The agents the lists are about. The Ranch admin agent is not one of them
+// since CLEAN-240 (Editor.vue: "The assistant is not one of the agents these
+// lists are about"): it has a block of its own above the rows.
+const everyAgent = (await api('/agents', { as: OWNER })).body;
+const agents = everyAgent.filter((a) => !a.isAdmin);
 
 const accessOf = async (userId) => (await api(`/users/${userId}/agent-access`, { as: OWNER })).body;
 const putAccess = (userId, body) => api(`/users/${userId}/agent-access`, { method: 'PUT', as: OWNER, body });
@@ -139,7 +143,11 @@ try {
 
     // --------------------------------------------------------- the editor
     await openUser(page, ids.user2);
-    check((await count(page, '[data-access-row]')) === agents.length, `one row per agent (${await count(page, '[data-access-row]')} of ${agents.length})`);
+    check((await count(page, '[data-access-row]')) === agents.length, `one row per agent of the lists (${await count(page, '[data-access-row]')} of ${agents.length})`);
+    check(
+      agents.length === everyAgent.length - 1 && (await count(page, `[data-access-row="${AGENTS.ranch.id}"]`)) === 0,
+      'and none for the Ranch admin agent, which no list governs: it is set by its own switch',
+    );
     const choices = await row(page, AGENTS.a).locator('[data-access-choice]').evaluateAll((els) => els.map((e) => `${e.getAttribute('data-access-choice')}:${e.textContent.trim()}`).join(' '));
     check(choices === 'none:Default allowed:Allowed denied:Denied', `a row has one three-way choice (${choices})`);
     check(/running/i.test(await textOf(page, `[data-access-row="${AGENTS.a.id}"] [data-access-status]`)), `the row shows the agent's status ("${await textOf(page, `[data-access-row="${AGENTS.a.id}"] [data-access-status]`)}")`);
@@ -171,8 +179,13 @@ try {
     check((await count(page, '[data-access-confirm]')) === 0, 'limiting an account asks for no confirmation');
     stored = await accessOf(ids.user2);
     check(sorted(stored.allowed) === AGENTS.b.id && sorted(stored.denied) === AGENTS.a.id && stored.outcome.kind === 'only', `saved: only ${AGENTS.b.name}, ${AGENTS.a.name} still denied`);
-    const reached = (await api('/agents', { as: USER2 })).body.map((a) => a.name).join(',');
-    check(reached === AGENTS.b.name, `the second User now reads only ${AGENTS.b.name} from GET /agents (${reached})`);
+    const reachedNow = (await api('/agents', { as: USER2 })).body;
+    const reached = reachedNow.filter((a) => !a.isAdmin).map((a) => a.name).join(',');
+    check(reached === AGENTS.b.name, `the second User now reads only ${AGENTS.b.name} of the agents of the lists from GET /agents (${reached})`);
+    check(
+      reachedNow.filter((a) => a.isAdmin).map((a) => a.id).join() === AGENTS.ranch.id,
+      'and the assistant, which the lists neither give nor take away',
+    );
     await page.locator('[data-access-card]').scrollIntoViewIfNeeded();
     await shot(page, `owner-editor-limited-${width}`);
 

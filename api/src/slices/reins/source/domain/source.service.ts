@@ -214,7 +214,9 @@ export class SourceService {
       throw new NotFoundException(`Source ${sourceId} not found`);
     }
     if (source.type !== 'file' || source.mimeType !== 'application/pdf') {
-      throw new BadRequestException('Only PDF file sources can be re-extracted');
+      throw new BadRequestException(
+        'Only PDF file sources can be re-extracted',
+      );
     }
     await this.extraction.schedule(source);
   }
@@ -241,6 +243,19 @@ export class SourceService {
       name: data.name,
       content: data.content,
     });
+  }
+
+  /**
+   * `delete`, for a caller that named the base: a source of another base
+   * is not found. The route names the base in its path and the access rule
+   * is asked about that base (CLEAN-271), so the two must agree.
+   */
+  async deleteIn(knowledgeId: string, sourceId: string): Promise<void> {
+    const source = await this.gateway.findById(sourceId);
+    if (!source || source.knowledgeId !== knowledgeId) {
+      throw new NotFoundException(`Source ${sourceId} not found`);
+    }
+    await this.delete(sourceId);
   }
 
   async delete(id: string): Promise<void> {

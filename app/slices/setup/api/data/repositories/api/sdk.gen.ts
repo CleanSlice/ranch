@@ -27,16 +27,20 @@ import type {
   ApiKeyControllerRemoveData,
   ApiKeyControllerRemoveResponse,
   LlmControllerFindAllData,
+  LlmControllerFindAllResponse,
   LlmControllerCreateData,
   LlmControllerRemoveData,
   LlmControllerFindByIdData,
+  LlmControllerFindByIdResponse,
   LlmControllerUpdateData,
   HealthCheckLlmCredentialData,
   HealthCheckLlmCredentialResponse,
   TemplateControllerFindAllData,
+  TemplateControllerFindAllResponse,
   TemplateControllerCreateData,
   TemplateControllerRemoveData,
   TemplateControllerFindByIdData,
+  TemplateControllerFindByIdResponse,
   TemplateControllerUpdateData,
   TemplateControllerSetSkillsData,
   TemplateControllerSetMcpsData,
@@ -156,11 +160,13 @@ import type {
   GetAgentLoadData,
   GetAgentLoadResponse,
   McpServerControllerFindAllData,
+  McpServerControllerFindAllResponse,
   McpServerControllerCreateData,
   McpServerControllerListToolsData,
   McpServerControllerListToolsResponse,
   McpServerControllerRemoveData,
   McpServerControllerFindByIdData,
+  McpServerControllerFindByIdResponse,
   McpServerControllerUpdateData,
   GetKnowledgesData,
   GetKnowledgesResponse,
@@ -197,6 +203,7 @@ import type {
   DeleteKnowledgeSourceData,
   DeleteKnowledgeSourceResponse,
   SkillControllerFindAllData,
+  SkillControllerFindAllResponse,
   SkillControllerCreateData,
   GetSkillOrderData,
   GetSkillOrderResponse,
@@ -210,6 +217,7 @@ import type {
   SkillControllerImportFromGithubData,
   SkillControllerRemoveData,
   SkillControllerFindByIdData,
+  SkillControllerFindByIdResponse,
   SkillControllerUpdateData,
   FindDependentAgentsData,
   UserControllerFindAllData,
@@ -276,6 +284,10 @@ import type {
   PaddockScenarioControllerFindByIdData,
   PaddockScenarioControllerUpdateData,
   PaddockScenarioControllerGenerateData,
+  GetAssistantSettingsData,
+  GetAssistantSettingsResponse,
+  ApplySettingsToAssistantData,
+  ApplySettingsToAssistantResponse,
   GetUserAgentAccessData,
   GetUserAgentAccessResponse,
   SetUserAgentAccessData,
@@ -776,7 +788,7 @@ export class LlmsService {
     options?: Options<LlmControllerFindAllData, ThrowOnError>,
   ) {
     return (options?.client ?? _heyApiClient).get<
-      unknown,
+      LlmControllerFindAllResponse,
       unknown,
       ThrowOnError
     >({
@@ -828,7 +840,7 @@ export class LlmsService {
     options: Options<LlmControllerFindByIdData, ThrowOnError>,
   ) {
     return (options.client ?? _heyApiClient).get<
-      unknown,
+      LlmControllerFindByIdResponse,
       unknown,
       ThrowOnError
     >({
@@ -838,7 +850,7 @@ export class LlmsService {
   }
 
   /**
-   * Update an LLM credential
+   * Update an LLM credential. The credential the Ranch assistant runs on is the Owner’s to change or delete: 403 ASSISTANT_BUILT_FROM for anybody else (CLEAN-271).
    */
   public static llmControllerUpdate<ThrowOnError extends boolean = false>(
     options: Options<LlmControllerUpdateData, ThrowOnError>,
@@ -882,7 +894,7 @@ export class TemplatesService {
     options?: Options<TemplateControllerFindAllData, ThrowOnError>,
   ) {
     return (options?.client ?? _heyApiClient).get<
-      unknown,
+      TemplateControllerFindAllResponse,
       unknown,
       ThrowOnError
     >({
@@ -934,7 +946,7 @@ export class TemplatesService {
     ThrowOnError extends boolean = false,
   >(options: Options<TemplateControllerFindByIdData, ThrowOnError>) {
     return (options.client ?? _heyApiClient).get<
-      unknown,
+      TemplateControllerFindByIdResponse,
       unknown,
       ThrowOnError
     >({
@@ -944,7 +956,7 @@ export class TemplatesService {
   }
 
   /**
-   * Update a template
+   * Update a template. A template the Ranch assistant is built from is the Owner’s to change: 403 ASSISTANT_BUILT_FROM for anybody else (CLEAN-271); so are its skills, MCP servers, tools, files and its deletion.
    */
   public static templateControllerUpdate<ThrowOnError extends boolean = false>(
     options: Options<TemplateControllerUpdateData, ThrowOnError>,
@@ -2357,7 +2369,7 @@ export class McpServersService {
     ThrowOnError extends boolean = false,
   >(options?: Options<McpServerControllerFindAllData, ThrowOnError>) {
     return (options?.client ?? _heyApiClient).get<
-      unknown,
+      McpServerControllerFindAllResponse,
       unknown,
       ThrowOnError
     >({
@@ -2425,7 +2437,7 @@ export class McpServersService {
     ThrowOnError extends boolean = false,
   >(options: Options<McpServerControllerFindByIdData, ThrowOnError>) {
     return (options.client ?? _heyApiClient).get<
-      unknown,
+      McpServerControllerFindByIdResponse,
       unknown,
       ThrowOnError
     >({
@@ -2435,7 +2447,7 @@ export class McpServersService {
   }
 
   /**
-   * Update an MCP server.
+   * Update an MCP server. A server the Ranch assistant is handed (attached to its template, or one of the built-ins every agent gets) receives its calls, and the Ranch server its token: 403 ASSISTANT_BUILT_FROM for anybody but the Owner, here and on DELETE (CLEAN-271).
    */
   public static mcpServerControllerUpdate<ThrowOnError extends boolean = false>(
     options: Options<McpServerControllerUpdateData, ThrowOnError>,
@@ -2589,7 +2601,7 @@ export class KnowledgesService {
   }
 
   /**
-   * Update knowledge
+   * Update knowledge. A base the Ranch assistant retrieves from is the Owner’s to change, index or delete, and so are its sources: 403 ASSISTANT_BUILT_FROM for anybody else (CLEAN-271).
    */
   public static updateKnowledge<ThrowOnError extends boolean = false>(
     options: Options<UpdateKnowledgeData, ThrowOnError>,
@@ -2848,7 +2860,7 @@ export class SkillsService {
     options?: Options<SkillControllerFindAllData, ThrowOnError>,
   ) {
     return (options?.client ?? _heyApiClient).get<
-      unknown,
+      SkillControllerFindAllResponse,
       unknown,
       ThrowOnError
     >({
@@ -3024,7 +3036,7 @@ export class SkillsService {
     options: Options<SkillControllerFindByIdData, ThrowOnError>,
   ) {
     return (options.client ?? _heyApiClient).get<
-      unknown,
+      SkillControllerFindByIdResponse,
       unknown,
       ThrowOnError
     >({
@@ -3034,7 +3046,7 @@ export class SkillsService {
   }
 
   /**
-   * Update a skill (409 SKILL_EXISTS when a new name is taken)
+   * Update a skill (409 SKILL_EXISTS when a new name is taken). A skill the Ranch assistant’s template ships is the Owner’s to change or delete: 403 ASSISTANT_BUILT_FROM for anybody else (CLEAN-271).
    */
   public static skillControllerUpdate<ThrowOnError extends boolean = false>(
     options: Options<SkillControllerUpdateData, ThrowOnError>,
@@ -3540,7 +3552,7 @@ export class TemplateFilesService {
   }
 
   /**
-   * Save a template file (.md / .json only)
+   * Save a template file (.md / .json only). The files of a template the Ranch assistant is built from are its instructions at the next restart: 403 ASSISTANT_BUILT_FROM for anybody but the Owner (CLEAN-271).
    */
   public static templateFileControllerSave<
     ThrowOnError extends boolean = false,
@@ -3687,6 +3699,76 @@ export class PaddockScenariosService {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+    });
+  }
+}
+
+export class RancherService {
+  /**
+   * Which settings differ, live, from the values the Ranch assistant is deployed from (the ones the Owner approved): the key, what happened (changed, added, removed), who and when. Never a value. Owner only.
+   */
+  public static getAssistantSettings<ThrowOnError extends boolean = false>(
+    options?: Options<GetAssistantSettingsData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      GetAssistantSettingsResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/rancher/settings",
+      ...options,
+    });
+  }
+
+  /**
+   * Make the live values of the settings the Owner was shown the approved ones: the Ranch assistant is served them from its next restart. The body carries the list as it was read; when it differs from the list now (a setting changed again, another was changed), nothing is applied and the answer is 409 SETTINGS_CHANGED. Answers the keys that moved. Owner only.
+   */
+  public static applySettingsToAssistant<ThrowOnError extends boolean = false>(
+    options: Options<ApplySettingsToAssistantData, ThrowOnError>,
+  ) {
+    return (options.client ?? _heyApiClient).post<
+      ApplySettingsToAssistantResponse,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/rancher/settings/apply",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  }
+
+  /**
+   * Stepper state for the Rancher setup wizard: do we have an LLM, storage, the special template, and an admin agent (`hasAdmin`)? `admin` is the Ranch admin agent as the caller may read it: null for a caller whose access lists do not reach it, without configuration for a caller who may not manage it (an Admin), whole for the Owner (CLEAN-231).
+   */
+  public static rancherControllerStatus<ThrowOnError extends boolean = false>(
+    options?: Options<RancherControllerStatusData, ThrowOnError>,
+  ) {
+    return (options?.client ?? _heyApiClient).get<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/rancher/status",
+      ...options,
+    });
+  }
+
+  /**
+   * Create the special Rancher template (idempotent). Returns the existing one if already created. Owner only: it is what the Ranch assistant is built from (CLEAN-271).
+   */
+  public static rancherControllerEnsureTemplate<
+    ThrowOnError extends boolean = false,
+  >(options?: Options<RancherControllerEnsureTemplateData, ThrowOnError>) {
+    return (options?.client ?? _heyApiClient).post<
+      unknown,
+      unknown,
+      ThrowOnError
+    >({
+      url: "/rancher/template",
+      ...options,
     });
   }
 }
@@ -4336,40 +4418,6 @@ export class StatsService {
       ThrowOnError
     >({
       url: "/stats/installation",
-      ...options,
-    });
-  }
-}
-
-export class RancherService {
-  /**
-   * Stepper state for the Rancher setup wizard: do we have an LLM, storage, the special template, and an admin agent (`hasAdmin`)? `admin` is the Ranch admin agent as the caller may read it: null for a caller whose access lists do not reach it, without configuration for a caller who may not manage it (an Admin), whole for the Owner (CLEAN-231).
-   */
-  public static rancherControllerStatus<ThrowOnError extends boolean = false>(
-    options?: Options<RancherControllerStatusData, ThrowOnError>,
-  ) {
-    return (options?.client ?? _heyApiClient).get<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/rancher/status",
-      ...options,
-    });
-  }
-
-  /**
-   * Create the special Rancher template (idempotent). Returns the existing one if already created.
-   */
-  public static rancherControllerEnsureTemplate<
-    ThrowOnError extends boolean = false,
-  >(options?: Options<RancherControllerEnsureTemplateData, ThrowOnError>) {
-    return (options?.client ?? _heyApiClient).post<
-      unknown,
-      unknown,
-      ThrowOnError
-    >({
-      url: "/rancher/template",
       ...options,
     });
   }

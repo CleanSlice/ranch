@@ -1,9 +1,14 @@
+import {
+  WITHHELD_SECRET,
+  withholdEnv,
+} from '#/agent/assistantBuild/domain/assistantBuild.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   agentNotFound,
+  assistantBuildFor,
   OWNER_MANAGED_NOTE,
   callerManagesAgents,
   callerParty,
@@ -467,7 +472,22 @@ export class AgentAdminTool implements IConditionallyListedTool {
       'The environment an agent’s pod runs with',
     );
     if (refusal) return refusal;
-    const env = await this.workflows.previewAgentEnv(agent);
+    // An agent may run on the credential, or be handed a server, the Ranch
+    // assistant is built from. A key is masked by its name below; the
+    // servers travel as base64 under a name that says nothing, so the
+    // credential of each one the assistant is handed is withheld here for
+    // anybody but the Owner (CLEAN-271).
+    const build = assistantBuildFor(httpRequest);
+    const preview = await this.workflows.previewAgentEnv(agent);
+    const env = !build
+      ? preview
+      : build.unknown
+        ? preview.map((v) =>
+            v.name === 'MCP_SERVERS_B64' && v.value
+              ? { ...v, value: WITHHELD_SECRET }
+              : v,
+          )
+        : withholdEnv(agent, preview, build);
     return ok(
       env.map((v) => ({
         name: v.name,

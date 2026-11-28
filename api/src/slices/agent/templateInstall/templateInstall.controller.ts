@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Body,
+  Req,
   UploadedFile,
   UseInterceptors,
   BadRequestException,
@@ -14,7 +15,13 @@ import {
   ApiOkResponse,
   ApiBody,
 } from '@nestjs/swagger';
-import { TemplateInstallService } from './domain/templateInstall.service';
+import type { Request } from 'express';
+import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
+import { AssistantBuildService } from '#/agent/assistantBuild/domain/assistantBuild.service';
+import {
+  TemplateInstallService,
+  type InstallGuard,
+} from './domain/templateInstall.service';
 import { IInstallParamValues } from './domain';
 import { InstallPreviewDto, InstallResultDto, InstallFromGitDto } from './dtos';
 
@@ -28,7 +35,29 @@ interface UploadedFileLike {
 @ApiTags('templates')
 @Controller('templates/install')
 export class TemplateInstallController {
-  constructor(private readonly service: TemplateInstallService) {}
+  constructor(
+    private readonly service: TemplateInstallService,
+    private readonly build: AssistantBuildService,
+  ) {}
+
+  /**
+   * An install names the template it replaces in its manifest, so the id is
+   * known only once the archive is read: the service asks back before it
+   * writes (CLEAN-271). An archive whose manifest carries the id of a
+   * template the Ranch assistant is built from, or that would register a
+   * tool server under an id the assistant is handed, is the Owner's to
+   * install: 403 ASSISTANT_BUILT_FROM for anybody else, nothing written.
+   */
+  private guardFor(req?: Request & { user?: IAuthTokenPayload }): InstallGuard {
+    return async (plan) => {
+      await this.build.assertMayChange(req?.user, 'template', plan.templateId);
+      await this.build.assertMayChange(
+        req?.user,
+        'mcpServer',
+        ...plan.createsMcpServerIds,
+      );
+    };
+  }
 
   @Post('preview')
   @ApiOperation({
@@ -100,12 +129,14 @@ export class TemplateInstallController {
     @UploadedFile() archive: UploadedFileLike | undefined,
     @Body('params') params?: string,
     @Body('secrets') secrets?: string,
+    @Req() req?: Request & { user?: IAuthTokenPayload },
   ): Promise<InstallResultDto> {
     const buf = this.requireZip(archive);
     return this.service.install(
       buf,
       this.parseParams(params),
       this.parseSecrets(secrets),
+      this.guardFor(req),
     );
   }
 
@@ -141,12 +172,16 @@ export class TemplateInstallController {
     operationId: 'installTemplateFromGit',
   })
   @ApiOkResponse({ type: InstallResultDto })
-  installFromGit(@Body() dto: InstallFromGitDto): Promise<InstallResultDto> {
+  installFromGit(
+    @Body() dto: InstallFromGitDto,
+    @Req() req?: Request & { user?: IAuthTokenPayload },
+  ): Promise<InstallResultDto> {
     return this.service.installFromGit(
       dto.gitUrl,
       dto.gitRef,
       dto.params ?? {},
       dto.secrets ?? {},
+      this.guardFor(req),
     );
   }
 

@@ -79,6 +79,17 @@ export interface IRunPaddockEvaluationData {
   judgeOverride?: Partial<IPaddockJudgeConfig>;
 }
 
+/** Who starts an evaluation, as far as its scenarios are concerned. */
+export interface IPaddockRunScope {
+  /**
+   * Whether the scenarios of `templateId` are kept from the person who
+   * starts the run: those of a template the Ranch assistant is built from,
+   * for anybody but the Owner (CLEAN-271). They are left out of the run, so
+   * that its snapshot, which that person reads, does not hold them.
+   */
+  hidesTemplate?: (templateId: string) => boolean;
+}
+
 export interface IUpdatePaddockEvaluationData {
   status?: PaddockEvaluationStatus;
   finishedAt?: Date | null;

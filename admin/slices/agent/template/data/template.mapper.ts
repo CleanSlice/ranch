@@ -45,6 +45,8 @@ export class TemplateMapper {
       mcpServerIds: strList(o.mcpServerIds),
       // An older API build sends none → every tool (CLEAN-209).
       toolAllowlist: Array.isArray(o.toolAllowlist) ? strList(o.toolAllowlist) : null,
+      // An older API build sends none: nothing is locked.
+      assistantDependency: o.assistantDependency === true,
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
     };

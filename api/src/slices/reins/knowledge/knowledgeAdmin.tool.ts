@@ -8,8 +8,11 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  BUILT_FROM_NOTE,
+  builtFromRefusal,
   callerIsOperator,
   CONFIRM_SENTENCE,
+  isBuiltIntoAssistant,
   confirmed,
   err,
   ok,
@@ -311,7 +314,8 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
     description:
       'Rename a knowledge base or change its description. Pass only what ' +
       'changes; a null description clears it. Content is not touched — use ' +
-      'the source tools for that. Returns the updated base.',
+      'the source tools for that. Returns the updated base. ' +
+      BUILT_FROM_NOTE,
     parameters: z.object({
       id: z.string().describe('Knowledge base id (list_knowledges has them)'),
       name: z.string().min(1).optional(),
@@ -335,6 +339,8 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
     if (name === undefined && description === undefined) {
       return err('Nothing to change: pass a name and/or a description.');
     }
+    const builtFrom = await this.builtFrom(httpRequest, id);
+    if (builtFrom) return builtFrom;
     return this.whenConfigured(id, async () =>
       ok(await this.service.update(id, { name, description })),
     );
@@ -356,6 +362,8 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
       'setting is per base, never per document, and is "closed" until ' +
       'someone opens it. Closing takes effect for every answer already ' +
       'shown. The platform team can always open documents. ' +
+      BUILT_FROM_NOTE +
+      ' ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       id: z.string().describe('Knowledge base id (list_knowledges has them)'),
@@ -376,6 +384,8 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
     const { id, access } = args;
+    const builtFrom = await this.builtFrom(httpRequest, id);
+    if (builtFrom) return builtFrom;
     return this.whenConfigured(id, async () => {
       // Resolved before the confirmation check, so a wrong id is reported as
       // "not found" instead of as a request for confirmation.
@@ -411,7 +421,8 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
       'retried, so this is also the way to retry a failed run. Returns at ' +
       'once; watch progress with get_knowledge (indexStatus) and ' +
       'get_knowledge_overview (counts). Refused while a run that has not ' +
-      'exhausted its time budget is still going.',
+      'exhausted its time budget is still going. ' +
+      BUILT_FROM_NOTE,
     parameters: z.object({
       id: z.string().describe('Knowledge base id (list_knowledges has them)'),
     }),
@@ -422,6 +433,8 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
+    const builtFrom = await this.builtFrom(httpRequest, id);
+    if (builtFrom) return builtFrom;
     return this.whenConfigured(id, async () => {
       await this.service.startIndex(id);
       this.logger.log(`Index run started through MCP: knowledge=${id}`);
@@ -445,6 +458,8 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
       'retrieval instance. Not reversible: the stored files and the ' +
       'extracted graph are gone. Agents bound to it simply stop finding it ' +
       '— bind them to another base afterwards if they need one. ' +
+      BUILT_FROM_NOTE +
+      ' ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       id: z.string().describe('Knowledge base id (list_knowledges has them)'),
@@ -460,6 +475,8 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
     const { id } = args;
+    const builtFrom = await this.builtFrom(httpRequest, id);
+    if (builtFrom) return builtFrom;
     return this.whenConfigured(id, async () => {
       // Resolved before the confirmation check, so a wrong id is reported as
       // "not found" instead of as a request for confirmation.
@@ -484,6 +501,24 @@ export class KnowledgeAdminTool implements IConditionallyListedTool {
   }
 
   // ─── Plumbing ────────────────────────────────────────────────────────
+
+  /**
+   * The refusal for a knowledge base the Ranch assistant retrieves from
+   * (CLEAN-271): what it finds there is input to its turns, so renaming,
+   * reindexing, opening or deleting such a base is the Owner's. Asked before
+   * anything else, so that nothing is read, started or confirmed first.
+   */
+  private async builtFrom(
+    httpRequest: Request,
+    id: string,
+  ): Promise<ToolResult | null> {
+    if (!isBuiltIntoAssistant(httpRequest, 'knowledge', id)) return null;
+    const name = await this.service
+      .get(id)
+      .then((base) => base.name)
+      .catch(() => null);
+    return builtFromRefusal(httpRequest, 'knowledge', id, name);
+  }
 
   /**
    * The controller's `requireEnabled()` plus the two refusals every

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { IAgentData } from '#/agent/agent/domain';
-import { ISettingGateway } from '#/setting/domain';
+import { ISettingGateway, servingAssistant } from '#/setting/domain';
 import { IWorkflowGateway } from './IWorkflowGateway';
 import { IAgentEnvVar } from './workflow.types';
 
@@ -36,6 +36,16 @@ export class WorkflowService {
     image: string,
     ranchApiToken = '',
   ): Promise<string> {
+    return servingAssistant(agent.isAdmin, () =>
+      this.submit(agent, image, ranchApiToken),
+    );
+  }
+
+  private submit(
+    agent: IAgentData,
+    image: string,
+    ranchApiToken: string,
+  ): Promise<string> {
     return this.workflowGateway.submit({
       agentId: agent.id,
       agentName: agent.name,
@@ -58,6 +68,13 @@ export class WorkflowService {
    * deploy-time values, irrelevant to a preview.
    */
   async previewAgentEnv(agent: IAgentData): Promise<IAgentEnvVar[]> {
+    // The preview is "what the pod gets on its next deploy", so for the
+    // Ranch assistant it is built from the approved settings, as the deploy
+    // is (CLEAN-271).
+    return servingAssistant(agent.isAdmin, () => this.previewEnv(agent));
+  }
+
+  private previewEnv(agent: IAgentData): Promise<IAgentEnvVar[]> {
     return this.workflowGateway.previewEnv({
       agentId: agent.id,
       agentName: agent.name,

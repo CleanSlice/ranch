@@ -481,6 +481,8 @@ words for what they asked:
   link, an agent-wide tool server), `'conversations'`, `'records'` or
   `'evaluations'` (CLEAN-268, "The assistant's records" below). A new kind
   is a new entry in `OWNER_ONLY_CAN` in `#/mcp/tooling`, and nothing else.
+  `'built_from'` (CLEAN-271) is said about a thing the assistant is built
+  from, by `builtFromRefusal`: "What the assistant is built from" below.
 - Every chat tool answers it: `list_chats` and `sync_chats` for the
   assistant's agent id (`agentNotFound(httpRequest, id, 'conversations')`),
   `get_chat`, `get_chat_messages`, `summarize_chat` and `export_chat` for
@@ -612,6 +614,213 @@ server. `narrowedLists.spec.ts` reads every writing tool that names an
 agent, or asks the reach, without going through `manageable`, and fails
 until each is filed as one or the other.
 
+#### What the assistant is built from (CLEAN-271)
+
+**Its template's scenarios too.** A paddock scenario is text that is sent to
+an agent when an evaluation runs: its messages are the turns, its `setup`
+writes files and environment variables into the sandbox the agent is started
+in. The scenarios scoped to a template the assistant is built from run
+whenever the Owner evaluates the assistant, so they are the Owner's: for
+anybody else `create_paddock_scenario`, `update_paddock_scenario`,
+`delete_paddock_scenario` and `generate_paddock_scenarios` answer
+`reason: "owner_only"` (`builtFromScenariosRefusal`), the routes 403
+`ASSISTANT_BUILT_FROM` on a write that names the template and 404 by id, and
+the reads leave them out and say so, as the assistant's own scenarios are
+read since CLEAN-268. An evaluation runs the scenarios of its own agent and
+no others: a scenario named by id from another scope is not copied into the
+run's snapshot, and a run started by anybody but the Owner leaves the
+scenarios of the assistant's template out of an ordinary agent that sits on
+it. A run keeps a copy of its scenarios, and everything else it holds is
+about them (results, counts, a trace, a report, a log, the runner's error
+text), so a run that holds one of those scenarios is not taken apart: for
+anybody but the Owner it does not exist. Every read of it and every action
+on it (get, scenario result, report, trace, logs, rerun, abort) answers as
+for an evaluation that does not exist, and the lists leave it out; one
+question, asked in `PaddockEvaluationService.getById`. Only an agent that
+sits on a template the assistant is built from can have such a run, and
+only the Owner can start one. The log of a run is kept per run, under the
+evaluation's id, never per agent. The download of such a template has no
+scenarios for anybody but the Owner. A template archive never makes a tool
+server `builtIn`.
+
+Managing the assistant is the Owner's. Its pod, though, is put together at
+every restart from things that are not the agent, and an Admin could write
+each of them: rewrite `SOUL.md` in its template, and the next restart copied
+it into the assistant, whose next scheduled turn ran as a trusted party on
+an Admin's instructions. The escalation CLEAN-232 closed on the agent was
+open through its ingredients. So: **a resource the assistant is built from
+is changed by the Owner only.**
+
+What a restart assembles (`AgentDeployService.restartAgent`,
+`ArgoWorkflowGateway.resolveManifestInput`), and who writes it:
+
+| Ingredient | How it reaches the pod | Who writes it |
+|---|---|---|
+| The agent's row: name, config, resources, debug, `templateId`, `llmCredentialId`, `knowledgeIds`, `isAdmin` | read at deploy | the Owner (`manage-agent`, `@ManagesAgent`; `set_agent_admin` is `owner`). No tool or route moves an agent to another template |
+| Its workspace files, secrets, channels | S3 under `agents/<id>/`, the secret store | the Owner (CLEAN-232) |
+| Its template: `image`, tool allowlist, default knowledge bases | `template.image` is the pod's image | the Owner (this section) |
+| The template's files | copied over the workspace at every restart (`resyncFromTemplate`) | the Owner |
+| The skills the template attaches | written to `.agent/skills/<name>/` (`syncSkillsFromTemplate`) | the Owner, the skill and the attaching both |
+| The tool servers the template attaches, and the built-ins every agent is handed (CleanSlice, Documents, Knowledge: `INJECTED_MCP_IDS`) | `MCP_SERVERS_B64` (`AgentMcpResolver`). The Ranch server is sent the assistant's token, which carries Owner | the Owner: address, credential, enabled |
+| Its model credential | `LLM_*` | the Owner |
+| Its knowledge bases and their documents | what `query_knowledge` retrieves into its turns | the Owner |
+| `rancher.seeded_hash` | a changed hash makes the next API start wipe and reseed the Rancher template | the Owner (the `rancher` setting group) |
+| `agent_defaults.image` | the image `RancherService.ensureTemplate` gives the Rancher template when the Owner generates it; read nowhere else | the Owner (that one key) |
+| The settings every pod is built with: `integrations.*` (hub address and key, bucket, S3 endpoints and keys, `ranch_api_url`, secret provider), `infrastructure.*` (where the manifest is posted), `knowledge.*`, `a2a.*` | env of every pod, and the API's own work for the agent | an Admin writes them, for every agent but the assistant: see "The settings it is deployed from" below |
+
+Which resources those are is read off the rows at the moment of the call
+(`AssistantBuildService.ingredients`, `agent/assistantBuild`): the
+assistant's row, its template, what that template attaches. Rebind the
+assistant to another credential and the old one is an ordinary credential
+again. Two things are named by the code and not by a row: the Rancher
+template (`template-rancher`), which the setup makes the assistant from and
+which is the Owner's before the assistant exists, and the injected
+built-in servers.
+
+**Tools.** The MCP handler asks once per call, for an operator who is not
+the Owner (`ASSISTANT_BUILD_RESOLVER`, the way it asks
+`AGENT_MANAGER_RESOLVER`), and notes the ids on the call's request. A tool
+asks `builtFromRefusal(httpRequest, kind, id, name)` before it writes, and
+before `confirm`:
+
+```json
+{
+  "error": "The skill «deploy» is part of what Rancher, the Ranch assistant, is built from. Only the Owner can change it.",
+  "reason": "owner_only"
+}
+```
+
+The kind is `built_from` in `OWNER_ONLY_CAN`. The assistant is named to a
+person who has it and is "the Ranch assistant" to one who does not: unlike
+the refusals above this one is said to every non-Owner, because an Admin
+without the assistant could rewrite its template just as well. A lookup that
+throws refuses every guarded write of that call (`BUILT_FROM_UNKNOWN`): an
+error must not open what the rule closes. The Owner and the assistant acting
+for itself are noted nothing and refused nothing.
+
+| Tool | Refused on |
+|---|---|
+| `update_template`, `set_template_skills`, `set_template_mcps`, `set_template_tools`, `write_template_file`, `delete_template` | the assistant's template |
+| `install_template_from_git` | a manifest whose `metadata.id` is the assistant's template, or that would register a server under an injected id. The service asks back before it writes (`InstallGuard`) |
+| `update_skill`, `delete_skill`; `import_skill`, `import_skill_from_url` with `overwrite` | a skill its template attaches. The import finds its target by slug, never by id |
+| `update_mcp_server`, `delete_mcp_server` | a server its template attaches, and each injected built-in |
+| `update_llm`, `delete_llm` | its credential |
+| `update_knowledge`, `set_knowledge_reader_access`, `index_knowledge`, `delete_knowledge`, and the five source tools | its knowledge bases, the template's defaults included |
+| `upsert_setting`, `delete_setting` | the `rancher` group, and `agent_defaults.image` |
+
+**Binding is a write.** A new skill, server, credential or base is an
+Admin's to create: it has a new id and is attached to nothing. Making it the
+assistant's is a write to the assistant's template or row, which is
+refused. Skills, servers, credentials and bases are bound by id; a skill's
+name is unique and is only the folder it is written to; no create tool or
+DTO takes an id. `restart_template_agents` and `redeploy_skill_agents`
+leave the assistant running (`skipped`), so nothing but the Owner's restart
+brings a change into it.
+
+**Routes** keep their role and answer **403** with
+`code: "ASSISTANT_BUILT_FROM"`, not a 404: an Admin reads these resources.
+A route that names its resource in the path carries
+`@ChangesAssistantIngredient(kind, param)` (`AssistantBuildGuard`, global);
+one that names it elsewhere calls `AssistantBuildService.assertMayChange`.
+`POST /rancher/template` is `@Roles(Owner)`. Lists and details carry
+`assistantDependency`, and the management console shows such a resource
+read-only with one line ("Part of what Rancher, the Ranch assistant, is
+built from: only the Owner can change it.", `useBuiltFrom`).
+
+**Its secrets are the Owner's to read.** Not being able to change a key is
+little use while one can read it, and the routes sent both in full: the key
+of the credential the assistant runs on (`GET /llms`, `/llms/:id`) and the
+credential of a server it is handed (`GET /mcp-servers`, `/mcp-servers/:id`).
+For anybody but the Owner those two fields of an ingredient hold
+`WITHHELD_SECRET`, a fixed string, never a part or the length of the value
+(`AssistantBuildService.mark`, which takes the viewer and will not compile
+without one). The same cut is made where an ordinary agent carries them:
+`GET /agents/:id/env` and `get_agent_env` of an agent that runs on the
+assistant's credential or is handed one of its servers (`LLM_API_KEY`, and
+inside `MCP_SERVERS_B64`, which no name-based mask sees), and
+`GET /agents/:id/mcps` read by a person. The runtime reading its own list
+gets it whole. An ordinary credential or server is sent to an Admin as
+before: the console's edit forms are filled from it. The tools never showed
+either field (`stripSecrets`). The assistant's service token is minted at
+deploy and written into the pod's env only: no route or tool returns it,
+the env preview is built with an empty token, and the Ranch server's row
+holds the placeholder `${RANCH_API_TOKEN}`, not a token.
+
+**The platform upgrade is not an ingredient.** `POST /upgrade` and
+`run_upgrade` (Owner, Admin) pull `origin/main` into a local checkout and
+are refused in deployed mode. They change when a release lands, not what is
+in it: nothing a caller passes reaches the assistant.
+
+**Shared resources.** The rule follows the resource, not the agent: one
+credential for every agent, the assistant included, is the Owner's to edit
+or delete; so is a template or a skill the assistant shares with ordinary
+agents, and the built-in servers for the whole Ranch.
+
+**The settings it is deployed from.** An Admin runs the installation from
+the Settings pages and keeps doing so. Several of those settings decide what
+the assistant loads and where its token goes, so the assistant is deployed
+from the values **the Owner approved**, not from the live ones
+(`AssistantSettingService`, `setting/domain/settingScope.ts`):
+
+- The groups are `integrations`, `infrastructure`, `knowledge`,
+  `agent_defaults` and `a2a` (`APPROVED_SETTING_GROUPS`): every group read
+  while a pod is deployed or while the API works for an agent. Whole groups,
+  so a key added to one is covered the day it is added.
+- There is no copy of the settings. A person's write goes through
+  `ISettingGateway.writeBy`; when it is not the Owner's and the group is one
+  of those, the value the setting HAD is kept in `AssistantSettingPin`, in
+  the same transaction and the same stored form. No row means approved =
+  live, which is every installation at the migration and every setting only
+  the Owner touched. The Owner's write removes the row; so does a value that
+  comes back to the approved one. Nothing is initialised when an assistant
+  is created or promoted.
+- Settings have one reader, `ISettingGateway`, and every read is made in one
+  of three states carried by `AsyncLocalStorage`: **approved** for work done
+  for the assistant (`servingAssistant(true, …)`: its deploy, restart, stop,
+  env preview, and every HTTP request that carries its token or names its
+  id in a route parameter, the query or the body), **live** for work that
+  said it is for another agent or for none (an ordinary agent's deploy,
+  every other HTTP request), and **undeclared** for work that said nothing
+  (the hub's socket handlers, scheduled jobs), which reads approved. Code
+  that forgot to say whom it works for fails towards the Owner.
+- The state is a marker, never a copy of the approved values, and a request
+  for the assistant is approved whether or not anything is kept back when
+  it arrives. A deploy is long, and an Admin may change a setting in the
+  middle of it: each read that is not live takes the setting rows and the
+  kept values in one REPEATABLE READ transaction, which is one snapshot of
+  the database, and a write moves both in one transaction, so a read sees
+  both or neither. Nothing is remembered from one read to the next.
+- The Owner sees what is kept back: `GET /rancher/settings`,
+  `get_assistant_settings`, `settingsDrift` on the Owner's
+  `GET /rancher/status` and `get_rancher_status`, and a notice on the
+  Rancher page. A key, what happened (changed, added, removed), who and
+  when; never a value. `POST /rancher/settings/apply` and
+  `apply_settings_to_assistant` (`owner`, `confirm`) make the live values the
+  approved ones for exactly the list the Owner was shown: each row carries a
+  `version`, the tool an `applyToken`, and a list that changed since is
+  refused whole (409 `SETTINGS_CHANGED`). An Admin is told under the form:
+  "The Ranch assistant keeps the values the Owner approved; this change
+  applies to other agents."
+
+What stays live, and what that means:
+
+| Live | Effect on the assistant |
+|---|---|
+| The hub's check of a runtime's key reads the API's own `BRIDLE_API_KEY` env, not the setting | None from the setting. `integrations.bridle_api_key` is only what a pod is GIVEN; a changed value keeps other agents from connecting until they restart |
+| `aws/s3/S3Repository` builds its client once per process from the settings it read first | Chat attachments and knowledge files use that client for every agent. It is not the assistant's workspace, template or secrets, which connect per call and are served approved. A changed bucket reaches it only after an API restart, and then in the state of whoever reads first |
+| Work that declares nothing, while a setting is kept back | Reads the approved value: the hub's handlers and scheduled jobs follow an Admin's change to these groups only after the Owner applied it. Availability for other agents, never a redirect of the assistant |
+| An Admin reads every setting's value (`GET /settings`) | Includes `integrations.bridle_api_key`. Where that equals the API's `BRIDLE_API_KEY`, whoever holds it can connect to the hub as any agent's runtime, the assistant's included, and receive what is sent to it. Not closed here: the Settings forms are filled from those values |
+| The platform's own writes (`upsert` on the gateway: seeded defaults, a migration flag) | Not a person's, so nothing is kept back for them |
+
+Template-scoped paddock scenarios are tests, not ingredients.
+
+`mcp/assistantBuiltFrom.spec.ts` calls every write tool through the real
+handler on each kind of ingredient, assembles the assistant's next pod with
+the deploy's own code before and after, and compares the bytes;
+`agent/assistantBuild/guards/assistantBuildRoutes.spec.ts` does the same
+for the routes. Each reads its slices and fails on a write tool or a
+non-GET route that is not filed as asking the rule or exempt with a reason.
+
 The `manage-agent` tools:
 
 | Tool file | Tools |
@@ -634,6 +843,7 @@ written once and no tool or route changes it.
 | Tool file (under `api/src/slices/`) | Audience | The console route it mirrors |
 |---|---|---|
 | `agent/agent/agentAdmin.tool.ts` | `admin`; `manage-agent` for the six tools that name one agent; `person` for `pin_agent` (`PUT`/`DELETE agents/:id/pin`: User) | `agents`: Owner, Admin; `PUT`/`DELETE agents/:id`, restart, stop, start: `@ManagesAgent` |
+| `agent/assistantBuild/assistantSetting.tool.ts` | `owner` | `GET /rancher/settings`, `POST /rancher/settings/apply`: Owner |
 | `agent/agentChannel/agentChannel.tool.ts` | `manage-agent` | `agents/:id/channels`: Owner, Admin, `@ManagesAgent` |
 | `agent/event/agentEvent.tool.ts` | `admin`; `owner` for `set_notification_destination`, `send_test_notification`, `remove_notification_destination` | `agent-events`, `agent-incidents`, reading the destination: Admin. Setting, testing, removing it: Owner |
 | `agent/file/file.tool.ts` | `manage-agent` | `agents/:agentId/files`: Admin by default, `@ManagesAgent` |
@@ -1029,6 +1239,21 @@ puts the block back (it is idempotent and `make init` runs it).
   account) or it asks `reach.forChanges()` and answers the assistant with
   the kind `'change'`; either way it is filed in the last table of
   `narrowedLists.spec.ts`.
+- Does the tool write to a template, a skill, a tool server, a model
+  credential, a knowledge base or its documents, or to anything else an
+  agent's pod is assembled from? Then it asks `builtFromRefusal` before it
+  writes and before `confirm`, the route beside it carries
+  `@ChangesAssistantIngredient` or calls `assertMayChange`, and both are
+  filed in `assistantBuiltFrom.spec.ts` and `assistantBuildRoutes.spec.ts`.
+  A write that finds its target by a name or a manifest asks about the row
+  it found.
+- Does the code read a setting? Then it reads through `ISettingGateway`,
+  never the table, and the work it belongs to says whom it is for
+  (`servingAssistant` / `servingAgentId`, or an HTTP request, which the
+  interceptor declares). `assistantSettings.spec.ts` fails on a file that
+  reads `prisma.setting`, on a deploy step that reads undeclared, and on a
+  deploy that reads a group outside `APPROVED_SETTING_GROUPS`. Does it
+  write one for a person? Then through `writeSettingBy`.
 - Does the tool list, name or use an agent's colleagues? Then it takes the
   caller's view from `PeerAccessService` (see "Whose colleague"), answers a
   hidden connection as one that does not exist, and a masked one without its

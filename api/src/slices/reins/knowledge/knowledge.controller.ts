@@ -11,6 +11,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
+import { ChangesAssistantIngredient } from '#/agent/assistantBuild/guards';
+import { AssistantBuildService } from '#/agent/assistantBuild/domain/assistantBuild.service';
 import { KnowledgeService } from './domain/knowledge.service';
 import { IKnowledgeConfigGateway } from '../config/domain/knowledgeConfig.gateway';
 import { IGraphData } from './domain/knowledge.types';
@@ -39,6 +41,7 @@ export class KnowledgeController {
     private readonly knowledgeConfig: IKnowledgeConfigGateway,
     private readonly lightrag: ILightragClient,
     private readonly llm: ILlmGateway,
+    private readonly build: AssistantBuildService,
   ) {}
 
   private async requireEnabled(): Promise<void> {
@@ -59,11 +62,15 @@ export class KnowledgeController {
     if (!(await this.knowledgeConfig.isEnabled())) {
       return { items: [], total: 0, page: 1, perPage: dto.perPage ?? 50 };
     }
-    return this.service.listPage({
+    const page = await this.service.listPage({
       search: dto.search,
       page: dto.page,
       perPage: dto.perPage,
     });
+    return {
+      ...page,
+      items: await this.build.mark('knowledge', page.items, undefined),
+    };
   }
 
   @Get('status')
@@ -169,7 +176,11 @@ export class KnowledgeController {
   @ApiOperation({ summary: 'Get one knowledge', operationId: 'getKnowledge' })
   async getOne(@Param('id') id: string) {
     await this.requireEnabled();
-    return this.service.getWithDerivedStatus(id);
+    return this.build.markOne(
+      'knowledge',
+      await this.service.getWithDerivedStatus(id),
+      undefined,
+    );
   }
 
   @Post()
@@ -180,13 +191,23 @@ export class KnowledgeController {
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update knowledge', operationId: 'updateKnowledge' })
+  @ChangesAssistantIngredient('knowledge', 'id')
+  @ApiOperation({
+    summary:
+      'Update knowledge. A base the Ranch assistant retrieves from is the Owner’s to change, index or delete, and so are its sources: 403 ASSISTANT_BUILT_FROM for anybody else (CLEAN-271).',
+    operationId: 'updateKnowledge',
+  })
   async update(@Param('id') id: string, @Body() dto: UpdateKnowledgeDto) {
     await this.requireEnabled();
-    return this.service.update(id, dto);
+    return this.build.markOne(
+      'knowledge',
+      await this.service.update(id, dto),
+      undefined,
+    );
   }
 
   @Delete(':id')
+  @ChangesAssistantIngredient('knowledge', 'id')
   @ApiOperation({ summary: 'Delete knowledge', operationId: 'deleteKnowledge' })
   @HttpCode(204)
   async remove(@Param('id') id: string) {
@@ -195,6 +216,7 @@ export class KnowledgeController {
   }
 
   @Post(':id/index')
+  @ChangesAssistantIngredient('knowledge', 'id')
   @ApiOperation({ summary: 'Start indexing', operationId: 'indexKnowledge' })
   @HttpCode(202)
   async startIndex(@Param('id') id: string) {

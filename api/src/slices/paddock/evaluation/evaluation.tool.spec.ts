@@ -87,7 +87,7 @@ describe('PaddockEvaluationTool — abort_paddock_evaluation (CLEAN-109)', () =>
       null,
       operator(),
     );
-    expect(service.abort).toHaveBeenCalledWith('ev-1');
+    expect(service.abort).toHaveBeenCalledWith('ev-1', expect.anything());
     expect(textOf(result)).toContain('"status": "aborted"');
   });
 
@@ -102,7 +102,7 @@ describe('PaddockEvaluationTool — abort_paddock_evaluation (CLEAN-109)', () =>
   it('rerun needs no confirmation', async () => {
     const { tool, service } = harness();
     const result = await tool.rerun({ id: 'ev-1' }, null, operator());
-    expect(service.rerun).toHaveBeenCalledWith('ev-1');
+    expect(service.rerun).toHaveBeenCalledWith('ev-1', expect.anything());
     expect(result.isError).toBeUndefined();
   });
 });
@@ -111,7 +111,7 @@ describe('PaddockEvaluationTool — get_paddock_evaluation_logs (CLEAN-109)', ()
   it('returns the buffered lines', async () => {
     const { tool, service } = harness();
     const result = await tool.logs({ id: 'ev-1' }, null, operator());
-    expect(service.getLogs).toHaveBeenCalledWith('ev-1');
+    expect(service.getLogs).toHaveBeenCalledWith('ev-1', expect.anything());
     const text = textOf(result);
     expect(text).toContain('"total": 3');
     expect(text).toContain('"one"');
@@ -147,8 +147,12 @@ describe('PaddockEvaluationTool — get_paddock_evaluation_scenario_result (CLEA
       null,
       operator(),
     );
-    expect(service.getScenario).toHaveBeenCalledWith('ev-1', 'sc-1');
-    expect(service.getById).toHaveBeenCalledWith('ev-1');
+    expect(service.getScenario).toHaveBeenCalledWith(
+      'ev-1',
+      'sc-1',
+      expect.anything(),
+    );
+    expect(service.getById).toHaveBeenCalledWith('ev-1', expect.anything());
     const text = textOf(result);
     expect(text).toContain('"name": "Refund flow"');
     expect(text).toContain('"verdict": "pass"');
@@ -189,7 +193,11 @@ describe('PaddockEvaluationTool — get_paddock_evaluation_trace (CLEAN-109)', (
       null,
       operator(),
     );
-    expect(service.getTrace).toHaveBeenCalledWith('ev-1', 'sc-1');
+    expect(service.getTrace).toHaveBeenCalledWith(
+      'ev-1',
+      'sc-1',
+      expect.anything(),
+    );
     expect(textOf(result)).toContain('"response": "Sure"');
   });
 

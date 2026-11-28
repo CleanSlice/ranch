@@ -24,6 +24,27 @@ import {
   IManifestMcpRef,
 } from './templateInstall.types';
 
+/**
+ * What an install is about to write, as far as its manifest says: the
+ * template it creates or replaces, and the tool servers it would register
+ * because the Ranch has none under that id.
+ */
+export interface IInstallPlan {
+  templateId: string;
+  /** True when a template with that id exists and would be overwritten. */
+  upgrades: boolean;
+  createsMcpServerIds: string[];
+}
+
+/**
+ * Asked with the plan after the archive is parsed and BEFORE anything is
+ * written; throwing stops the install with nothing changed. This is where a
+ * caller applies a rule about which templates it may replace: the manifest
+ * names its own target, so the id is not known until the archive is read
+ * (CLEAN-271, what the Ranch assistant is built from).
+ */
+export type InstallGuard = (plan: IInstallPlan) => Promise<void> | void;
+
 const DEFAULT_IMAGE = 'ghcr.io/cleanslice/runtime:latest';
 // Realistic minimum for the runtime + a headless Chromium launched by
 // browser_play. The old 500m/512Mi default OOMed Chromium on every
@@ -74,6 +95,7 @@ export class TemplateInstallService {
     zip: Buffer,
     suppliedParams: IInstallParamValues,
     suppliedSecrets: IInstallSecretValues = {},
+    guard?: InstallGuard,
   ): Promise<IInstallResult> {
     const archive = await this.archiveGateway.extractZip(zip);
     try {
@@ -82,6 +104,7 @@ export class TemplateInstallService {
         suppliedParams,
         suppliedSecrets,
         { sourceType: 'zip' },
+        guard,
       );
     } finally {
       await archive.cleanup();
@@ -106,6 +129,7 @@ export class TemplateInstallService {
     ref: string | undefined,
     suppliedParams: IInstallParamValues,
     suppliedSecrets: IInstallSecretValues = {},
+    guard?: InstallGuard,
   ): Promise<IInstallResult> {
     const archive = await this.gitGateway.clone(url, ref);
     try {
@@ -114,6 +138,7 @@ export class TemplateInstallService {
         suppliedParams,
         suppliedSecrets,
         { sourceType: 'git', sourceUrl: url },
+        guard,
       );
     } finally {
       await archive.cleanup();
@@ -174,6 +199,7 @@ export class TemplateInstallService {
     suppliedParams: IInstallParamValues,
     suppliedSecrets: IInstallSecretValues,
     provenance: { sourceType: 'zip' | 'git'; sourceUrl?: string },
+    guard?: InstallGuard,
   ): Promise<IInstallResult> {
     const { manifest, agentDir, scenariosDir } =
       await this.parseFromArchive(archive);
@@ -183,6 +209,19 @@ export class TemplateInstallService {
     );
 
     const existing = await this.templateGateway.findById(manifest.metadata.id);
+    if (guard) {
+      const createsMcpServerIds: string[] = [];
+      for (const m of manifest.mcp ?? []) {
+        if (!(await this.mcpServerGateway.findById(m.id))) {
+          createsMcpServerIds.push(m.id);
+        }
+      }
+      await guard({
+        templateId: manifest.metadata.id,
+        upgrades: existing !== null,
+        createsMcpServerIds,
+      });
+    }
     const warnings = await this.collectWarnings(manifest, existing);
 
     // Same version + already installed → no-op (idempotent).
@@ -354,7 +393,10 @@ export class TemplateInstallService {
       transport: m.transport,
       authType: m.authType ?? 'none',
       authValue: this.resolveSecretReference(m.authValue, suppliedSecrets),
-      builtIn: m.builtIn ?? false,
+      // Never from the archive. `builtIn` marks the servers this API
+      // seeds itself: it puts a row first in every list and makes it
+      // undeletable, and an archive is somebody else's file (CLEAN-271).
+      builtIn: false,
     });
     return { id: created.id };
   }

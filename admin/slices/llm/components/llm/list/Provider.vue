@@ -2,8 +2,12 @@
 import type { ILlmCredentialData } from '#llm/stores/llm';
 import { CheckCircle2, XCircle, Loader2, HelpCircle } from 'lucide-vue-next';
 import { IconDotsVertical, IconTrash } from '@tabler/icons-vue';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 const llmStore = useLlmStore();
+// The credential the Ranch assistant runs on is the Owner's to change
+// (CLEAN-271): for anybody else the row opens it to look at, with no Delete.
+const { lockedFor } = useBuiltFrom();
 
 const { data: items, pending, refresh } = await useAsyncData(
   'admin-llms',
@@ -76,7 +80,7 @@ const {
             </TableCell>
             <TableCell class="text-muted-foreground">{{ item.label ?? '—' }}</TableCell>
             <TableCell>
-              <code class="text-xs text-muted-foreground">{{ mask(item.apiKey) }}</code>
+              <code class="text-xs text-muted-foreground">{{ lockedFor(item) ? 'withheld' : mask(item.apiKey) }}</code>
             </TableCell>
             <TableCell>
               <Badge :variant="item.status === 'active' ? 'default' : 'outline'">
@@ -117,9 +121,9 @@ const {
             <TableCell @click.stop>
               <div class="flex justify-end gap-2">
                 <Button size="sm" variant="outline" as-child>
-                  <NuxtLink :to="`/llms/${item.id}/edit`">Edit</NuxtLink>
+                  <NuxtLink :to="`/llms/${item.id}/edit`">{{ lockedFor(item) ? 'View' : 'Edit' }}</NuxtLink>
                 </Button>
-                <DropdownMenu>
+                <DropdownMenu v-if="!lockedFor(item)">
                   <DropdownMenuTrigger as-child>
                     <Button size="sm" variant="ghost" class="size-8 p-0">
                       <span class="sr-only">Open menu</span>

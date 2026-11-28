@@ -38,6 +38,7 @@ import {
   done,
   launch,
   loginAs,
+  rememberAssistantAccess,
   section,
   until,
   watchedPage,
@@ -452,6 +453,9 @@ async function editor(browser, ids) {
   }
 }
 
+// The set-up below puts both roles on Standard and gives the second User a
+// custom pick. What was there before comes back at the end.
+const putAssistantAccessBack = await rememberAssistantAccess();
 const { ids, mine } = await setUp();
 const browser = await launch();
 try {
@@ -461,6 +465,9 @@ try {
   if (!only || only === 'editor') await editor(browser, ids);
 } finally {
   await browser.close();
+  section('Putting the assistant setting back');
+  const failed = await putAssistantAccessBack();
+  check(failed.length === 0, `both roles and every account are as this script found them${failed.length ? `: ${failed.join(', ')}` : ''}`);
 }
 console.log(`\nscreenshots: ${SHOTS}`);
 done('badge');

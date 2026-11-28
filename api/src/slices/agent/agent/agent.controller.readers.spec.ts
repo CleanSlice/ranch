@@ -1,3 +1,4 @@
+import { noAssistantBuild } from '#/agent/assistantBuild/domain/__fixtures__/assistantBuild';
 import type { Request } from 'express';
 import { NotFoundException } from '@nestjs/common';
 import { AgentController } from './agent.controller';
@@ -151,6 +152,7 @@ function build(
     opts.access ?? openAccess(),
     pins as unknown as IAgentPinGateway,
     { summary: () => null, detail: () => null } as never,
+    noAssistantBuild(),
   );
   return { controller, agentGateway, deploy, mcpResolver, pins };
 }

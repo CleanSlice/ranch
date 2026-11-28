@@ -50,6 +50,8 @@ export class McpServerMapper {
       enabled: o.enabled === true,
       builtIn: o.builtIn === true,
       templateIds: strList(o.templateIds),
+      // An older API build sends none: nothing is locked.
+      assistantDependency: o.assistantDependency === true,
       createdAt: str(o.createdAt),
       updatedAt: str(o.updatedAt),
     };

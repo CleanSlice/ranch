@@ -18,6 +18,7 @@ import {
 } from '#reins/domain';
 import { Badge } from '#theme/components/ui/badge';
 import { Button } from '#theme/components/ui/button';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 import { Checkbox } from '#theme/components/ui/checkbox';
 import { Input } from '#theme/components/ui/input';
 import {
@@ -41,6 +42,9 @@ const store = useKnowledgeStore();
 const confirmStore = useConfirmStore();
 const current = inject<Ref<IKnowledge | null>>('knowledge-current');
 const refresh = inject<() => Promise<void>>('knowledge-refresh');
+// The documents of a base the Ranch assistant retrieves from are the
+// Owner's to add, retry or delete (CLEAN-271); anybody else reads them.
+const { locked } = useBuiltFrom(() => current?.value);
 
 const knowledgeId = computed(() => route.params.id as string);
 
@@ -381,7 +385,7 @@ async function onAdded() {
         {{ total }} source{{ total === 1 ? '' : 's' }}
         <template v-if="loading"> · updating…</template>
       </span>
-      <KnowledgeSourcesAddSheet :knowledge-id="knowledgeId" @added="onAdded" />
+      <KnowledgeSourcesAddSheet v-if="!locked" :knowledge-id="knowledgeId" @added="onAdded" />
     </div>
 
     <KnowledgeSourcesImportProgress :jobs="imports" />
@@ -585,7 +589,7 @@ async function onAdded() {
                   <span class="sr-only">Download {{ s.name }}</span>
                 </Button>
                 <Button
-                  v-if="isPdf(s)"
+                  v-if="isPdf(s) && !locked"
                   size="icon-sm"
                   variant="ghost"
                   title="Re-extract text (OCR)"
@@ -596,7 +600,7 @@ async function onAdded() {
                   <span class="sr-only">Re-extract text from {{ s.name }}</span>
                 </Button>
                 <Button
-                  v-if="s.indexStatus === 'failed' || s.indexStatus === 'retrying'"
+                  v-if="!locked && (s.indexStatus === 'failed' || s.indexStatus === 'retrying')"
                   size="icon-sm"
                   variant="ghost"
                   :title="s.indexStatus === 'retrying' ? 'Retry now' : 'Retry'"
@@ -606,6 +610,7 @@ async function onAdded() {
                   <span class="sr-only">Retry {{ s.name }}</span>
                 </Button>
                 <Button
+                  v-if="!locked"
                   size="icon-sm"
                   variant="ghost"
                   class="text-destructive"

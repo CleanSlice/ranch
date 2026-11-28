@@ -14,6 +14,7 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ITemplateGateway } from '#/agent/template/domain';
+import { ChangesAssistantIngredient } from '#/agent/assistantBuild/guards';
 import { ITemplateFileGateway } from './domain';
 import { ITemplateFileUpload } from './domain/templateFile.types';
 import { SaveTemplateFileDto } from './dtos';
@@ -50,7 +51,11 @@ export class TemplateFileController {
   }
 
   @Put('content')
-  @ApiOperation({ summary: 'Save a template file (.md / .json only)' })
+  @ChangesAssistantIngredient('template', 'id')
+  @ApiOperation({
+    summary:
+      'Save a template file (.md / .json only). The files of a template the Ranch assistant is built from are its instructions at the next restart: 403 ASSISTANT_BUILT_FROM for anybody but the Owner (CLEAN-271).',
+  })
   async save(
     @Param('id') id: string,
     @Query('path') path: string,
@@ -63,6 +68,7 @@ export class TemplateFileController {
   }
 
   @Post('upload')
+  @ChangesAssistantIngredient('template', 'id')
   @ApiOperation({
     summary:
       'Replace template files in S3 with the uploaded folder. The body is multipart/form-data; pass a parallel "paths[]" field with the relative path for each file.',

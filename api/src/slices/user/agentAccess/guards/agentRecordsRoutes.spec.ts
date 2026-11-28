@@ -21,6 +21,7 @@ import { AgentLimitController } from '#/agent/limit/agentLimit.controller';
 import { PeerLinkController } from '#/agent/peer/peerLink.controller';
 import { ShareLinkController } from '#/agent/shareLink/shareLink.controller';
 import { PaddockEvaluationController } from '#/paddock/evaluation/evaluation.controller';
+import { noAssistantBuild } from '#/agent/assistantBuild/domain/__fixtures__/assistantBuild';
 import { PaddockScenarioController } from '#/paddock/scenario/scenario.controller';
 import { UsageController } from '#/usage/usage.controller';
 import { UserRoleTypes } from '#/user/user/domain';
@@ -308,6 +309,7 @@ const evaluationService = {
 const evaluations = new PaddockEvaluationController(
   evaluationService as never,
   access,
+  noAssistantBuild(),
 );
 
 const SCENARIOS = [
@@ -325,6 +327,7 @@ const scenarios = new PaddockScenarioController(
   scenarioGateway as never,
   {} as never,
   access,
+  noAssistantBuild(),
 );
 
 const limits = new AgentLimitController(

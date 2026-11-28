@@ -2,12 +2,17 @@
 import type { IKnowledge, IKnowledgeOverview, SourceType } from '#reins/stores/knowledge';
 import { errorMessageOf, formatBytes, formatDateTime } from '#reins/domain';
 import { Checkbox } from '#theme/components/ui/checkbox';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 const store = useKnowledgeStore();
 const current = inject<Ref<IKnowledge | null>>('knowledge-current');
 const refresh = inject<() => Promise<void>>('knowledge-refresh');
 
 const knowledgeId = computed(() => current?.value?.id ?? '');
+
+// A base the Ranch assistant retrieves from is the Owner's to change
+// (CLEAN-271): the details are shown, with nothing to save.
+const { locked } = useBuiltFrom(() => current?.value);
 
 // ---- counters --------------------------------------------------------------
 
@@ -202,7 +207,7 @@ async function save(): Promise<void> {
 
     <div class="grid min-w-0 gap-6 lg:grid-cols-2">
       <section class="flex min-w-0 flex-col gap-6">
-        <div class="rounded-md border bg-card p-4">
+        <fieldset :disabled="locked" class="min-w-0 rounded-md border bg-card p-4">
           <h2 class="text-sm font-semibold">Details</h2>
           <div class="mt-4 grid gap-4">
             <div class="grid gap-2">
@@ -248,7 +253,7 @@ async function save(): Promise<void> {
             <p v-if="errorMessage" class="text-xs text-destructive">
               {{ errorMessage }}
             </p>
-            <div class="flex items-center gap-3">
+            <div v-if="!locked" class="flex items-center gap-3">
               <Button
                 :disabled="submitting || !dirty || !!nameError"
                 @click="save"
@@ -260,7 +265,7 @@ async function save(): Promise<void> {
               </span>
             </div>
           </div>
-        </div>
+        </fieldset>
 
         <div class="rounded-md border bg-card p-4">
           <h2 class="text-sm font-semibold">Content</h2>

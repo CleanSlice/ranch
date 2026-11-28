@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ILlmCredentialInput } from '#llm/stores/llm';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 const props = defineProps<{ id: string }>();
 
@@ -11,6 +12,11 @@ const { data: credential, pending } = await useAsyncData(
   `admin-llm-${props.id}-edit`,
   () => llmStore.fetchById(props.id),
 );
+
+// The credential the Ranch assistant runs on is the Owner's to change
+// (CLEAN-271): its model, its key and whether it is active are what the
+// assistant thinks with. For anybody else it is shown, with no Save.
+const { locked, note } = useBuiltFrom(credential);
 
 async function onSubmit(values: ILlmCredentialInput) {
   submitting.value = true;
@@ -39,7 +45,7 @@ function onCancel() {
 
     <template v-else-if="credential">
       <div>
-        <h1 class="text-2xl font-semibold">Edit credential</h1>
+        <h1 class="text-2xl font-semibold">{{ locked ? 'Credential' : 'Edit credential' }}</h1>
         <p class="text-sm text-muted-foreground">
           {{ credential.provider }} · {{ credential.model }}
         </p>
@@ -47,7 +53,11 @@ function onCancel() {
 
       <p v-if="errorMessage" class="text-xs text-destructive">{{ errorMessage }}</p>
 
+      <AccessNote v-if="locked" data-built-from>{{ note }}</AccessNote>
+
+      <fieldset :disabled="locked" class="contents">
       <LlmItemForm
+        :read-only="locked"
         :initial-values="{
           provider: credential.provider,
           model: credential.model,
@@ -63,6 +73,7 @@ function onCancel() {
         @submit="onSubmit"
         @cancel="onCancel"
       />
+      </fieldset>
     </template>
 
     <div

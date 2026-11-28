@@ -13,7 +13,11 @@ import {
  * and never bubbles to the card. The destructive choices are confirmed by
  * the list, not here.
  */
-defineProps<{ templateId: string }>();
+defineProps<{
+  templateId: string;
+  /** The Ranch assistant is built from it and the viewer is not the Owner: no Edit, no Delete (CLEAN-271). */
+  locked?: boolean;
+}>();
 
 defineEmits<{ restart: []; remove: [] }>();
 </script>
@@ -33,7 +37,7 @@ defineEmits<{ restart: []; remove: [] }>();
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" @click.stop>
-      <DropdownMenuItem as-child>
+      <DropdownMenuItem v-if="!locked" as-child>
         <NuxtLink :to="`/templates/${templateId}/edit`">
           <IconPencil class="size-4" />
           Edit
@@ -43,8 +47,9 @@ defineEmits<{ restart: []; remove: [] }>();
         <IconRefresh class="size-4" />
         Restart all agents
       </DropdownMenuItem>
-      <DropdownMenuSeparator />
+      <DropdownMenuSeparator v-if="!locked" />
       <DropdownMenuItem
+        v-if="!locked"
         class="text-destructive focus:text-destructive"
         @select="$emit('remove')"
       >

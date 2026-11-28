@@ -29,6 +29,8 @@ export interface ISkillData {
   /** ceil(body.length / 4), shown as "≈ N tokens". */
   tokenEstimate: number;
   templates: ISkillTemplateRef[];
+  /** The Ranch assistant is built from it: read-only to anybody but the Owner (CLEAN-271). */
+  assistantDependency: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,6 +1,6 @@
 import type { ITemplateData } from '#template/domain';
 import type { IRancherGateway } from './rancher.gateway';
-import type { IRancherStatus } from './rancher.types';
+import type { IAssistantSettingDrift, IRancherStatus } from './rancher.types';
 
 /** Domain service for the Rancher bootstrap status. */
 export class RancherService {
@@ -12,5 +12,13 @@ export class RancherService {
 
   ensureTemplate(): Promise<ITemplateData> {
     return this.gateway.ensureTemplate();
+  }
+
+  settingsDrift(): Promise<IAssistantSettingDrift[]> {
+    return this.gateway.settingsDrift();
+  }
+
+  applySettings(shown: IAssistantSettingDrift[]): Promise<string[]> {
+    return this.gateway.applySettings(shown);
   }
 }

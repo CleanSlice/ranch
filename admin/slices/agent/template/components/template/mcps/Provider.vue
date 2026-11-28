@@ -16,6 +16,10 @@ import TemplateItemToggle from '../item/Toggle.vue';
  */
 const selected = defineModel<string[]>('selected', { required: true });
 
+// Shown to look at, not to change (CLEAN-271): the switches stay where they
+// are and do nothing; the filter above them keeps working.
+const props = defineProps<{ readOnly?: boolean }>();
+
 const mcpServerStore = useMcpServerStore();
 
 const { pending } = useAsyncData('admin-template-mcps-list', () => mcpServerStore.fetchAll(), {
@@ -63,7 +67,7 @@ const groups = computed(() => [
 ]);
 
 function toggle(m: IMcpServerData) {
-  if (isLocked(m)) return;
+  if (props.readOnly || isLocked(m)) return;
   selected.value = selectedSet.value.has(m.id)
     ? selected.value.filter((x) => x !== m.id)
     : [...selected.value, m.id];
@@ -96,6 +100,7 @@ function toggle(m: IMcpServerData) {
             :key="m.id"
             type="button"
             role="switch"
+            :disabled="readOnly"
             :aria-checked="isOn(m)"
             :aria-disabled="isLocked(m)"
             class="flex w-full items-center gap-3.5 border-b px-[18px] py-3.5 text-left transition-colors last:border-b-0 focus-visible:outline-none focus-visible:bg-muted/40"

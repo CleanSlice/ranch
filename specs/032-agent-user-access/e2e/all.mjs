@@ -5,7 +5,8 @@
 //   node specs/032-agent-user-access/e2e/all.mjs --skip assistant
 //
 //   seed → fake runtime → routes → acting → http → owner-only → live-status → switch →
-//   owner-editor → ceiling → deletion → enforce → pins → assistant → table
+//   owner-editor → ceiling → deletion → enforce → pins → assistant → ownership →
+//   assistant-pages → badge → assistant-built-from → table
 //
 // What it does NOT start: Postgres, the API on :3333 (built, `node
 // dist/main`), the app console on :3000 and the admin console on :3001
@@ -22,7 +23,12 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { ADMIN, API, APP, HERE, OUT, arg, fake, until } from './lib.mjs';
 
-const SCRIPTS = ['routes', 'acting', 'http', 'owner-only', 'live-status', 'switch', 'owner-editor', 'ceiling', 'deletion', 'enforce', 'pins', 'assistant'];
+// assistant-built-from goes last: it runs seed.mjs again when it is done.
+// `badge` is the script of specs/034 (the assistant setting, CLEAN-240): it
+// runs on the same fixtures and belongs to the same set.
+const SCRIPTS = ['routes', 'acting', 'http', 'owner-only', 'live-status', 'switch', 'owner-editor', 'ceiling', 'deletion', 'enforce', 'pins', 'assistant', 'ownership', 'assistant-pages', 'badge', 'assistant-built-from'];
+/** Where a script lives when it is not next to this one. */
+const ELSEWHERE = { badge: '../../034-rancher-access/e2e/badge.mjs' };
 const only = typeof arg('only') === 'string' ? arg('only').split(',') : null;
 const skip = typeof arg('skip') === 'string' ? arg('skip').split(',') : [];
 const wanted = (name) => (!only || only.includes(name)) && !skip.includes(name);
@@ -84,7 +90,7 @@ try {
     }
     console.log(`\n━━ ${name} ${'━'.repeat(Math.max(0, 60 - name.length))}`);
     const t = Date.now();
-    const { code, last } = await run(`${name}.mjs`);
+    const { code, last } = await run(ELSEWHERE[name] ?? `${name}.mjs`);
     results.push({ name, ok: code === 0, note: last, seconds: Math.round((Date.now() - t) / 1000) });
   }
 } catch (err) {

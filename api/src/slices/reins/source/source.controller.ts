@@ -27,6 +27,7 @@ import { diskStorage } from 'multer';
 import * as os from 'os';
 import { randomUUID } from 'crypto';
 import { pipeline } from 'stream/promises';
+import { ChangesAssistantIngredient } from '#/agent/assistantBuild/guards';
 import { SourceService } from './domain/source.service';
 import { archiveMaxBytes } from './domain/archiveLimit';
 import { UploadLimitInterceptor } from './uploadLimit.interceptor';
@@ -199,6 +200,7 @@ export class SourceController {
   }
 
   @Post(':sourceId/reindex')
+  @ChangesAssistantIngredient('knowledge', 'knowledgeId')
   @ApiOperation({
     summary: 'Retry indexing a single source',
     operationId: 'reindexKnowledgeSource',
@@ -215,6 +217,7 @@ export class SourceController {
   }
 
   @Post(':sourceId/extract')
+  @ChangesAssistantIngredient('knowledge', 'knowledgeId')
   @ApiOperation({
     summary: 'Re-run text extraction for a scanned PDF',
     operationId: 'extractKnowledgeSourceText',
@@ -231,6 +234,7 @@ export class SourceController {
   }
 
   @Post()
+  @ChangesAssistantIngredient('knowledge', 'knowledgeId')
   @ApiOperation({
     summary: 'Add source (file|url|text)',
     operationId: 'addKnowledgeSource',
@@ -273,6 +277,7 @@ export class SourceController {
   }
 
   @Post('files')
+  @ChangesAssistantIngredient('knowledge', 'knowledgeId')
   @ApiOperation({
     summary: 'Add several file sources at once',
     operationId: 'addKnowledgeFileSources',
@@ -306,6 +311,7 @@ export class SourceController {
   }
 
   @Post('from-sitemap')
+  @ChangesAssistantIngredient('knowledge', 'knowledgeId')
   @ApiOperation({
     summary: 'Add url sources from a sitemap',
     operationId: 'addKnowledgeSourcesFromSitemap',
@@ -328,6 +334,7 @@ export class SourceController {
   // With multer's default memory storage a 1 GiB archive was 1 GiB of heap
   // on a pod with a 512Mi limit, i.e. an OOM kill before extraction began.
   @Post('from-archive')
+  @ChangesAssistantIngredient('knowledge', 'knowledgeId')
   @ApiOperation({
     summary: 'Bulk-import sources from a zip archive',
     operationId: 'addKnowledgeSourcesFromArchive',
@@ -365,15 +372,19 @@ export class SourceController {
   }
 
   @Delete(':sourceId')
+  @ChangesAssistantIngredient('knowledge', 'knowledgeId')
   @ApiOperation({
     summary: 'Delete source',
     operationId: 'deleteKnowledgeSource',
   })
   @HttpCode(204)
   async remove(
-    @Param('knowledgeId') _knowledgeId: string,
+    @Param('knowledgeId') knowledgeId: string,
     @Param('sourceId') sourceId: string,
   ) {
-    await this.service.delete(sourceId);
+    // The base in the path is the one the rule above was asked about, so
+    // the source has to be one of ITS sources: this route used to delete any
+    // source by id, whatever base the path named (CLEAN-271).
+    await this.service.deleteIn(knowledgeId, sourceId);
   }
 }

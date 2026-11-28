@@ -8,6 +8,8 @@ export interface IPaddockJudgeCredential {
 }
 
 export interface IPaddockRunnerInput {
+  /** The run this is: its log is kept under this id, and under no other. */
+  evaluationId: string;
   agentId: string;
   agentDir: string;
   scenarios: IPaddockScenarioData[];
@@ -77,11 +79,15 @@ export abstract class IPaddockRunner {
    */
   abstract abort(agentId: string): boolean;
   /**
-   * Live tail of paddock CLI stdout+stderr for the most recent (or in-flight)
-   * eval of an agent. Empty array if nothing has run yet, or if the buffer
-   * was cleared at the start of a fresh run for the same agent.
-   * Implementations are expected to keep at least a bounded ring buffer
-   * (lost on process restart — acceptable for live debugging).
+   * Live tail of paddock CLI stdout+stderr of ONE run, by its evaluation
+   * id. Empty for a run that has not started, or whose buffer is gone.
+   *
+   * One buffer per run, never per agent: the process of a run appends to
+   * the buffer it was given when it was spawned and to no other, so the
+   * lines of one run cannot be read under another, whichever started last
+   * and however long the earlier child keeps writing (CLEAN-271). A
+   * bounded ring per run, and a bounded number of runs; lost on restart,
+   * which is acceptable for live debugging.
    */
-  abstract getLogs(agentId: string): string[];
+  abstract getLogs(evaluationId: string): string[];
 }

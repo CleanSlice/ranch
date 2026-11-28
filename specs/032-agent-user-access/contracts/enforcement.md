@@ -218,3 +218,36 @@ person reaches.
 
 Pinned by `api/src/slices/mcp/narrowedLists.spec.ts` and
 `api/src/slices/user/agentAccess/guards/agentRecordsRoutes.spec.ts`.
+
+### Amended 2026-11-27 (CLEAN-271)
+
+- **A resource the Ranch assistant is built from is written by the Owner
+  only.** A third marker beside `@ManagesAgent` and `@AgentScoped`:
+  `@ChangesAssistantIngredient(kind, param)` on the writing routes of
+  `/templates` (the row, skills, mcps, tools, files, delete), `/skills`,
+  `/mcp-servers`, `/llms`, `/knowledges` and
+  `/knowledges/:knowledgeId/sources`. `AssistantBuildGuard` (global, last)
+  answers 403 `{ code: "ASSISTANT_BUILT_FROM", kind }` to anybody but the
+  Owner when the path names an ingredient. Not a 404: an Admin reads these.
+- Named elsewhere than in the path, asked in the method
+  (`assertMayChange`): `POST /skills/import` and `/import-url` with
+  `overwrite` (by slug), `POST /templates/install` and `/from-git` (by the
+  manifest's id), `PUT`/`DELETE /settings/rancher/*`.
+- `POST /rancher/template` is `@Roles(Owner)`.
+- `DELETE /knowledges/:knowledgeId/sources/:sourceId` deleted a source by
+  its id whatever base the path named; it answers 404 for a source of
+  another base now, so the base the rule is asked about is the one written.
+- `GET` lists and details of the five kinds carry `assistantDependency`.
+  For anybody but the Owner the secret of an ingredient (`apiKey`,
+  `authValue`) is a fixed placeholder there, in `GET /agents/:id/env` and in
+  `GET /agents/:id/mcps` read by a person.
+- `GET /rancher/settings` and `POST /rancher/settings/apply` are
+  `@Roles(Owner)`: the settings kept back from the assistant, and applying
+  them. `PUT /settings/agent_defaults/image` is the Owner's too.
+- A fifth global piece, an interceptor this time
+  (`AssistantSettingInterceptor`): every HTTP request declares how it reads
+  settings, approved when it carries the assistant's token or names its id
+  in a parameter, the query or the body, live otherwise.
+
+Pinned by `api/src/slices/agent/assistantBuild/guards/assistantBuildRoutes.spec.ts`
+and `api/src/slices/mcp/assistantBuiltFrom.spec.ts`.

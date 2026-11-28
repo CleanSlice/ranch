@@ -3,6 +3,8 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  BUILT_FROM_NOTE,
+  builtFromRefusal,
   callerIsOperator,
   CONFIRM_SENTENCE,
   confirmed,
@@ -133,6 +135,8 @@ export class TemplateAdminTool implements IConditionallyListedTool {
       'Delete a template. Refused while agents still use it — delete or ' +
       'move those agents first (list_agents shows which template each one ' +
       'uses). Resolve the id with list_templates. ' +
+      BUILT_FROM_NOTE +
+      ' ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       id: z.string(),
@@ -149,6 +153,13 @@ export class TemplateAdminTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const template = await this.templates.findById(args.id);
     if (!template) return NOT_FOUND(args.id);
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'template',
+      args.id,
+      template.name,
+    );
+    if (builtFrom) return builtFrom;
     const refusal = confirmed(args, `delete the template «${template.name}»`);
     if (refusal) return refusal;
     // Same rule as the console: a template with agents on it stays.
@@ -177,7 +188,8 @@ export class TemplateAdminTool implements IConditionallyListedTool {
       'is exhaustive — omitted ids are detached (get_template shows the ' +
       'current mcpServerIds, list_mcp_servers the available servers). Agents ' +
       'read the set at deploy time, so existing agents of the template see ' +
-      'the change only after restart_template_agents.',
+      'the change only after restart_template_agents. ' +
+      BUILT_FROM_NOTE,
     parameters: z.object({
       id: z.string(),
       mcpServerIds: z
@@ -195,6 +207,15 @@ export class TemplateAdminTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return NOT_FOUND(id);
+    // Which servers the assistant is handed, and so where its token goes,
+    // is its template's list (CLEAN-271).
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'template',
+      id,
+      template.name,
+    );
+    if (builtFrom) return builtFrom;
     const updated = await this.templates.setMcps(id, mcpServerIds);
     return ok({
       template: updated,
@@ -218,7 +239,8 @@ export class TemplateAdminTool implements IConditionallyListedTool {
       'toolNames: null restores every tool, which is the default every ' +
       'template starts with. get_template shows the current toolAllowlist. ' +
       'A pod reads the list when it connects, so running agents of the ' +
-      'template see the change after restart_template_agents.',
+      'template see the change after restart_template_agents. ' +
+      BUILT_FROM_NOTE,
     parameters: z.object({
       id: z.string(),
       toolNames: z
@@ -237,6 +259,13 @@ export class TemplateAdminTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return NOT_FOUND(id);
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'template',
+      id,
+      template.name,
+    );
+    if (builtFrom) return builtFrom;
     const updated = await this.templates.setToolAllowlist(id, toolNames);
     const scope =
       toolNames === null

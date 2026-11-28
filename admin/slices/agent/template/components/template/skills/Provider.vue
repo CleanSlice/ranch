@@ -10,6 +10,10 @@ import TemplateItemToggle from '../item/Toggle.vue';
  */
 const selected = defineModel<string[]>('selected', { required: true });
 
+// Shown to look at, not to change (CLEAN-271): the switches stay where they
+// are and do nothing; the filter above them keeps working.
+const props = defineProps<{ readOnly?: boolean }>();
+
 const skillStore = useSkillStore();
 
 const { pending } = useAsyncData('admin-template-skills-list', () => skillStore.fetchAll(), {
@@ -46,6 +50,7 @@ const visible = computed(() => {
 });
 
 function toggle(id: string) {
+  if (props.readOnly) return;
   selected.value = selectedSet.value.has(id)
     ? selected.value.filter((x) => x !== id)
     : [...selected.value, id];
@@ -89,6 +94,7 @@ function toggle(id: string) {
         :key="s.id"
         type="button"
         role="switch"
+            :disabled="readOnly"
         :aria-checked="selectedSet.has(s.id)"
         class="flex gap-3.5 rounded-xl border bg-card p-4 text-left transition-[border-color,box-shadow] hover:border-foreground/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         :class="selectedSet.has(s.id) && 'border-primary/40 ring-[3px] ring-primary/10'"

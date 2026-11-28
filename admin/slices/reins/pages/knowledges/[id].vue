@@ -2,6 +2,7 @@
 import { useIntervalFn } from '@vueuse/core';
 import { Button } from '#theme/components/ui/button';
 import type { IKnowledge } from '#reins/stores/knowledge';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 const route = useRoute();
 const store = useKnowledgeStore();
@@ -9,6 +10,10 @@ const confirmStore = useConfirmStore();
 
 const knowledgeId = computed(() => route.params.id as string);
 const current = ref<IKnowledge | null>(null);
+// A base the Ranch assistant retrieves from is the Owner's to change, index
+// or delete, and so are its documents (CLEAN-271): what it finds there is
+// input to its turns. For anybody else the base is shown, with one line.
+const { locked, note } = useBuiltFrom(current);
 const indexing = ref(false);
 const indexError = ref<string | null>(null);
 
@@ -309,7 +314,7 @@ provide('knowledge-refresh', refresh);
         </p>
       </div>
       <div class="flex flex-col items-end gap-1">
-        <Button :disabled="indexDisabled" @click="handleIndex">
+        <Button v-if="!locked" :disabled="indexDisabled" @click="handleIndex">
           {{ indexLabel }}
         </Button>
         <span
@@ -325,6 +330,8 @@ provide('knowledge-refresh', refresh);
       </div>
     </div>
 
+    <AccessNote v-if="locked" data-built-from>{{ note }}</AccessNote>
+
     <p v-if="indexError" class="text-xs text-destructive">{{ indexError }}</p>
 
     <!-- The decisive moment to explain Index: content exists but is not
@@ -334,8 +341,8 @@ provide('knowledge-refresh', refresh);
       class="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700"
     >
       {{ queuedCount }} {{ queuedCount === 1 ? 'source is' : 'sources are' }}
-      not searchable yet — press <span class="font-medium">Index</span> to
-      process {{ queuedCount === 1 ? 'it' : 'them' }}. Agents only see what
+      not searchable yet<template v-if="!locked"> — press <span class="font-medium">Index</span> to
+      process {{ queuedCount === 1 ? 'it' : 'them' }}</template>. Agents only see what
       has been indexed.
     </div>
 

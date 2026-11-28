@@ -14,6 +14,10 @@ import {
   accessScope,
   ownerOnlyLeftOutField,
   ownerOnlyRefusal,
+  BUILT_FROM_SCENARIOS,
+  OWNER_ONLY_LEFT_OUT_FIELD,
+  builtFromScenariosRefusal,
+  isBuiltIntoAssistant,
   type ToolResult,
 } from '#/mcp/tooling';
 import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.service';
@@ -114,7 +118,16 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
     const notFound = ok({ error: `Scenario ${id} not found` });
     const scenario = await this.scenarios.findById(id);
     if (!scenario) return { refusal: notFound };
-    if (!scenario.agentId) return { scenario };
+    if (!scenario.agentId) {
+      // Scoped to a template. One the assistant is built from holds what
+      // the Owner tests the assistant with, and what is sent to it when
+      // they do (CLEAN-271): the Owner's to read and to change.
+      const refusal = builtFromScenariosRefusal(
+        httpRequest,
+        scenario.templateId,
+      );
+      return refusal ? { refusal } : { scenario };
+    }
     const { records } = await this.reachOf(httpRequest);
     if (records.has(scenario.agentId)) return { scenario };
     return {
@@ -167,12 +180,25 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
     if (agentId && !records.has(agentId)) {
       return agentNotFound(httpRequest, agentId, 'evaluations');
     }
+    const ofTemplate = builtFromScenariosRefusal(httpRequest, templateId);
+    if (ofTemplate) return ofTemplate;
+    const reached = records.filter(
+      await this.scenarios.findAll({ templateId, agentId }),
+      (scenario) => scenario.agentId,
+    );
+    // The scenarios of a template the assistant is built from are left
+    // out for anybody but the Owner, and the result says so (CLEAN-271).
+    const shown = reached.filter(
+      (scenario) =>
+        scenario.agentId ||
+        !isBuiltIntoAssistant(httpRequest, 'template', scenario.templateId),
+    );
     return ok({
-      scenarios: records.filter(
-        await this.scenarios.findAll({ templateId, agentId }),
-        (scenario) => scenario.agentId,
-      ),
+      scenarios: shown,
       ...ownerOnlyLeftOutField(httpRequest, 'scenarios', agentId),
+      ...(shown.length < reached.length
+        ? { [OWNER_ONLY_LEFT_OUT_FIELD]: BUILT_FROM_SCENARIOS }
+        : {}),
       ...accessScope(used, agentId),
     });
   }
@@ -211,7 +237,15 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
     if (!(await this.reachOf(httpRequest)).records.has(agentId)) {
       return agentNotFound(httpRequest, agentId, 'evaluations');
     }
-    return ok(await this.scenarios.findForAgent(agentId));
+    // An ordinary agent may sit on a template the assistant is built
+    // from; that template's scenarios stay the Owner's (CLEAN-271).
+    return ok(
+      (await this.scenarios.findForAgent(agentId)).filter(
+        (scenario) =>
+          scenario.agentId ||
+          !isBuiltIntoAssistant(httpRequest, 'template', scenario.templateId),
+      ),
+    );
   }
 
   @Tool({
@@ -274,6 +308,10 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
         error: 'Scenario must be scoped to exactly one of: templateId, agentId',
       });
     }
+    // Before anything is written: a scenario of a template the assistant
+    // is built from is sent to the assistant when the Owner evaluates it.
+    const ofTemplate = builtFromScenariosRefusal(httpRequest, input.templateId);
+    if (ofTemplate) return ofTemplate;
     const data: ICreatePaddockScenarioData = {
       templateId: input.templateId ?? null,
       agentId: input.agentId ?? null,
@@ -413,6 +451,10 @@ export class PaddockScenarioTool implements IConditionallyListedTool {
         error: 'Scenario must be scoped to exactly one of: templateId, agentId',
       });
     }
+    // A draft is written to be saved: none for a template whose scenarios
+    // are the Owner's (CLEAN-271).
+    const ofTemplate = builtFromScenariosRefusal(httpRequest, input.templateId);
+    if (ofTemplate) return ofTemplate;
     // The generator drafts one scenario per call; the console asks for one at
     // a time, a chat asks for "three about refunds". Sequential on purpose —
     // each is an LLM call and parallel drafts tend to come back near-identical.

@@ -3,6 +3,8 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  BUILT_FROM_NOTE,
+  builtFromRefusal,
   callerIsOperator,
   CONFIRM_SENTENCE,
   confirmed,
@@ -223,7 +225,8 @@ export class McpServerTool implements IConditionallyListedTool {
       '`description`; the rest is ignored and the result says so. A new ' +
       'authValue replaces the stored one and is never read back. Agents of ' +
       'the templates it is attached to pick the change up on their next ' +
-      'restart.',
+      'restart. ' +
+      BUILT_FROM_NOTE,
     parameters: z.object({
       id: z.string().describe('MCP server id (list_mcp_servers has them)'),
       name: z.string().optional(),
@@ -247,6 +250,16 @@ export class McpServerTool implements IConditionallyListedTool {
     const { id, ...dto } = args;
     const existing = await this.servers.findById(id);
     if (!existing) return ok({ error: NOT_FOUND(id) });
+    // A server the assistant is handed receives its calls, and the Ranch
+    // server its token: its address, its credential and whether it is on
+    // are the Owner's (CLEAN-271). So are the built-ins every agent gets.
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'mcpServer',
+      id,
+      existing.name,
+    );
+    if (builtFrom) return builtFrom;
 
     // Only the fields the caller actually sent, so an omitted `enabled`
     // never becomes `enabled: undefined` in the gateway's update.
@@ -305,6 +318,8 @@ export class McpServerTool implements IConditionallyListedTool {
       'template. Its stored credential is gone with it. A built-in server ' +
       '(Ranch’s own MCP) cannot be deleted — disable it with ' +
       'update_mcp_server instead. ' +
+      BUILT_FROM_NOTE +
+      ' ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       id: z.string().describe('MCP server id (list_mcp_servers has them)'),
@@ -321,6 +336,13 @@ export class McpServerTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const existing = await this.servers.findById(args.id);
     if (!existing) return ok({ error: NOT_FOUND(args.id) });
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'mcpServer',
+      args.id,
+      existing.name,
+    );
+    if (builtFrom) return builtFrom;
     if (existing.builtIn) {
       // The controller's exact wording, with the tool that does it here.
       return err(

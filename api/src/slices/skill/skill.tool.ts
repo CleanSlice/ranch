@@ -3,6 +3,8 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  BUILT_FROM_NOTE,
+  builtFromRefusal,
   callerIsOperator,
   CONFIRM_SENTENCE,
   confirmed,
@@ -226,6 +228,8 @@ export class SkillTool implements IConditionallyListedTool {
       'the source URL if it had one. Agents already running keep the copy ' +
       'baked into their pod until they restart. Check list_skill_agents ' +
       'first and tell the person which agents will lose it. ' +
+      BUILT_FROM_NOTE +
+      ' ' +
       CONFIRM_SENTENCE,
     parameters: z.object({
       id: z.string().describe('Skill id (list_skills has them)'),
@@ -243,6 +247,10 @@ export class SkillTool implements IConditionallyListedTool {
     const { id } = args;
     const skill = await this.skills.findById(id);
     if (!skill) return NOT_FOUND(id);
+    // Deleting a skill detaches it from every template, the assistant's
+    // included: it would lose instructions the Owner gave it (CLEAN-271).
+    const builtFrom = builtFromRefusal(httpRequest, 'skill', id, skill.name);
+    if (builtFrom) return builtFrom;
 
     // The gateway does not refuse a skill in use (the template link is an
     // implicit many-to-many, dropped with the row), so the tool names the
@@ -319,7 +327,7 @@ export class SkillTool implements IConditionallyListedTool {
     const { repo, skillPath, bundle } =
       await this.github.fetchBundleFromUrl(url);
     const slug = name ?? deriveSlug(skillPath);
-    return this.upsertSkill(slug, overwrite === true, {
+    return this.upsertSkill(httpRequest, slug, overwrite === true, {
       title: bundle.title,
       body: bundle.body,
       description: bundle.description,
@@ -375,7 +383,7 @@ export class SkillTool implements IConditionallyListedTool {
     requireOperator(httpRequest);
     const bundle = await this.github.fetchBundle(repo, path);
     const slug = name ?? deriveSlug(path);
-    return this.upsertSkill(slug, overwrite === true, {
+    return this.upsertSkill(httpRequest, slug, overwrite === true, {
       title: bundle.title,
       body: bundle.body,
       description: bundle.description,
@@ -389,6 +397,7 @@ export class SkillTool implements IConditionallyListedTool {
    * model can act on: it names the existing skill and the two ways forward.
    */
   private async upsertSkill(
+    httpRequest: Request,
     slug: string,
     overwrite: boolean,
     data: {
@@ -410,6 +419,16 @@ export class SkillTool implements IConditionallyListedTool {
       );
     }
     if (existing && overwrite) {
+      // An import that overwrites finds its target by slug: importing under
+      // the name of a skill the assistant ships replaces that skill's body
+      // without ever naming its id (CLEAN-271).
+      const builtFrom = builtFromRefusal(
+        httpRequest,
+        'skill',
+        existing.id,
+        existing.name,
+      );
+      if (builtFrom) return builtFrom;
       const updated = await this.skills.update(existing.id, {
         title: data.title,
         body: data.body,

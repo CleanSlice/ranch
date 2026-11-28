@@ -616,15 +616,23 @@ export type OwnerOnlyKindTypes =
   | 'change'
   | 'conversations'
   | 'records'
-  | 'evaluations';
+  | 'evaluations'
+  | 'built_from';
 
-/** The half of the sentence after "Only the Owner can". */
+/**
+ * The half of the sentence after "Only the Owner can".
+ *
+ * `built_from` is said about a thing the assistant is built from, not about
+ * the assistant: a template, a skill, a tool server, a model credential, a
+ * knowledge base (CLEAN-271). Its sentence is `builtFromText`, below.
+ */
 const OWNER_ONLY_CAN: Record<OwnerOnlyKindTypes, string> = {
   manage: 'restart, stop or change it',
   change: 'restart, stop or change it',
   conversations: 'read its conversations',
   records: 'read its records',
   evaluations: 'evaluate it or read its evaluations and scenarios',
+  built_from: 'change it',
 };
 
 /** The Ranch assistant, as much of it as a refusal may say. */
@@ -801,6 +809,228 @@ export function ownerOnlyLeftOutField(
   const note = namedAgentId ? null : ownerOnlyLeftOut(httpRequest, what);
   return note ? { [OWNER_ONLY_LEFT_OUT_FIELD]: note } : {};
 }
+
+// ── What the assistant is built from (CLEAN-271) ────────────
+//
+// The assistant is the Owner's alone, and so is everything its pod is
+// assembled from at the next restart: the template its instructions are
+// copied from, the skills that template ships, the tool servers it is handed
+// (its token goes to their address), the model credential it runs on, the
+// knowledge bases it retrieves from. An Admin who rewrote any of them got a
+// turn of the assistant that runs with the Owner's standing: the escalation
+// CLEAN-232 closed on the agent, reopened through its ingredients.
+//
+// Which resources those are is a fact about the assistant's bindings now,
+// which the agent slice reads off the data. The MCP handler asks it once per
+// call (`ASSISTANT_BUILD_RESOLVER`) for a caller who is an operator and not
+// the Owner, and notes the ids on the call's view. A tool that writes to one
+// of those kinds of resource asks `builtFromRefusal` before it writes, and
+// needs nothing injected for it.
+//
+// Nothing is noted for the Owner and for the assistant acting for itself:
+// they change everything. When the question could not be answered (the
+// lookup threw), every write that asks is refused: this fails closed.
+
+const BUILD_PROPERTY = 'ranchAssistantBuild';
+
+type BuildKindTypes =
+  | 'template'
+  | 'skill'
+  | 'mcpServer'
+  | 'llmCredential'
+  | 'knowledge';
+
+/** What a refusal calls each kind of ingredient. */
+const BUILD_NOUN: Record<BuildKindTypes, string> = {
+  template: 'template',
+  skill: 'skill',
+  mcpServer: 'tool server',
+  llmCredential: 'model credential',
+  knowledge: 'knowledge base',
+};
+
+interface INotedBuild {
+  /** True when the lookup failed: every guarded write is then refused. */
+  unknown: boolean;
+  ids: Record<BuildKindTypes, ReadonlySet<string>>;
+}
+
+const stringSet = (value: unknown): ReadonlySet<string> =>
+  new Set(
+    Array.isArray(value)
+      ? value.filter((id): id is string => typeof id === 'string' && id !== '')
+      : [],
+  );
+
+/**
+ * Note what the assistant is built from, for a caller who may not change
+ * it. The handler does this on every tools/call made for an Admin, on the
+ * per-call view. `null` means the lookup failed, and closes every guarded
+ * write of this call. Not enumerable, like the party.
+ */
+export function setCallerAssistantBuild(
+  httpRequest: Request,
+  build: Partial<Record<BuildKindTypes, readonly string[]>> | null,
+): void {
+  const noted: INotedBuild = {
+    unknown: build === null,
+    ids: {
+      template: stringSet(build?.template),
+      skill: stringSet(build?.skill),
+      mcpServer: stringSet(build?.mcpServer),
+      llmCredential: stringSet(build?.llmCredential),
+      knowledge: stringSet(build?.knowledge),
+    },
+  };
+  Object.defineProperty(httpRequest, BUILD_PROPERTY, {
+    value: noted,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function notedBuild(httpRequest: Request): INotedBuild | null {
+  const noted = (httpRequest as unknown as Record<string, unknown> | null)?.[
+    BUILD_PROPERTY
+  ];
+  if (typeof noted !== 'object' || noted === null) return null;
+  const { unknown, ids } = noted as Partial<INotedBuild>;
+  if (typeof ids !== 'object' || ids === null) return null;
+  return { unknown: unknown === true, ids };
+}
+
+/**
+ * The ids noted for this call, for a tool that withholds a SECRET of the
+ * assistant's ingredients from what it shows (an env preview that would
+ * carry the assistant's key through an agent that shares it). Null for the
+ * Owner and the assistant acting for itself, who read everything; `unknown`
+ * when the lookup failed, and the tool then withholds as if every id were
+ * the assistant's.
+ */
+export function assistantBuildFor(httpRequest: Request): {
+  unknown: boolean;
+  llmCredential: string[];
+  mcpServer: string[];
+} | null {
+  if (callerIsOwner(httpRequest)) return null;
+  const noted = notedBuild(httpRequest);
+  if (!noted) return null;
+  return {
+    unknown: noted.unknown,
+    llmCredential: [...noted.ids.llmCredential],
+    mcpServer: [...noted.ids.mcpServer],
+  };
+}
+
+/**
+ * "The skill «deploy» is part of what Rancher, the Ranch assistant, is built
+ * from. Only the Owner can change it." `thing` is the resource as the person
+ * would name it, with its kind; `assistantName` only for a caller who has
+ * the assistant.
+ */
+export function builtFromText(
+  thing: string,
+  assistantName?: string | null,
+): string {
+  const name = (assistantName ?? '').trim();
+  const whose = name ? `${name}, the Ranch assistant,` : 'the Ranch assistant';
+  return (
+    `${thing.trim() || 'This'} is part of what ${whose} is built from. ` +
+    `Only the Owner can ${OWNER_ONLY_CAN.built_from}.`
+  );
+}
+
+/** What a guarded write answers when the handler could not ask. */
+export const BUILT_FROM_UNKNOWN =
+  'Whether this is part of what the Ranch assistant is built from could ' +
+  'not be checked just now, so nothing was changed. Only the Owner can ' +
+  'change what the assistant is built from.';
+
+/**
+ * Whether the resource `id` of `kind` is one the assistant is built from,
+ * for a caller who may not change such a thing. False for the Owner and the
+ * assistant acting for itself (nothing was noted for them), and for a
+ * resource the assistant does not use.
+ */
+export function isBuiltIntoAssistant(
+  httpRequest: Request,
+  kind: BuildKindTypes,
+  id: string | null | undefined,
+): boolean {
+  if (callerIsOwner(httpRequest)) return false;
+  const noted = notedBuild(httpRequest);
+  if (!noted) return false;
+  if (noted.unknown) return true;
+  return typeof id === 'string' && noted.ids[kind].has(id);
+}
+
+/**
+ * The refusal of a write to a resource the assistant is built from; null
+ * when the write may go ahead. Asked BEFORE anything is written, and before
+ * `confirm`: there is nothing for this person to confirm.
+ *
+ * `label` is the resource's own name, when the tool has read it; the id
+ * stands in otherwise. The assistant is named to a person who has it, and
+ * called "the Ranch assistant" to one who does not.
+ */
+export function builtFromRefusal(
+  httpRequest: Request,
+  kind: BuildKindTypes,
+  id: string | null | undefined,
+  label?: string | null,
+): ToolResult | null {
+  if (!isBuiltIntoAssistant(httpRequest, kind, id)) return null;
+  if (notedBuild(httpRequest)?.unknown) {
+    return ok({ error: BUILT_FROM_UNKNOWN, reason: OWNER_ONLY_REASON });
+  }
+  const named = (label ?? '').trim() || (id ?? '');
+  const thing = named
+    ? `The ${BUILD_NOUN[kind]} «${named}»`
+    : `This ${BUILD_NOUN[kind]}`;
+  return ok({
+    error: builtFromText(thing, ownerOnlyAgent(httpRequest)?.name),
+    reason: OWNER_ONLY_REASON,
+  });
+}
+
+/**
+ * The scenarios of a template the assistant is built from (CLEAN-271).
+ *
+ * A scenario is text that is SENT to an agent when an evaluation runs: its
+ * messages are the turns, its `setup` writes files and environment
+ * variables into the sandbox the agent is started in. The scenarios of the
+ * assistant's template run whenever the Owner evaluates the assistant, so
+ * whoever writes one speaks to the assistant in the Owner's evaluation.
+ * They are the Owner's to write, and to read, as the scenarios of the
+ * assistant itself are since CLEAN-268: what the Owner tests it with.
+ */
+export const BUILT_FROM_SCENARIOS =
+  'The scenarios of this template are what the Owner tests the Ranch ' +
+  'assistant with. Only the Owner can read or change them.';
+
+/**
+ * The refusal of a read or a write of the scenarios of `templateId`; null
+ * when the template is not one the assistant is built from, or the caller
+ * is the Owner.
+ */
+export function builtFromScenariosRefusal(
+  httpRequest: Request,
+  templateId: string | null | undefined,
+): ToolResult | null {
+  if (!isBuiltIntoAssistant(httpRequest, 'template', templateId)) return null;
+  return ok({ error: BUILT_FROM_SCENARIOS, reason: OWNER_ONLY_REASON });
+}
+
+/**
+ * One sentence for the description of a tool that writes to a kind of
+ * resource the assistant may be built from, so the attempt is not made.
+ */
+export const BUILT_FROM_NOTE =
+  'What the Ranch assistant is built from (its template, the skills and ' +
+  'tool servers of that template, its model credential, its knowledge ' +
+  'bases) is changed by the Owner only: for anybody else this answers ' +
+  '`reason: "owner_only"` and changes nothing.';
 
 // ── A result narrowed by access says so (CLEAN-268) ─────────
 //

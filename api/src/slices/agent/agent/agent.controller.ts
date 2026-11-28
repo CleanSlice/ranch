@@ -38,6 +38,7 @@ import { IAgentGateway } from './domain';
 import { AgentStatusTypes, IAgentData } from './domain/agent.types';
 import { ManagesAgent } from './guards';
 import { AgentStatusService } from './domain/agentStatus.service';
+import { AssistantBuildService } from '#/agent/assistantBuild/domain/assistantBuild.service';
 import { AgentPermissionService } from './domain/agentPermission.service';
 import { toReaderView } from './domain/agentReaderView';
 import { toStatusFrameMessage } from './domain/agentStatusFrame';
@@ -166,6 +167,7 @@ export class AgentController {
     private access: AgentAccessService,
     private pins: IAgentPinGateway,
     private toolState: AgentToolStateService,
+    private build: AssistantBuildService,
   ) {}
 
   /** The agents of a list this caller reaches, in the order given (CLEAN-231). */
@@ -491,10 +493,20 @@ export class AgentController {
       'Env vars the agent pod receives on its next deploy. Built from the same code as the real pod manifest — the source of truth, never a hand-maintained copy. The UI masks secret values for display.',
   })
   @ApiOkResponse({ type: AgentEnvVarDto, isArray: true })
-  async getAgentEnv(@Param('id') id: string): Promise<AgentEnvVarDto[]> {
+  async getAgentEnv(
+    @Param('id') id: string,
+    @Req() req?: Request & { user?: IAuthTokenPayload },
+  ): Promise<AgentEnvVarDto[]> {
     const agent = await this.agentGateway.findById(id);
     if (!agent) throw new NotFoundException('Agent not found');
-    return this.workflowService.previewAgentEnv(agent);
+    // An agent may run on the credential, or be handed a server, the Ranch
+    // assistant is built from: those secrets are the Owner's to read
+    // (CLEAN-271), whoever manages this agent.
+    return this.build.envFor(
+      agent,
+      await this.workflowService.previewAgentEnv(agent),
+      req?.user,
+    );
   }
 
   @Get(':id/mcps')
@@ -535,7 +547,13 @@ export class AgentController {
         );
     if (!agent) throw new NotFoundException('Agent not found');
 
-    const enabledServers = await this.mcpResolver.resolveForAgent(agent);
+    const resolved = await this.mcpResolver.resolveForAgent(agent);
+    // The runtime reads its own list whole. A person reads it without the
+    // credential of a server the Ranch assistant is handed, unless they are
+    // the Owner (CLEAN-271).
+    const enabledServers = sub.startsWith('agent:')
+      ? resolved
+      : await this.build.serversFor(resolved, req.user);
 
     return enabledServers.map((s) => ({
       id: s.id,

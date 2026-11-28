@@ -30,20 +30,28 @@ import {
   OWNER,
   REPO,
   USER,
+  accountId,
   api,
   check,
   done,
   rolelessToken,
   section,
+  setAssistantFor,
   tokenFor,
 } from './lib.mjs';
 
-/** contracts/acting-party.md §6, and userRoutes.spec.ts: 17 routes and the MCP endpoints. */
+/** contracts/acting-party.md §6, and userRoutes.spec.ts, which this list is held to below. */
 const USER_SET = new Set([
   'GET /auth/me',
   'GET /agents',
   'GET /agents/status',
   'GET /agents/:id',
+  // The assistant, for a User it is switched on for (CLEAN-240): reach
+  // decides, and the view is a reader's. Checked further down.
+  'GET /agents/admin/current',
+  // What the assistant offers the person asking, and nothing about anybody
+  // else (CLEAN-240).
+  'GET /me/assistant-access',
   'GET /agents/:agentId/limits/enabled',
   // Personal pins (CLEAN-231).
   'PUT /agents/:id/pin',
@@ -60,6 +68,14 @@ const USER_SET = new Set([
   'DELETE /me/chats/:id/feedback/:messageId',
   'GET /me/chats/:id/feedback',
   'GET /me/chats/:id/export',
+  // Their own statistics (CLEAN-258): the person is the token's, and no
+  // parameter names another.
+  'GET /me/stats',
+  // The browser extension (CLEAN-243): the list of integrations it may
+  // ask about, and a token that files cookies under the caller's own chat
+  // identity. The integration token itself stays Admin.
+  'GET /integrations/catalogue',
+  'POST /browser/extension/token',
   'POST /mcp/mcp',
   'GET /mcp/mcp',
   'DELETE /mcp/mcp',
@@ -160,6 +176,26 @@ check(
   missing.every((route) => route.includes('/mcp/')),
   `every route of the reviewed User set is in the spec${missing.length ? ` (not documented: ${missing.join(', ')})` : ''}`,
 );
+
+{
+  // The same list is pinned in the API's own suite, against the decorators
+  // of every controller (userRoutes.spec.ts). This script sweeps the running
+  // API with it, so the two must be one list: a route added there and not
+  // here used to show up as "a 2xx outside the User set" with nothing to
+  // say whether the API or this script was behind.
+  const pinned = readFileSync(resolve(REPO, 'api/src/slices/user/auth/guards/userRoutes.spec.ts'), 'utf8');
+  const block = /const EXPECTED_USER_ROUTES = \[([\s\S]*?)\]\.sort\(\);/.exec(pinned)?.[1] ?? '';
+  const reviewed = [...block.matchAll(/^\s*'((?:GET|POST|PUT|PATCH|DELETE) [^']+)',\s*$/gm)].map((m) => shape(m[1]));
+  const mine = [...USER_SET].map(shape);
+  const onlyThere = reviewed.filter((route) => !mine.includes(route));
+  const onlyHere = mine.filter((route) => !reviewed.includes(route));
+  check(
+    reviewed.length > 20 && onlyThere.length === 0 && onlyHere.length === 0,
+    `the User set swept here is the one pinned in userRoutes.spec.ts, route for route (${reviewed.length} routes)` +
+      (onlyThere.length ? ` — only in the spec: ${onlyThere.join(', ')}` : '') +
+      (onlyHere.length ? ` — only here: ${onlyHere.join(', ')}` : ''),
+  );
+}
 
 section('With the User’s token');
 const userToken = await tokenFor(USER);
@@ -307,9 +343,16 @@ async function firstFrames(ms = 4000) {
   const names = Object.values(AGENTS).filter((a) => text.includes(a.name));
   check(names.length === 0, `no agent is named${names.length ? ` — FOUND: ${names.map((a) => a.name).join(', ')}` : ''}`);
   const keysOf = (pick) => [...new Set(items.flatMap((item) => Object.keys(pick(item) ?? {})))].sort().join(',');
+  // `tools` since CLEAN-245 (specs/035, contracts/api.md, "Status stream"):
+  // one word on how the agent's tool servers stand, or null. Never a server.
   check(
-    keysOf((i) => i) === 'agent,bridleConnected,pod' && keysOf((i) => i.agent) === 'id,status,updatedAt',
-    `each agent is { agent: { id, status, updatedAt }, pod, bridleConnected } and nothing more (${keysOf((i) => i)} / ${keysOf((i) => i.agent)})`,
+    keysOf((i) => i) === 'agent,bridleConnected,pod,tools' && keysOf((i) => i.agent) === 'id,status,updatedAt',
+    `each agent is { agent: { id, status, updatedAt }, pod, bridleConnected, tools } and nothing more (${keysOf((i) => i)} / ${keysOf((i) => i.agent)})`,
+  );
+  const words = [...new Set(items.map((i) => JSON.stringify(i.tools)))];
+  check(
+    items.every((i) => i.tools === null || i.tools === 'connecting' || i.tools === 'limited') && items.every((i) => typeof i.bridleConnected === 'boolean'),
+    `and \`tools\` is one of null, "connecting", "limited": a word, never a server's name or address (${words.join(', ')})`,
   );
   const podKeys = keysOf((i) => i.pod);
   check(
@@ -351,15 +394,52 @@ section('What POST /me/chats/sync does for a User');
 }
 
 // Since CLEAN-231 the seeded Admin is limited to access-alpha and
-// access-bravo: those two whole, and neither access-charlie nor the Ranch
-// admin agent in the list. That an Admin who DOES reach the Ranch admin
-// agent gets it as a reader view, marked isAdmin, is checked by acting.mjs
-// (which allows it for its own run) and by agent.controller.readers.spec.ts.
+// access-bravo: those two whole, and not access-charlie. The Ranch admin
+// agent is on nobody's list since CLEAN-240: it is the assistant, a person
+// has it by the assistant's own switch, and an Admin has it switched on
+// unless the Owner says otherwise. What they get of it is a reader's view,
+// marked isAdmin: the agent is the Owner's alone to manage (CLEAN-232).
 const asAdmin = seeded((await api('/agents', { as: ADMIN_USER })).body);
 check(
-  isWhole(asAdmin.a) && isWhole(asAdmin.b) && asAdmin.c === undefined && asAdmin.ranch === undefined,
-  'a limited Admin gets the agents on their allowed list whole, and no other',
+  isWhole(asAdmin.a) && isWhole(asAdmin.b) && asAdmin.c === undefined,
+  'a limited Admin gets the agents on their allowed list whole, and no other ordinary agent',
 );
+check(
+  isReaderView(asAdmin.ranch) && asAdmin.ranch?.isAdmin === true && !JSON.stringify(asAdmin.ranch).includes('operator-only'),
+  'and the Ranch admin agent, which they have as their assistant, as a reader: marked isAdmin, no configuration, credential, workflow or deploy history',
+);
+{
+  const current = await api('/agents/admin/current', { as: ADMIN_USER });
+  const one = await api(`/agents/${AGENTS.ranch.id}`, { as: ADMIN_USER });
+  check(
+    current.status === 200 && current.body?.id === AGENTS.ranch.id && isReaderView(current.body) && one.status === 200 && isReaderView(one.body),
+    `GET /agents/admin/current and GET /agents/:id answer the Admin with the same reader's view (${current.status}, ${one.status})`,
+  );
+  const asUserCurrent = await api('/agents/admin/current', { as: USER });
+  check(
+    asUserCurrent.status === 200 && asUserCurrent.body?.id === AGENTS.ranch.id && isReaderView(asUserCurrent.body),
+    `and a User, who has it switched on by default too (${asUserCurrent.status})`,
+  );
+  // Switched off for the account, it is out of reach: not in the list, and
+  // 404 by id and by the route that names it by its flag. For an Admin and
+  // for a User alike.
+  for (const [who, label] of [[ADMIN_USER, 'the Admin'], [USER, 'the User']]) {
+    const id = await accountId(who);
+    const off = await setAssistantFor(id, { enabled: false });
+    const list = seeded((await api('/agents', { as: who })).body);
+    const byId = await api(`/agents/${AGENTS.ranch.id}`, { as: who });
+    const byFlag = await api('/agents/admin/current', { as: who });
+    const mine = await api('/me/assistant-access', { as: who });
+    check(
+      off.status === 200 && list.ranch === undefined && byId.status === 404 && byFlag.status === 404 && !JSON.stringify(byFlag.body ?? '').includes(AGENTS.ranch.id),
+      `switched off for ${label}: not in GET /agents, 404 by id and 404 on /agents/admin/current (${off.status}, ${byId.status}, ${byFlag.status})`,
+    );
+    check(mine.status === 200 && mine.body?.enabled === false, `and GET /me/assistant-access tells ${label} it is off (${mine.status})`);
+    const back = await setAssistantFor(id, null);
+    const again = seeded((await api('/agents', { as: who })).body);
+    check(back.status === 200 && isReaderView(again.ranch), `${label} follows their role again and has it back (${back.status})`);
+  }
+}
 const asOwner = seeded((await api('/agents', { as: OWNER })).body);
 check(Object.values(asOwner).every(isWhole), 'the Owner gets all four whole');
 

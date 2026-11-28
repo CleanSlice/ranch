@@ -25,6 +25,8 @@ const props = defineProps<{
   agents: IAgentData[];
   skills: ISkillData[];
   mcps: IMcpServerData[];
+  /** Shown to look at (CLEAN-271): the links open the tabs to read. */
+  readOnly?: boolean;
 }>();
 
 defineEmits<{ manageSkills: []; manageMcps: [] }>();
@@ -114,7 +116,7 @@ onBeforeUnmount(() => {
         <div class="flex items-center">
           <h2 class="text-[15px] font-semibold">Skills</h2>
           <button type="button" class="ml-auto text-[13px] text-primary hover:underline" @click="$emit('manageSkills')">
-            Manage →
+            {{ readOnly ? 'View →' : 'Manage →' }}
           </button>
         </div>
         <div class="flex flex-wrap gap-1.5">
@@ -132,7 +134,7 @@ onBeforeUnmount(() => {
         <div class="flex items-center">
           <h2 class="text-[15px] font-semibold">MCP servers</h2>
           <button type="button" class="ml-auto text-[13px] text-primary hover:underline" @click="$emit('manageMcps')">
-            Manage →
+            {{ readOnly ? 'View →' : 'Manage →' }}
           </button>
         </div>
         <div class="flex flex-wrap gap-1.5">

@@ -41,7 +41,7 @@ export {
   tokenFor,
   until,
 } from '../../030-agent-request-limits/e2e/lib.mjs';
-import { API, APP, apiEnv, requireFromApi } from '../../030-agent-request-limits/e2e/lib.mjs';
+import { API, APP, api, apiEnv, requireFromApi } from '../../030-agent-request-limits/e2e/lib.mjs';
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
 export const OUT = resolve(process.env.E2E_OUT || resolve(tmpdir(), 'ranch-032-e2e'));
@@ -79,6 +79,35 @@ export const AGENTS = {
 };
 export const TEMPLATE = { name: 'access-e2e', description: 'Fixture template for the acting-party checks', image: 'access-e2e:local' };
 export const LLM = { id: 'llm-access-e2e', provider: 'claude', model: 'claude-haiku-4-5', label: 'access-e2e (dummy key)' };
+
+/**
+ * What the Ranch admin agent is built from, and what the ordinary agents
+ * are (CLEAN-271). The assistant has one of each kind of its own: a
+ * template, a skill and a tool server that template attaches, a model
+ * credential and a knowledge base with one document. The ordinary agents
+ * keep the shared `TEMPLATE` and `LLM`, and `access-alpha` gets a skill, a
+ * tool server and a knowledge base of its own, so that every kind has one an
+ * Admin still edits. Ids are fixed so scripts can link to them. No name
+ * holds the name of an agent: enforce.mjs reads every screen of an account
+ * for the names of the agents it does not reach, and a skill called after
+ * one would read as that agent.
+ */
+export const BUILT_FROM = {
+  ranch: {
+    template: { name: 'access-e2e-ranch', description: 'Fixture template of the Ranch assistant', image: 'access-e2e:local' },
+    skill: { id: '00000271-0000-4000-8000-0000000000f1', name: 'assistant-e2e-ops', title: 'Ranch operations (fixture)' },
+    server: { id: 'mcp-access-ranch-tools', name: 'assistant-e2e-tools', url: 'https://ranch-tools.access-e2e.test/mcp' },
+    llm: { id: 'llm-access-e2e-ranch', provider: 'claude', model: 'claude-haiku-4-5', label: 'access-e2e-ranch (dummy key)' },
+    knowledge: { id: '00000271-0000-4000-8000-0000000000f2', name: 'assistant-e2e-handbook', workspace: 'access-e2e-ranch-handbook' },
+    source: { id: '00000271-0000-4000-8000-0000000000f3', name: 'ranch handbook, page one' },
+  },
+  other: {
+    skill: { id: '00000271-0000-4000-8000-0000000000a1', name: 'support-e2e-replies', title: 'Support replies (fixture)' },
+    server: { id: 'mcp-access-alpha-tools', name: 'support-e2e-tools', url: 'https://alpha-tools.access-e2e.test/mcp' },
+    knowledge: { id: '00000271-0000-4000-8000-0000000000a2', name: 'support-e2e-articles', workspace: 'access-e2e-alpha-articles' },
+    source: { id: '00000271-0000-4000-8000-0000000000a3', name: 'alpha articles, page one' },
+  },
+};
 
 // ---------------------------------------------------------------- tokens
 
@@ -258,3 +287,62 @@ export const TOOLS = {
   ownPeers: ['list_my_peers', 'list_ranch_agents', 'connect_my_peer', 'import_my_peer_by_address', 'connect_my_peer_from_card', 'remove_my_peer'],
 };
 export const MANAGEMENT_TOOLS = [...TOOLS.admin, ...TOOLS.owner, ...TOOLS.manage, ...TOOLS.ownPeers];
+
+// ---------------------------------------------- the assistant setting
+
+/**
+ * What the assistant offers each role and each account that differs from
+ * its role (CLEAN-240), as it stands now. Returns the function that puts it
+ * back: a script that changes these for its own set-up calls it when it is
+ * done, so that what the next script finds does not depend on which one ran
+ * before it. A role that had nothing configured gets its own default
+ * written, which gives the same people the same abilities.
+ */
+export async function rememberAssistantAccess() {
+  const asOwner = (path, options = {}) => api(path, { as: OWNER, ...options });
+  const setting = (view) => ({
+    enabled: view.enabled,
+    level: view.level,
+    ...(view.level === 'custom' ? { on: view.on ?? view.pick?.on ?? [] } : {}),
+  });
+  const before = (await asOwner('/assistant-access')).body;
+  const accounts = new Map();
+  for (const row of before?.exceptions ?? []) {
+    accounts.set(row.userId, setting((await asOwner(`/users/${row.userId}/assistant-access`)).body));
+  }
+  return async function putBack() {
+    const failed = [];
+    for (const [role, view] of Object.entries(before?.roles ?? {})) {
+      const res = await asOwner(`/assistant-access/roles/${role}`, { method: 'PUT', body: setting(view) });
+      if (res.status !== 200) failed.push(`role ${role}: ${res.status}`);
+    }
+    const now = (await asOwner('/assistant-access')).body;
+    for (const row of now?.exceptions ?? []) {
+      if (accounts.has(row.userId)) continue;
+      const res = await asOwner(`/users/${row.userId}/assistant-access`, { method: 'DELETE' });
+      if (res.status !== 200) failed.push(`account ${row.email}: ${res.status}`);
+    }
+    for (const [userId, body] of accounts) {
+      const res = await asOwner(`/users/${userId}/assistant-access`, { method: 'PUT', body });
+      if (res.status !== 200) failed.push(`account ${userId}: ${res.status}`);
+    }
+    return failed;
+  };
+}
+
+/** The id of a seeded account, by its email. */
+export async function accountId(who) {
+  const users = (await api('/users', { as: OWNER })).body;
+  return (Array.isArray(users) ? users : (users?.items ?? [])).find((u) => u.email === who.email)?.id;
+}
+
+/**
+ * Switches the assistant off or on for one account, as the Owner does it on
+ * the account's page. `null` drops the account's own setting: it follows
+ * its role again.
+ */
+export async function setAssistantFor(userId, setting) {
+  return setting === null
+    ? api(`/users/${userId}/assistant-access`, { method: 'DELETE', as: OWNER })
+    : api(`/users/${userId}/assistant-access`, { method: 'PUT', as: OWNER, body: setting });
+}

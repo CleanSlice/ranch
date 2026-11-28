@@ -20,6 +20,7 @@ import {
   IPaddockJudgeCredential,
 } from './';
 import { IPaddockScenarioData } from '../../scenario/domain';
+import type { IPaddockRunScope } from './evaluation.types';
 import { RanchAgentEnvelope } from '../data/ranchAgentEnvelope';
 import { captureBackgroundError } from '#/setup/sentry';
 
@@ -75,6 +76,7 @@ export class PaddockEvaluationService {
 
   async start(
     input: IRunPaddockEvaluationData,
+    scope: IPaddockRunScope = {},
   ): Promise<IPaddockEvaluationData> {
     const agent = await this.agentGateway.findById(input.agentId);
     if (!agent) throw new NotFoundException('Agent not found');
@@ -97,7 +99,7 @@ export class PaddockEvaluationService {
       ...(input.judgeOverride ?? {}),
     };
 
-    const scenarios = await this.resolveScenarios(input);
+    const scenarios = await this.resolveScenarios(input, agent, scope);
     if (scenarios.length === 0) {
       throw new BadRequestException(
         'No scenarios found for this agent. Add scenarios to its template first.',
@@ -121,23 +123,74 @@ export class PaddockEvaluationService {
     return this.evaluationGateway.findAll({ agentId });
   }
 
-  async list(filter: {
-    agentId?: string;
-    templateId?: string;
-    limit?: number;
-  }): Promise<IPaddockEvaluationData[]> {
-    return this.evaluationGateway.findAll(filter);
+  async list(
+    filter: {
+      agentId?: string;
+      templateId?: string;
+      limit?: number;
+    },
+    scope: IPaddockRunScope = {},
+  ): Promise<IPaddockEvaluationData[]> {
+    return (await this.evaluationGateway.findAll(filter)).filter(
+      (ev) => !this.keptFrom(ev, scope),
+    );
   }
 
-  async getById(id: string): Promise<IPaddockEvaluationData> {
+  async getById(
+    id: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<IPaddockEvaluationData> {
     const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
+    // The same answer for an evaluation that does not exist and for one
+    // this reader is not to read: the one place the question is asked.
+    if (!ev || this.keptFrom(ev, scope)) {
+      throw new NotFoundException('Evaluation not found');
+    }
     return ev;
   }
 
-  async abort(id: string): Promise<IPaddockEvaluationData> {
-    const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
+  // ── A run that holds scenarios its reader may not read (CLEAN-271) ──
+  //
+  // An evaluation keeps a COPY of the scenarios it ran, and everything
+  // else it holds is about them: results, counts, a pass rate, a trace per
+  // scenario, a report, a log, the runner's error text. An ordinary agent
+  // may sit on a template the Ranch assistant is built from, and a run of
+  // it started by the Owner holds that template's scenarios, which only
+  // the Owner reads.
+  //
+  // Such a run is not taken apart for anybody else. Three attempts at
+  // leaving the kept scenarios out field by field each missed a field (a
+  // count, a summary list, free text of an error, a log line), and the
+  // next field added to an evaluation would be missed the same way. So the
+  // run is refused WHOLE: for a reader it keeps a scenario from, it does
+  // not exist. One question, `keptFrom`, asked in one place, `getById`,
+  // which every read and every action below goes through before anything
+  // is read; a list leaves the run out.
+  //
+  // What this costs is small and is the Owner's territory anyway. A run
+  // holds a scenario only of its own agent or of that agent's template
+  // (`resolveScenarios`), so only an agent that sits ON a template the
+  // assistant is built from can have such a run; and a run started by
+  // anybody but the Owner leaves those scenarios out, so such a run is
+  // always one the Owner started.
+
+  /** Whether `ev` holds a scenario `scope` keeps from its reader. */
+  private keptFrom(
+    ev: IPaddockEvaluationData,
+    scope: IPaddockRunScope,
+  ): boolean {
+    const hides = scope.hidesTemplate;
+    if (!hides) return false;
+    return ev.scenariosSnapshot.some(
+      (s) => !s.agentId && Boolean(s.templateId) && hides(s.templateId!),
+    );
+  }
+
+  async abort(
+    id: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<IPaddockEvaluationData> {
+    const ev = await this.getById(id, scope);
     if (ev.status !== 'running') return ev;
     // Best-effort: kill the underlying paddock CLI subprocess (if any).
     const killed = this.runner.abort(ev.agentId);
@@ -165,9 +218,14 @@ export class PaddockEvaluationService {
    * If the source has no `results` (e.g. crashed before producing any),
    * everything is rerun — there's nothing to skip.
    */
-  async rerun(sourceId: string): Promise<IPaddockEvaluationData> {
+  async rerun(
+    sourceId: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<IPaddockEvaluationData> {
     const source = await this.evaluationGateway.findById(sourceId);
-    if (!source) throw new NotFoundException('Source evaluation not found');
+    if (!source || this.keptFrom(source, scope)) {
+      throw new NotFoundException('Source evaluation not found');
+    }
 
     const agent = await this.agentGateway.findById(source.agentId);
     if (!agent) {
@@ -221,10 +279,13 @@ export class PaddockEvaluationService {
     return evaluation;
   }
 
-  async getLogs(id: string): Promise<{ lines: string[] }> {
-    const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
-    return { lines: this.runner.getLogs(ev.agentId) };
+  async getLogs(
+    id: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<{ lines: string[] }> {
+    await this.getById(id, scope);
+    // The runner keeps one buffer per run, under the evaluation's id.
+    return { lines: this.runner.getLogs(id) };
   }
 
   // Fetch a scenario as it was captured into this evaluation's snapshot.
@@ -234,9 +295,9 @@ export class PaddockEvaluationService {
   async getScenario(
     id: string,
     scenarioId: string,
+    scope: IPaddockRunScope = {},
   ): Promise<IPaddockScenarioData> {
-    const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
+    const ev = await this.getById(id, scope);
     const scenario = ev.scenariosSnapshot.find((s) => s.id === scenarioId);
     if (!scenario)
       throw new NotFoundException(
@@ -245,9 +306,11 @@ export class PaddockEvaluationService {
     return scenario;
   }
 
-  async getReport(id: string): Promise<{ json: object; md: string }> {
-    const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
+  async getReport(
+    id: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<{ json: object; md: string }> {
+    const ev = await this.getById(id, scope);
     if (!ev.reportS3Key) {
       throw new NotFoundException(
         'Report not yet available — evaluation may still be running or failed before producing one',
@@ -259,15 +322,39 @@ export class PaddockEvaluationService {
     return report;
   }
 
-  async getTrace(id: string, scenarioId: string): Promise<object | null> {
-    const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
+  async getTrace(
+    id: string,
+    scenarioId: string,
+    scope: IPaddockRunScope = {},
+  ): Promise<object | null> {
+    await this.getById(id, scope);
     return this.reportGateway.loadTrace(id, scenarioId);
   }
 
+  /**
+   * The scenarios of one run: the agent's own and its template's, or the
+   * ones named among those.
+   *
+   * A named scenario used to be taken by its id alone, whatever it was
+   * scoped to. The run copies its scenarios into a snapshot the person who
+   * started it reads, so naming the id of a scenario of an agent they do
+   * not reach, of the Ranch assistant or of its template, read it to them
+   * past every rule about scenarios (CLEAN-231, CLEAN-268, CLEAN-271). A
+   * scenario runs for the agent it is scoped to and for no other.
+   */
   private async resolveScenarios(
     input: IRunPaddockEvaluationData,
+    agent: { id: string; templateId?: string | null },
+    scope: IPaddockRunScope,
   ): Promise<IPaddockScenarioData[]> {
+    const ofThisAgent = (s: IPaddockScenarioData): boolean =>
+      s.agentId
+        ? s.agentId === agent.id
+        : Boolean(s.templateId) && s.templateId === agent.templateId;
+    const shown = (s: IPaddockScenarioData): boolean =>
+      Boolean(s.agentId) ||
+      !s.templateId ||
+      !scope.hidesTemplate?.(s.templateId);
     let scenarios: IPaddockScenarioData[];
     if (input.scenarioIds && input.scenarioIds.length > 0) {
       scenarios = [];
@@ -278,7 +365,7 @@ export class PaddockEvaluationService {
     } else {
       scenarios = await this.scenarioGateway.findForAgent(input.agentId);
     }
-    return sortScenarios(scenarios);
+    return sortScenarios(scenarios.filter(ofThisAgent).filter(shown));
   }
 
   /**
@@ -335,6 +422,7 @@ export class PaddockEvaluationService {
       envelope = await this.envelope.materialize(agentId);
 
       const output = await this.runner.run({
+        evaluationId,
         agentId,
         agentDir: envelope.agentDir,
         scenarios,

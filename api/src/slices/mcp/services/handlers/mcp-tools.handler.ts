@@ -30,6 +30,10 @@ import {
   type IAssistantGrantResolver,
 } from '../../interfaces/assistant-grant.interface';
 import {
+  ASSISTANT_BUILD_RESOLVER,
+  type IAssistantBuildResolver,
+} from '../../interfaces/assistant-build.interface';
+import {
   PEER_PARTY_RESOLVER,
   TURN_META_KEY,
   type IPeerPartyResolver,
@@ -39,10 +43,12 @@ import {
   audienceAllows,
   callerAgentId,
   callerIsOperator,
+  callerIsOwner,
   callerParty,
   callerPerson,
   manageCaller,
   setCalledTool,
+  setCallerAssistantBuild,
   setCallerAssistantGrant,
   setCallerManagesAgents,
   setCallerOwnerOnlyAgent,
@@ -324,6 +330,46 @@ export class McpToolsHandler extends McpHandlerBase {
   }
 
   /**
+   * What the Ranch assistant is built from is changed by the Owner only
+   * (CLEAN-271): its template, the skills and tool servers of that
+   * template, its model credential, its knowledge bases. Which resources
+   * those are is a fact about the assistant's bindings now, so the agent
+   * slice is asked, once per call, and the ids noted on the call's view,
+   * where `builtFromRefusal` reads them before a tool writes.
+   *
+   * Asked for an operator who is not the Owner, which is an Admin: the
+   * tools that write to these resources are `admin` tools, and the Owner
+   * and the assistant acting for itself change everything. No resolver
+   * leaves nothing noted (the real container always has one:
+   * `assistantBuild.di.spec.ts`). A resolver that throws notes that the
+   * question could not be answered, and every guarded write of this call is
+   * then refused: an error must not open what the rule closes.
+   */
+  private async noteAssistantBuild(callRequest: Request): Promise<void> {
+    if (!callerIsOperator(callRequest) || callerIsOwner(callRequest)) return;
+    let resolver: IAssistantBuildResolver | undefined;
+    try {
+      resolver = this.moduleRef.get<IAssistantBuildResolver>(
+        ASSISTANT_BUILD_RESOLVER,
+        { strict: false },
+      );
+    } catch {
+      resolver = undefined;
+    }
+    if (typeof resolver?.ingredients !== 'function') return;
+    try {
+      setCallerAssistantBuild(callRequest, await resolver.ingredients());
+    } catch (e) {
+      setCallerAssistantBuild(callRequest, null);
+      this.logger.warn(
+        `could not tell what the Ranch assistant is built from: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+  }
+
+  /**
    * Fire-and-forget. Only agent runtimes are recorded (a person listing
    * through the console has no pod), and neither a missing recorder nor a
    * failed write may touch the listing itself.
@@ -435,6 +481,7 @@ export class McpToolsHandler extends McpHandlerBase {
             callRequest,
             toolInfo.audience === 'manage-agent',
           );
+          await this.noteAssistantBuild(callRequest);
 
           const contextId = ContextIdFactory.getByRequest(callRequest);
           this.moduleRef.registerRequestByContextId(callRequest, contextId);

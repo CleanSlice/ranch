@@ -8,6 +8,7 @@ import { Request } from 'express';
 import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
+  builtFromRefusal,
   callerIsOperator,
   CONFIRM_SENTENCE,
   confirmed,
@@ -247,6 +248,14 @@ export class SourceTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
+    // What the Ranch assistant retrieves is input to its turns: the
+    // documents of a base it is bound to are the Owner's (CLEAN-271).
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'knowledge',
+      args.knowledgeId,
+    );
+    if (builtFrom) return builtFrom;
     const { knowledgeId, kind, name } = args;
     // Same checks as SourceController.add, as tool refusals rather than 400s.
     if (kind === 'url') {
@@ -308,6 +317,14 @@ export class SourceTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
+    // What the Ranch assistant retrieves is input to its turns: the
+    // documents of a base it is bound to are the Owner's (CLEAN-271).
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'knowledge',
+      args.knowledgeId,
+    );
+    if (builtFrom) return builtFrom;
     try {
       const result = await this.service.addFromSitemap(
         args.knowledgeId,
@@ -357,6 +374,10 @@ export class SourceTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
+    // What the Ranch assistant retrieves is input to its turns: the
+    // documents of a base it is bound to are the Owner's (CLEAN-271).
+    const builtFrom = builtFromRefusal(httpRequest, 'knowledge', knowledgeId);
+    if (builtFrom) return builtFrom;
     const source = await this.resolve(knowledgeId, sourceId);
     if (!source) return SOURCE_NOT_FOUND(sourceId, knowledgeId);
     await this.service.reindexSource(knowledgeId, sourceId);
@@ -397,6 +418,10 @@ export class SourceTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
+    // What the Ranch assistant retrieves is input to its turns: the
+    // documents of a base it is bound to are the Owner's (CLEAN-271).
+    const builtFrom = builtFromRefusal(httpRequest, 'knowledge', knowledgeId);
+    if (builtFrom) return builtFrom;
     const source = await this.resolve(knowledgeId, sourceId);
     if (!source) return SOURCE_NOT_FOUND(sourceId, knowledgeId);
     try {
@@ -448,6 +473,14 @@ export class SourceTool implements IConditionallyListedTool {
     httpRequest: AuthedRequest,
   ): Promise<ToolResult> {
     requireOperator(httpRequest);
+    // What the Ranch assistant retrieves is input to its turns: the
+    // documents of a base it is bound to are the Owner's (CLEAN-271).
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'knowledge',
+      args.knowledgeId,
+    );
+    if (builtFrom) return builtFrom;
     const { knowledgeId, sourceId } = args;
     const source = await this.resolve(knowledgeId, sourceId);
     if (!source) return SOURCE_NOT_FOUND(sourceId, knowledgeId);

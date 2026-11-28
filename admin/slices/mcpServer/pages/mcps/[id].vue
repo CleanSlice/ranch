@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ICreateMcpServerData } from '#mcpServer/stores/mcpServer';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
 
 definePageMeta({
   key: (route) => `mcp-${route.params.id as string}`,
@@ -15,6 +16,11 @@ const { data: mcp, pending } = useAsyncData(
   () => mcpServerStore.fetchById(id),
   { lazy: true },
 );
+
+// A server the Ranch assistant is handed receives its calls, and the Ranch
+// server its token: its address and credential are the Owner's (CLEAN-271).
+// For anybody else the connection is shown, with one line and no Save.
+const { locked, note } = useBuiltFrom(mcp);
 
 const submitting = ref(false);
 const submitError = ref<string | null>(null);
@@ -46,16 +52,23 @@ function onCancel() {
     <template v-else-if="mcp">
       <div>
         <h1 class="text-2xl font-semibold">{{ mcp.name }}</h1>
-        <p class="text-sm text-muted-foreground">Edit MCP server connection.</p>
+        <p class="text-sm text-muted-foreground">
+          {{ locked ? 'MCP server connection.' : 'Edit MCP server connection.' }}
+        </p>
       </div>
 
+      <AccessNote v-if="locked" data-built-from>{{ note }}</AccessNote>
+
+      <fieldset :disabled="locked" class="contents">
       <McpServerItemForm
+        :read-only="locked"
         :initial-values="mcp"
         :submitting="submitting"
         submit-label="Save changes"
         @submit="onSubmit"
         @cancel="onCancel"
       />
+      </fieldset>
 
       <p v-if="submitError" class="text-xs text-destructive">{{ submitError }}</p>
     </template>

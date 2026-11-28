@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { Tool, ToolAudience, ToolTopics } from '#mcp';
 import {
   agentNotFound,
+  BUILT_FROM_NOTE,
+  builtFromRefusal,
+  isBuiltIntoAssistant,
   callerIsOperator,
   callerIsOwner,
   callerParty,
@@ -16,6 +19,7 @@ import {
   operatorOnly,
   OWNER_MANAGED_MARK,
   OWNER_MANAGED_NOTE,
+  OWNER_ONLY_REASON,
   requireOperator,
   requireOwner,
   requirePersonOrOperator,
@@ -42,7 +46,10 @@ import {
   ISettingGateway,
   describeSettingCatalog,
   findSettingDefinition,
+  assistantSettingDrift,
   nearestSettingDefinition,
+  ownerOnlySettingRefusal,
+  writeSettingBy,
 } from '#/setting/domain';
 import { IUsageGateway } from '#/usage/domain';
 import { IFileGateway } from '#/agent/file/domain';
@@ -185,7 +192,27 @@ export class RancherTool {
           status.admin,
         ));
     }
-    return ok(rancherStatusFor(status, { reaches, manages }));
+    // The Owner is told when the assistant runs on settings that are not
+    // the current ones (CLEAN-271): keys only, never a value.
+    const settingsDrift = callerIsOwner(httpRequest)
+      ? (await assistantSettingDrift()).map((row) => ({
+          setting: `${row.group}.${row.name}`,
+          change: row.change,
+          changedAt: row.changedAt,
+        }))
+      : undefined;
+    return ok({
+      ...rancherStatusFor(status, { reaches, manages }),
+      ...(settingsDrift?.length
+        ? {
+            settingsDrift,
+            settingsDriftNote:
+              'These settings were changed by somebody else. The assistant ' +
+              'keeps the values the Owner approved until ' +
+              'apply_settings_to_assistant.',
+          }
+        : {}),
+    });
   }
 
   // ─── Agents ──────────────────────────────────────────────────────────
@@ -571,7 +598,8 @@ export class RancherTool {
     title: 'Set template skills',
     template: 'Give the template «name» the skills «skill list»',
     description:
-      'Replace the full set of skills attached to a template. The list is exhaustive — omitted ids are detached.',
+      'Replace the full set of skills attached to a template. The list is exhaustive — omitted ids are detached. ' +
+      BUILT_FROM_NOTE,
     parameters: z.object({
       id: z.string(),
       skillIds: z.array(z.string()),
@@ -589,6 +617,17 @@ export class RancherTool {
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
     requireOperator(httpRequest);
+    // Which skills the assistant's template ships is what the assistant is
+    // told at its next restart (CLEAN-271): attaching one is as much a
+    // change as editing one.
+    if (isBuiltIntoAssistant(httpRequest, 'template', id)) {
+      return builtFromRefusal(
+        httpRequest,
+        'template',
+        id,
+        (await this.templates.findById(id))?.name,
+      );
+    }
     return ok(await this.templates.setSkills(id, skillIds));
   }
 
@@ -601,7 +640,8 @@ export class RancherTool {
     description:
       'Update template fields in place. Pass only the fields you want to change. ' +
       'Useful for editing defaultConfig, paddockConfig (passThreshold, scenarios, ' +
-      'maxIterations, etc.), name, description, image, or defaultResources.',
+      'maxIterations, etc.), name, description, image, or defaultResources. ' +
+      BUILT_FROM_NOTE,
     parameters: z.object({
       id: z.string(),
       name: z.string().optional(),
@@ -633,6 +673,13 @@ export class RancherTool {
     requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'template',
+      id,
+      template.name,
+    );
+    if (builtFrom) return builtFrom;
     const updated = await this.templates.update(id, patch);
     return ok(updated);
   }
@@ -695,7 +742,8 @@ export class RancherTool {
     description:
       'Write or replace a template file. Only `.md` and `.json` are accepted. ' +
       'Use this to add files like ".agent/SOUL.md" or ".paddock/config.json" ' +
-      'that every new agent created from this template will inherit.',
+      'that every new agent created from this template will inherit. ' +
+      BUILT_FROM_NOTE,
     parameters: z.object({
       id: z.string(),
       path: z.string(),
@@ -718,6 +766,15 @@ export class RancherTool {
     requireOperator(httpRequest);
     const template = await this.templates.findById(id);
     if (!template) return ok({ error: `Template ${id} not found` });
+    // A template's files are copied over its agents' own at every restart:
+    // the assistant's SOUL.md is whatever its template holds (CLEAN-271).
+    const builtFrom = builtFromRefusal(
+      httpRequest,
+      'template',
+      id,
+      template.name,
+    );
+    if (builtFrom) return builtFrom;
     await this.templateFiles.save(id, path, content);
     await this.templates.touch(id);
     return ok({ ok: true, templateId: id, path });
@@ -774,7 +831,8 @@ export class RancherTool {
     description:
       'Edit a skill in place. Pass only the fields you want to change. ' +
       'Skills are baked into agent pods at deploy time — after editing, ' +
-      'call `redeploy_skill_agents` so running agents pick up the new body.',
+      'call `redeploy_skill_agents` so running agents pick up the new body. ' +
+      BUILT_FROM_NOTE,
     parameters: z.object({
       id: z.string(),
       title: z.string().optional(),
@@ -809,6 +867,8 @@ export class RancherTool {
     requireOperator(httpRequest);
     const skill = await this.skills.findById(id);
     if (!skill) return ok({ error: `Skill ${id} not found` });
+    const builtFrom = builtFromRefusal(httpRequest, 'skill', id, skill.name);
+    if (builtFrom) return builtFrom;
     const updated = await this.skills.update(id, patch);
     return ok(updated);
   }
@@ -1069,10 +1129,24 @@ export class RancherTool {
     httpRequest: Request & { user?: IAuthTokenPayload },
   ) {
     requireOperator(httpRequest);
-    const saved = await this.settings.upsert(group, name, {
-      value,
-      valueType: valueType ?? 'string',
-    });
+    // The bookkeeping of the assistant's template is the Owner's
+    // (CLEAN-271): rewriting it makes the next start reseed the template.
+    const ownerOnly = ownerOnlySettingRefusal(group, name);
+    if (ownerOnly && !callerIsOwner(httpRequest)) {
+      return ok({ error: ownerOnly, reason: OWNER_ONLY_REASON });
+    }
+    // When it is not the Owner who writes, the Ranch assistant keeps the
+    // value this setting had until the Owner applies the change (CLEAN-271).
+    const saved = (await writeSettingBy(
+      this.settings,
+      group,
+      name,
+      { value, valueType: valueType ?? 'string' },
+      {
+        userId: callerPerson(httpRequest)?.userId ?? null,
+        owner: callerIsOwner(httpRequest),
+      },
+    ))!;
     if (findSettingDefinition(group, name)) return ok(saved);
     // Saved anyway (the console allows any key), but say what it probably
     // should have been, so a typo does not silently become a dead row.

@@ -14,7 +14,12 @@ import { AgentAccessService } from '#/user/agentAccess/domain/agentAccess.servic
 import { AgentScoped, accessCallerOf } from '#/user/agentAccess/guards';
 import { PaddockEvaluationService } from './domain/evaluation.service';
 import { PaddockEvaluationReportDto, RunPaddockEvaluationDto } from './dtos';
-import { IRunPaddockEvaluationData } from './domain/evaluation.types';
+import {
+  IPaddockRunScope,
+  IRunPaddockEvaluationData,
+} from './domain/evaluation.types';
+import { AssistantBuildService } from '#/agent/assistantBuild/domain/assistantBuild.service';
+import type { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 
 /** What the service answers for an evaluation that does not exist. */
 const EVALUATION_NOT_FOUND = 'Evaluation not found';
@@ -39,6 +44,7 @@ export class PaddockEvaluationController {
   constructor(
     private service: PaddockEvaluationService,
     private access: AgentAccessService,
+    private build: AssistantBuildService,
   ) {}
 
   /**
@@ -65,8 +71,29 @@ export class PaddockEvaluationController {
     summary:
       'Start a paddock evaluation for an agent. Returns the evaluation record immediately; the actual run is asynchronous (poll status).',
   })
-  start(@Body() dto: RunPaddockEvaluationDto) {
-    return this.service.start(dto as IRunPaddockEvaluationData);
+  async start(@Body() dto: RunPaddockEvaluationDto, @Req() req?: Request) {
+    // The scenarios of a template the assistant is built from are the
+    // Owner's (CLEAN-271): for anybody else a run leaves them out, so its
+    // snapshot does not read them back.
+    return this.service.start(
+      dto as IRunPaddockEvaluationData,
+      await this.scopeOf(req),
+    );
+  }
+
+  /**
+   * What the caller may read of scenarios: for anybody but the Owner, not
+   * those of a template the assistant is built from. Every route below
+   * passes it, the ones that read a run's COPY of its scenarios (the
+   * snapshot, a result, a trace, the report, the log) as much as the one
+   * that starts a run.
+   */
+  private async scopeOf(req: Request | undefined): Promise<IPaddockRunScope> {
+    const user = (req as (Request & { user?: IAuthTokenPayload }) | undefined)
+      ?.user;
+    if (AssistantBuildService.isOwner(user)) return {};
+    const kept = (await this.build.ingredients()).template;
+    return { hidesTemplate: (templateId) => kept.includes(templateId) };
   }
 
   @Get()
@@ -88,11 +115,14 @@ export class PaddockEvaluationController {
       await this.access.reachableIds(accessCallerOf(req))
     ).forRecords();
     return reach.filter(
-      await this.service.list({
-        agentId,
-        templateId,
-        limit: limit ? parseInt(limit, 10) : undefined,
-      }),
+      await this.service.list(
+        {
+          agentId,
+          templateId,
+          limit: limit ? parseInt(limit, 10) : undefined,
+        },
+        await this.scopeOf(req),
+      ),
       (ev) => ev.agentId,
     );
   }
@@ -103,7 +133,7 @@ export class PaddockEvaluationController {
   })
   async get(@Param('id') id: string, @Req() req?: Request) {
     await this.reached(id, req);
-    return this.service.getById(id);
+    return this.service.getById(id, await this.scopeOf(req));
   }
 
   @Get(':id/report')
@@ -116,7 +146,7 @@ export class PaddockEvaluationController {
     @Req() req?: Request,
   ): Promise<PaddockEvaluationReportDto> {
     await this.reached(id, req);
-    return this.service.getReport(id);
+    return this.service.getReport(id, await this.scopeOf(req));
   }
 
   @Get(':id/logs')
@@ -126,7 +156,7 @@ export class PaddockEvaluationController {
   })
   async logs(@Param('id') id: string, @Req() req?: Request) {
     await this.reached(id, req);
-    return this.service.getLogs(id);
+    return this.service.getLogs(id, await this.scopeOf(req));
   }
 
   @Get(':id/scenarios/:scenarioId')
@@ -140,7 +170,7 @@ export class PaddockEvaluationController {
     @Req() req?: Request,
   ) {
     await this.reached(id, req);
-    return this.service.getScenario(id, scenarioId);
+    return this.service.getScenario(id, scenarioId, await this.scopeOf(req));
   }
 
   @Get(':id/trace')
@@ -155,7 +185,7 @@ export class PaddockEvaluationController {
     @Req() req?: Request,
   ) {
     await this.reached(id, req);
-    return this.service.getTrace(id, scenarioId);
+    return this.service.getTrace(id, scenarioId, await this.scopeOf(req));
   }
 
   @Post(':id/abort')
@@ -165,7 +195,7 @@ export class PaddockEvaluationController {
   })
   async abort(@Param('id') id: string, @Req() req?: Request) {
     await this.reached(id, req);
-    return this.service.abort(id);
+    return this.service.abort(id, await this.scopeOf(req));
   }
 
   @Post(':id/rerun')
@@ -175,6 +205,6 @@ export class PaddockEvaluationController {
   })
   async rerun(@Param('id') id: string, @Req() req?: Request) {
     await this.reached(id, req, SOURCE_NOT_FOUND);
-    return this.service.rerun(id);
+    return this.service.rerun(id, await this.scopeOf(req));
   }
 }

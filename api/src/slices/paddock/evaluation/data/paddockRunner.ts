@@ -47,22 +47,35 @@ type PaddockJsonReport = {
 export class BunCliPaddockRunner extends IPaddockRunner {
   private readonly logger = new Logger(BunCliPaddockRunner.name);
   private active = new Map<string, ChildProcess>();
-  // Per-agent ring buffer of paddock CLI stdout+stderr lines. Cleared
-  // when a fresh run starts for the same agentId. Cap keeps memory bounded
-  // for long evals (~2000 lines × ~200 chars ≈ 400KB max per agent).
+  // One ring buffer of paddock CLI stdout+stderr lines PER RUN, under the
+  // evaluation's id. It used to be one per agent: a later run of the agent
+  // answered for an earlier one, and the child of an earlier run, still
+  // writing, appended to the buffer a later run had taken over (CLEAN-271).
+  // A run's process is handed its own buffer when it is spawned and appends
+  // to that array and to no other. Caps keep memory bounded: ~2000 lines ×
+  // ~200 chars ≈ 400KB per run, and the last LOG_RUNS_MAX runs.
   private logs = new Map<string, string[]>();
   private readonly LOG_BUFFER_MAX = 2000;
+  private readonly LOG_RUNS_MAX = 20;
 
-  getLogs(agentId: string): string[] {
-    return this.logs.get(agentId) ?? [];
+  getLogs(evaluationId: string): string[] {
+    return this.logs.get(evaluationId) ?? [];
   }
 
-  private appendLog(agentId: string, line: string): void {
-    let buf = this.logs.get(agentId);
-    if (!buf) {
-      buf = [];
-      this.logs.set(agentId, buf);
+  /** The buffer of a run that is about to start; the oldest runs' go. */
+  private openLog(evaluationId: string): string[] {
+    const buf: string[] = [];
+    this.logs.delete(evaluationId);
+    this.logs.set(evaluationId, buf);
+    while (this.logs.size > this.LOG_RUNS_MAX) {
+      const oldest = this.logs.keys().next().value;
+      if (oldest === undefined) break;
+      this.logs.delete(oldest);
     }
+    return buf;
+  }
+
+  private appendLog(buf: string[], line: string): void {
     buf.push(line);
     if (buf.length > this.LOG_BUFFER_MAX) {
       buf.splice(0, buf.length - this.LOG_BUFFER_MAX);
@@ -178,8 +191,8 @@ export class BunCliPaddockRunner extends IPaddockRunner {
       const completionRegex = /\[paddock\] scenario (\S+):/;
       const tag = `[paddock cli] ${input.agentId}`;
 
-      // Fresh run for this agent — wipe the previous in-memory log buffer.
-      this.logs.set(input.agentId, []);
+      // This run's own buffer: everything below appends to this array.
+      const log = this.openLog(input.evaluationId);
 
       // Watchdog: paddock CLI prints `[paddock] running scenario N/M: id` when
       // a scenario starts and `[paddock] scenario id: OK|N errors` when it
@@ -209,7 +222,7 @@ export class BunCliPaddockRunner extends IPaddockRunner {
           watchdogKilled = true;
           const msg = `Watchdog: scenario ${stuckScenarioId ?? '<unknown>'} stuck for ${Math.round(idle / 1000)}s — killing paddock CLI`;
           this.logger.warn(`${tag} ${msg}`);
-          this.appendLog(input.agentId, `[watchdog] ${msg}`);
+          this.appendLog(log, `[watchdog] ${msg}`);
           try {
             proc.kill('SIGTERM');
           } catch {
@@ -237,7 +250,7 @@ export class BunCliPaddockRunner extends IPaddockRunner {
             outBuf = outBuf.slice(nlIdx + 1);
             if (line.length > 0) {
               this.logger.log(`${tag} ${line}`);
-              this.appendLog(input.agentId, line);
+              this.appendLog(log, line);
             }
             // Reset watchdog on either start-of-scenario OR completion-of-scenario.
             const startMatch = progressRegex.exec(line);
@@ -271,7 +284,7 @@ export class BunCliPaddockRunner extends IPaddockRunner {
             errBuf = errBuf.slice(nlIdx + 1);
             if (line.length > 0) {
               this.logger.warn(`${tag} ${line}`);
-              this.appendLog(input.agentId, `[stderr] ${line}`);
+              this.appendLog(log, `[stderr] ${line}`);
             }
           }
         });

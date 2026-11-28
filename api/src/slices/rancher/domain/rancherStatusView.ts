@@ -1,6 +1,7 @@
 import type { IAgentData } from '#/agent/agent/domain';
 import { toReaderView } from '#/agent/agent/domain/agentReaderView';
 import type { ITemplateData } from '#/agent/template/domain';
+import type { ISettingDrift } from '#/setting/domain';
 import type { IRancherStatus } from './rancher.types';
 
 /** The Ranch admin agent as a response carries it: never the bare creator id. */
@@ -24,6 +25,11 @@ export interface IRancherStatusView {
   template: ITemplateData | null;
   hasAdmin: boolean;
   admin: IRancherAdminView | null;
+  /**
+   * For the Owner only (CLEAN-271): settings whose live value differs from
+   * the one the assistant is deployed from. Absent for anybody else.
+   */
+  settingsDrift?: ISettingDrift[];
 }
 
 /**

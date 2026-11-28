@@ -15,6 +15,8 @@ import { templateTabFromQuery, type TemplateTabId } from '#template/utils/templa
 import TemplateTile from '../Tile.vue';
 import TemplateItemOverview from './Overview.vue';
 import TemplateItemUnsavedBar from './UnsavedBar.vue';
+import { useBuiltFrom } from '#agent/composables/useBuiltFrom';
+import { BUILT_FROM_SCENARIOS_TEXT } from '#agent/utils/agentAccess';
 
 /**
  * A template's page (CLEAN-130): header with the tile and the actions, a tab
@@ -81,6 +83,12 @@ const running = computed(
   () => templateAgents.value.filter((a) => a.status === 'running').length,
 );
 const managed = computed(() => rancherStatus.value?.template?.id === props.id);
+
+// The template the Ranch assistant is built from is the Owner's to change
+// (CLEAN-271): its row, what it attaches and every file of it reach the
+// assistant at its next restart. For anybody else the page is the same page
+// to look at, with one line and no control the API would refuse.
+const { locked, note } = useBuiltFrom(template);
 
 // ------------------------------------------------------------------ drafts
 
@@ -378,7 +386,7 @@ async function onRemove() {
           </p>
         </div>
         <div class="flex gap-2">
-          <Button variant="outline" as-child>
+          <Button v-if="!locked" variant="outline" as-child>
             <NuxtLink :to="`/templates/${template.id}/edit`" class="inline-flex items-center gap-1.5">
               <IconPencil class="size-4" />
               Edit
@@ -410,8 +418,8 @@ async function onRemove() {
                 <IconDownload class="size-4" />
                 Download .agent bundle
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem class="text-destructive focus:text-destructive" @select="onRemove">
+              <DropdownMenuSeparator v-if="!locked" />
+              <DropdownMenuItem v-if="!locked" class="text-destructive focus:text-destructive" @select="onRemove">
                 <IconTrash class="size-4" />
                 Delete template
               </DropdownMenuItem>
@@ -419,6 +427,8 @@ async function onRemove() {
           </DropdownMenu>
         </div>
       </div>
+
+      <AccessNote v-if="locked" data-built-from>{{ note }}</AccessNote>
 
       <div
         v-if="actionError"
@@ -462,15 +472,16 @@ async function onRemove() {
         :agents="templateAgents"
         :skills="attachedSkills"
         :mcps="attachedMcps"
+        :read-only="locked"
         @manage-skills="selectTab('skills')"
         @manage-mcps="selectTab('mcp')"
       />
 
-      <TemplateSkillsProvider v-else-if="tab === 'skills'" v-model:selected="draftSkills" />
+      <TemplateSkillsProvider v-else-if="tab === 'skills'" v-model:selected="draftSkills" :read-only="locked" />
 
-      <TemplateMcpsProvider v-else-if="tab === 'mcp'" v-model:selected="draftMcps" />
+      <TemplateMcpsProvider v-else-if="tab === 'mcp'" v-model:selected="draftMcps" :read-only="locked" />
 
-      <TemplateToolsProvider v-else-if="tab === 'tools'" v-model:selected="draftTools" />
+      <TemplateToolsProvider v-else-if="tab === 'tools'" v-model:selected="draftTools" :read-only="locked" />
 
       <div v-else-if="tab === 'knowledge'" class="flex flex-col gap-3">
         <div
@@ -481,14 +492,14 @@ async function onRemove() {
           <div class="text-[13.5px] leading-normal text-muted-foreground">
             Agents spawned from this template will be able to query attached knowledge bases through the Knowledge MCP server.
           </div>
-          <Button variant="outline" size="sm" class="mt-1.5" as-child>
+          <Button v-if="!locked" variant="outline" size="sm" class="mt-1.5" as-child>
             <NuxtLink :to="`/templates/${template.id}/edit`">Attach knowledge base</NuxtLink>
           </Button>
         </div>
         <section v-else class="flex flex-col gap-3.5 rounded-[14px] border bg-card p-5">
           <div class="flex items-center">
             <h2 class="text-[15px] font-semibold">Knowledge bases</h2>
-            <NuxtLink :to="`/templates/${template.id}/edit`" class="ml-auto text-[13px] text-primary hover:underline">
+            <NuxtLink v-if="!locked" :to="`/templates/${template.id}/edit`" class="ml-auto text-[13px] text-primary hover:underline">
               Manage →
             </NuxtLink>
           </div>
@@ -515,7 +526,15 @@ async function onRemove() {
         </section>
       </div>
 
-      <TemplateFileProvider v-else-if="tab === 'files'" :id="template.id" />
+      <TemplateFileProvider v-else-if="tab === 'files'" :id="template.id" :read-only="locked" />
+
+      <p
+        v-else-if="tab === 'evaluations' && locked"
+        data-built-from-scenarios
+        class="rounded-md border border-dashed p-6 text-sm text-muted-foreground"
+      >
+        {{ BUILT_FROM_SCENARIOS_TEXT }}
+      </p>
 
       <div v-else-if="tab === 'evaluations'" class="flex flex-col gap-6">
         <p class="text-sm text-muted-foreground">

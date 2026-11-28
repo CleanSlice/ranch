@@ -61,6 +61,12 @@ export class SkillDto {
   })
   templates: SkillTemplateRefDto[];
 
+  @ApiProperty({
+    description:
+      'True when the Ranch assistant is built from this resource (CLEAN-271): only the Owner can change it, and a console shows it read-only to anybody else.',
+  })
+  assistantDependency: boolean;
+
   @ApiProperty()
   createdAt: Date;
 

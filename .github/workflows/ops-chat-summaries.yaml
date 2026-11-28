@@ -153,8 +153,12 @@ jobs:
 
       # The value, the version, and what the batch has said of itself since
       # the pod started: the line it logs when its timer starts, the counts
-      # of each run, and the kinds of failure. A failed run or conversation
-      # is counted and sorted, never quoted.
+      # of each run, the line it logs when the provider has refused two runs
+      # in a row, and the kinds of failure. A failed run or conversation is
+      # counted and sorted, never quoted. The refused line is shown as
+      # logged: it is a fixed sentence with the HTTP statuses of the run and
+      # one boolean word for the kind of credential, and nothing of a
+      # conversation, a provider's message or a key (CLEAN-280).
       - name: Report
         if: always()
         run: |
@@ -171,6 +175,8 @@ jobs:
           started="$(printf '%s\n' "$logs" | grep -F 'chat insight batch enabled' | tail -1 || true)"
           echo "${started:-no \"chat insight batch enabled\" line: the timer has not started in this pod}"
           printf '%s\n' "$logs" | grep -E 'insight batch: eligible=' | tail -5 || true
+          refused="$(printf '%s\n' "$logs" | grep -F 'insight batch refused: ' | tail -1 || true)"
+          echo "${refused:-no \"insight batch refused\" line: the provider has not refused two runs in a row in this log}"
           failed="$(printf '%s\n' "$logs" | grep -cE 'insight batch (failed|aborted)' || true)"
           echo "runs that failed or were aborted: ${failed:-0}"
 

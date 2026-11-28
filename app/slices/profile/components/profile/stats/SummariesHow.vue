@@ -3,8 +3,12 @@ import { SUMMARY_INTERVAL_VARIABLE } from '#profile/domain';
 
 /**
  * What switches conversation summaries on, said to an operator (CLEAN-270):
- * the summary interval and an active Anthropic credential, which is what the
- * API's `ChatInsightService.isEnabled()` checks.
+ * the summary interval and an active Anthropic credential that the provider
+ * accepts, which is what the API's `ChatInsightService.isEnabled()` checks.
+ * The sentence names the kind that is accepted, an API key, and the kind
+ * that is refused for summaries, a subscription token of the sort the
+ * agents run on (CLEAN-280): the card also stands where the batch is
+ * switched on and the provider refuses it run after run.
  *
  * One sentence in one place. The "summaries off" card of the personal view
  * and the line under the installation's quality table both put this

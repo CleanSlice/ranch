@@ -513,6 +513,21 @@ words for what they asked:
   caller reaches. The description of `list_chats` says that a search
   without an agent id matches across agents and where a row says whose it
   is.
+- A count of conversations is a reading of them (CLEAN-270).
+  `list_chat_topics` and `merge_chat_topics` name no agent and no chat:
+  they read the installation's topics, the vocabulary the conversation
+  summaries choose from (a summary coins none since 2026-11-28, and until a
+  vocabulary exists, which is CLEAN-278, the list is empty). A topic is a
+  subject somebody raised, so both ask `supervised` like the rest of the
+  class: `conversations` counts only what the caller may read, a topic with
+  none of those conversations is not listed and is "Topic … not found" to
+  the merge, in the words used for a key that names nothing, and the list
+  carries `notIncluded` when the assistant's conversations were left out.
+  Whoever reads every conversation gets the whole vocabulary. The list is
+  also a list across agents: when the caller's access lists narrowed what
+  was counted it carries `scope` beside `notIncluded`, as `list_chats` does
+  ("A narrowed result says so"). The merge names two topics and lists
+  nothing, so it carries neither.
 - It changes what the tools say, never what they allow. The routes are as
   they were: `GET /chats?agentId=` answers an empty page for the assistant
   and `GET /chats/:id` a 404.
@@ -991,7 +1006,9 @@ adds one field, when and only when the lists narrowed something:
   you cannot see"), before the confirmation and after the deletion.
 
 The tools that carry it: `list_agent_events`, `list_agent_incidents`,
-`list_agent_limits`, `list_chats`, `sync_chats`, `get_usage_overview`,
+`list_agent_limits`, `list_chats`, `sync_chats`, `list_chat_topics` (its
+rows are topics, and which are listed and how many conversations each
+counts are of the agents the caller reads; CLEAN-270), `get_usage_overview`,
 `llm_usage`, `list_paddock_evaluations`, `list_paddock_scenarios`,
 `list_skill_agents`, `get_installation_stats` (which asks the reach inside
 its service, and also answers the structured `reach.limited` its page
@@ -1009,8 +1026,9 @@ list that carries the field, or with the reason it needs none.
 | the 35 `manage-agent` tools | through `manageable`; the Ranch assistant, for a person who reaches it, is refused as the Owner's and not as not found |
 | `list_agent_limits`, `list_skill_agents`, `get_usage_overview`, `llm_usage`, `list_paddock_evaluations`, `list_paddock_scenarios` | filtered; usage totals are of the reached agents; `scope` when the lists narrowed something. All but `list_skill_agents` also leave out the Ranch assistant for anybody but the Owner and say so in `notIncluded` (CLEAN-268) |
 | `list_chats`, `list_agent_events`, `list_agent_incidents` | `agentScope` in the query; an `agentId` argument is checked; `scope` when the lists narrowed something and no agent was named. `list_chats` also leaves out the Ranch assistant for anybody but the Owner, says so in `notIncluded`, and names the agent of each row |
-| `get_my_stats` (`person`) | the statistics of the person the call is made for, over the agents that person reaches now: a conversation with an agent taken away is in no figure, and a colleague the person does not reach is counted but not named |
-| `get_installation_stats` (`admin`) | the installation's statistics over the agents the party reaches: usage rows are filtered as in `get_usage_overview`, conversations, people, ratings and incidents take `agentScope` in the query, refusals are asked for the reached agents only. Every total is summed after that, `reach.limited` says the answer is a part (and the tool adds `scope`), and an agent outside the reach is in no list. The Ranch assistant, for anybody but the Owner, is in no conversation figure and, since CLEAN-268, in no token, call, cost, projection or refusal figure either: `reach.ownerOnly` names it and the tool adds `notIncluded`. Its incidents are listed. A deleted agent's spend is shown to a caller with no allowed list and to nobody else |
+| `list_chat_topics`, `merge_chat_topics` (`admin`) | no agent id: the topics of the conversation summaries (CLEAN-270). Conversations are counted with `agentScope` in the query, the scope `list_chats` uses; for a caller that scope narrows, a topic with no conversation in it is not listed and cannot be merged ("Topic … not found"), and the keys folded into a topic (`merged`) are left out of the list: only a caller who reads every conversation is given them. `list_chat_topics` carries `scope` when the lists narrowed something, an empty list included; it also leaves the Ranch assistant's conversations out of every count for anybody but the Owner and says so in `notIncluded`. `merge_chat_topics` names two topics and lists nothing, so it carries neither field; it changes the vocabulary for everyone, has no console screen and no tool that takes it back, so it is `destructive` and waits for `confirm: true` |
+| `get_my_stats` (`person`) | the statistics of the person the call is made for, over the agents that person reaches now: a conversation with an agent taken away is in no figure, and a colleague the person does not reach is counted but not named. What the conversation summaries say (CLEAN-270: `summaries`, `board.resolved`, `topics`, `outcome`, `openQuestions`) is read for that person's conversations of the period by id, with `agentScope` in the query, so a summary of a conversation with an agent taken away is in no count, no topic and no question. The main questions it carries are that person's own and nobody else's, whatever the agent's token is: it is the one statistics answer with a person's words in it. Topics are named in English, a tool call having no `Accept-Language`. With `summaries.enabled` false those parts are empty, and the description tells the agent to say "not produced", not "none"; with `summaries.topicsReady` false (no topic vocabulary yet) `topics` is empty and no open question has a topic, and the description tells it to say that topics are not set up yet |
+| `get_installation_stats` (`admin`) | the installation's statistics over the agents the party reaches: usage rows are filtered as in `get_usage_overview`, conversations, people, ratings and incidents take `agentScope` in the query, refusals are asked for the reached agents only. Every total is summed after that, `reach.limited` says the answer is a part (and the tool adds `scope`), and an agent outside the reach is in no list. The Ranch assistant, for anybody but the Owner, is in no conversation figure and, since CLEAN-268, in no token, call, cost, projection or refusal figure either: `reach.ownerOnly` names it and the tool adds `notIncluded`. Its incidents are listed. A deleted agent's spend is shown to a caller with no allowed list and to nobody else. The share left open (CLEAN-270: `open` out of `summarised` in each `quality` row) is counted with the scope the conversations beside it have, so it leaves out the Ranch assistant for anybody but the Owner; it is two numbers per agent, and no question, topic or name comes back for any caller. `summaries.enabled` false means the two are 0 because nothing was counted, and the description tells the agent to say so |
 | `agent_usage`, the four share-link tools, `sync_chats`, `start_mcp_oauth`, `run_paddock_evaluation`, `list_agent_paddock_scenarios`, `create_paddock_scenario`, `generate_paddock_scenarios` | the agent id is checked. `agent_usage` and the four paddock tools answer `reason: "owner_only"` for the Ranch assistant to a person who has it (CLEAN-268) |
 | `get_chat`, `get_chat_messages`, `summarize_chat`, `export_chat`, the paddock evaluation tools by id, `get` / `update` / `delete_paddock_scenario` | the record's agent is checked. A chat of the Ranch assistant is the Owner's to read: the four chat tools, and `list_chats` / `sync_chats` by its agent id, answer `reason: "owner_only"` to a person who has the assistant. So do the paddock tools for an evaluation or a scenario of it (CLEAN-268) |
 | `delete_llm` | names the agents that would lose their model, or lost it, only when the caller reaches them; the rest are counted |

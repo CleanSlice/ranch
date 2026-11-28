@@ -169,6 +169,24 @@ export class AgentPermissionService implements IAgentManagerResolver {
     if (caller.kind === 'person' && caller.role === UserRoleTypes.Owner) {
       return [];
     }
+    return this.ownerOnlyAgentIds();
+  }
+
+  /**
+   * The agents only the Owner manages, whoever is asking: what
+   * `ownerOnlyIds` answers anybody but the Owner. Today that is the Ranch
+   * admin agent.
+   *
+   * For work that is done for no caller (CLEAN-270, review). The summary
+   * batch runs on a timer and has no party to hand `ownerOnlyIds`, and it
+   * still must know which conversations are the Owner's alone: what it
+   * writes about a conversation into something every operator is shown, the
+   * installation's topics, must not come from one of those. Asking here,
+   * and not for a made-up guest, keeps the definition of "Owner-only" in
+   * this class: when a second such agent exists, both answers change
+   * together.
+   */
+  async ownerOnlyAgentIds(): Promise<string[]> {
     const ranch = await this.agents.findAdmin();
     return ranch ? [ranch.id] : [];
   }

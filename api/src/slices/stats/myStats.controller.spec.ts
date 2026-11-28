@@ -243,7 +243,7 @@ describe('GET /me/stats: whose statistics', () => {
         clientId: 'user-1',
         caller: { kind: 'person', userId: 'user-1', role: UserRoleTypes.User },
       },
-      { period: 7, timeZone: undefined },
+      { period: 7, timeZone: undefined, language: 'en' },
     ]);
   });
 });
@@ -295,7 +295,11 @@ describe('GET /me/stats: the period and the zone', () => {
 
     await controller.get(await parse({}), req('user-1'));
 
-    expect(asked()[1]).toEqual({ period: 30, timeZone: undefined });
+    expect(asked()[1]).toEqual({
+      period: 30,
+      timeZone: undefined,
+      language: 'en',
+    });
   });
 
   it('hands the period and the zone on as they were asked', async () => {
@@ -309,7 +313,42 @@ describe('GET /me/stats: the period and the zone', () => {
     expect(asked()[1]).toEqual({
       period: 90,
       timeZone: 'America/Los_Angeles',
+      language: 'en',
     });
+  });
+
+  // Topics are named in the language the console is in (CLEAN-270): the app
+  // console sends it as `Accept-Language`, and a topic has a label in each
+  // of the console's languages. Which language a header asks for is the chat
+  // slice's to say (`topicLanguageOf`), as on `GET /me/chats`.
+  it('names topics in the language the request asks for, among the console’s, and in English otherwise', async () => {
+    const asks = async (header: unknown) => {
+      const { controller, asked } = recordingService();
+      await controller.get(await parse({}), {
+        ...req('user-1'),
+        headers: header === undefined ? {} : { 'accept-language': header },
+      } as AuthedRequest);
+      return (asked()[1] as { language?: string }).language;
+    };
+
+    expect(await asks('ru')).toBe('ru');
+    expect(await asks('ru-RU,ru;q=0.9,en;q=0.8')).toBe('ru');
+    expect(await asks('en-US,en;q=0.9,ru;q=0.5')).toBe('en');
+    // A language the console does not have, no header, and a repeated one.
+    expect(await asks('de-DE,de;q=0.9')).toBe('en');
+    expect(await asks(undefined)).toBe('en');
+    expect(await asks(['ru', 'en'])).toBe('en');
+  });
+
+  it('reads the language from the header alone: a query that names one changes nothing', async () => {
+    const { controller, asked } = recordingService();
+
+    await controller.get(
+      { period: 7, language: 'ru', lang: 'ru' } as unknown as MyStatsQueryDto,
+      req('user-1'),
+    );
+
+    expect((asked()[1] as { language?: string }).language).toBe('en');
   });
 
   it('never refuses a zone: whatever `tz` holds passes validation', async () => {
@@ -338,5 +377,44 @@ describe('GET /me/stats: the period and the zone', () => {
     expect(unknown.timeZone).toBe('UTC');
     expect(unknown.period).toBe(30);
     expect(known.timeZone).toBe('Europe/Kyiv');
+  });
+
+  // What the page decides the topics block by (CLEAN-270, the owner's
+  // decision of 2026-11-28): summaries produced and a topic standing.
+  it('says in `summaries` whether the topics are ready: not without summaries, not without a vocabulary', async () => {
+    const TOPIC = {
+      id: 't-billing',
+      key: 'billing',
+      labels: { en: 'Billing' },
+    };
+    const summaries = async (world: Parameters<typeof statsHarness>[0]) =>
+      (
+        await new MyStatsController(statsHarness(world).service).get(
+          await parse({}),
+          req('user-1'),
+        )
+      ).summaries;
+
+    expect(await summaries({ summaries: false, topics: [TOPIC] })).toEqual({
+      enabled: false,
+      topicsReady: false,
+      summarised: 0,
+      waiting: 0,
+      tooShort: 0,
+    });
+    expect(await summaries({ summaries: true, topics: [] })).toEqual({
+      enabled: true,
+      topicsReady: false,
+      summarised: 0,
+      waiting: 0,
+      tooShort: 0,
+    });
+    expect(await summaries({ summaries: true, topics: [TOPIC] })).toEqual({
+      enabled: true,
+      topicsReady: true,
+      summarised: 0,
+      waiting: 0,
+      tooShort: 0,
+    });
   });
 });

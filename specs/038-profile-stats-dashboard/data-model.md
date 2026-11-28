@@ -69,6 +69,23 @@ One subject, as the installation's summaries name it.
 - **Rules**: a topic is created only by the summary batch, one at a time (the
   batch is sequential and re-reads the vocabulary for each conversation). A
   label is 1 to 3 words. A merged topic is never offered to the model again.
+- **Bound**: at most 100 topics stand (not merged) at once
+  (`TOPICS_STANDING_MAX`). The prompt offers 60; the 40 above are room for
+  new subjects, and past that a new key is more likely a rewording than a
+  subject. At the bound a proposal is dropped and its conversation is stored
+  with no topic; merging two topics makes room.
+- **Offered**: the 60 most used, and always the topics the running batch
+  coined itself, which take the places of the least used: by count alone a
+  topic coined a conversation ago stands sixty-first once 60 are in use, and
+  the next conversation on its subject would coin a second key.
+- **Whose conversations**: the vocabulary is the installation's and is
+  printed in every prompt, so a person can have the list of subject names
+  repeated in the summary of their own conversation. Accepted as the price
+  of one vocabulary. A conversation with an agent only the Owner manages
+  (today the Ranch assistant) neither coins a topic nor is given one: its
+  prompt lists no vocabulary and asks for no topic, and `topicIds` stays
+  empty. Its summary, question, outcome, tone and language are written as
+  for any other.
 
 ### StatFigure (`api/src/slices/stats/stats.prisma`)
 
@@ -106,10 +123,16 @@ What the product knows about one figure's history.
 - **Unchanged**: `summary`, `summaryAt`, `insights` (Json). `insights` keeps
   being written (`topics` as English labels, `sentiment`, `resolved`,
   `language`) for the admin console's chat pages.
-- **Migration**: `insightVersion = 1` and `outcome` from `insights.resolved`
-  (`true` → `resolved`, `false` → `open`) where a summary exists. Version 1
-  rows are re-summarised over time (research R7), which is also what corrects
-  a `false` that meant "could not tell".
+- **Migration**: two folders. `…_chat_summary_v2` adds the table and the
+  columns; `…_chat_summary_v2_backfill` then sets `insightVersion = 1` and
+  `outcome` from `insights.resolved` where a summary exists: `true` →
+  `resolved`, anything else (`false`, missing, not a boolean) → `unknown`.
+  Not `open` for `false`: version 1 stored "could not tell" as `false`, so a
+  `false` was never a calibrated "open", and the open list is the one figure
+  a person acts on. Version 1 rows are re-summarised within the 180-day
+  window (research R7) and get a real outcome then. The backfill is a
+  migration of its own so that the `ALTER TABLE`'s exclusive lock on
+  `ChatSession` is not held while rows are updated.
 
 **Outcome states**
 

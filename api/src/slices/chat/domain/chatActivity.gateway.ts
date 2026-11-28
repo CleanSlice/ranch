@@ -35,6 +35,17 @@ export type IActivityOwner = Pick<
   'id' | 'agentId' | 'channel' | 'externalUserId'
 >;
 
+/** What an installation's activity is read with. */
+export interface IActivitySummaryOptions {
+  /**
+   * Also say how the conversations ended (CLEAN-270). Asked for only where
+   * the installation produces summaries: it joins each conversation of the
+   * period to its row for the summary, and where there are no summaries
+   * that would be a read of `ChatSession` for nothing.
+   */
+  outcomes?: boolean;
+}
+
 /**
  * Persistence port of the settle pass over `ChatActivityHour` (CLEAN-261,
  * docs/statistics.md). The live write is not here: it belongs to
@@ -109,9 +120,20 @@ export abstract class IChatActivityGateway {
    * every hour row of every conversation, and the answer is a few dozen
    * numbers; the rows themselves never leave the database, and no identity
    * leaves the query.
+   *
+   * With `options.outcomes` (CLEAN-270) the answer also says, per agent,
+   * how many of those conversations have a summary and how many of them it
+   * left `open`: the same statement, with each conversation of the period
+   * joined by its id to the two columns of its summary. Which conversations
+   * are the period's is still said by the hour rows and by nothing in
+   * `ChatSession`, and nothing a person wrote is read: not the question,
+   * not the summary. The join is what it costs, and it is paid only when
+   * asked for (`agentConversationsQuery` has the measurement): without it
+   * `outcomes` is empty and `ChatSession` is not read at all.
    */
   abstract summaryForAgents(
     periods: IActivityPeriods,
     agentScope?: IChatAgentScope,
+    options?: IActivitySummaryOptions,
   ): Promise<IInstallationActivity>;
 }

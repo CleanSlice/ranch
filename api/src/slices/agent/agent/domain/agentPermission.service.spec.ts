@@ -369,6 +369,32 @@ describe('ownerOnlyIds: the agents a caller reaches and still does not manage', 
 });
 
 /**
+ * The same agents, for work that has no caller (CLEAN-270, review): the
+ * summary batch runs on a timer, for nobody, and still has to know which
+ * conversations are the Owner's alone, so that no topic is coined from one.
+ * The answer is the one anybody but the Owner gets.
+ */
+describe('ownerOnlyAgentIds: the agents only the Owner manages, whoever asks', () => {
+  const ranch = agent({ id: 'agent-ranch', isAdmin: true });
+
+  it('is the Ranch admin agent, with no caller named', async () => {
+    const { service } = make({ agents: [agent(), ranch] });
+
+    expect(await service.ownerOnlyAgentIds()).toEqual(['agent-ranch']);
+    // What a person who is not the Owner is answered, to the letter.
+    expect(await service.ownerOnlyAgentIds()).toEqual(
+      await service.ownerOnlyIds(admin),
+    );
+  });
+
+  it('is nothing on an installation with no Ranch admin agent', async () => {
+    const { service } = make({ agents: [agent()] });
+
+    expect(await service.ownerOnlyAgentIds()).toEqual([]);
+  });
+});
+
+/**
  * The one refusal that is told apart (CLEAN-263): the Ranch admin agent, for
  * a person who reaches it and is not the Owner. It explains a refusal and
  * allows nothing, so it is asked beside `manageable`, never in place of it.

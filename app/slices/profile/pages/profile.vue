@@ -258,6 +258,7 @@ async function onLogout() {
           :scope="view.scope"
           :period="view.period"
           :initials="initials"
+          :operator="operator"
         />
         <div v-else class="flex min-w-0 flex-col gap-5">
           <ProfileAccount

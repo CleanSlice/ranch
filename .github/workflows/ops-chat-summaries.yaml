@@ -1,0 +1,184 @@
+# Manually-triggered ops helper: switches the conversation summary batch on or
+# off for the Ranch production (CLEAN-279, docs/operations/chat-summaries.md).
+#
+# What the batch is: every N seconds the API summarises conversations that
+# have gone quiet (ChatInsightService) — the main question, the outcome, tone
+# and language — and the statistics page shows what comes of it. It runs only
+# when CHAT_INSIGHT_INTERVAL_SEC is a positive number in the API's
+# environment and an Anthropic credential is active in Settings.
+#
+# Why a workflow and not the manifest alone: the manifests have carried the
+# variable since July (k8s/deploy/30-api.yaml, k8s/platform/api/deployment.yaml),
+# but the cluster runs the k8s/deploy bootstrap manifests as they were applied
+# by hand, ArgoCD does not sync (see ops-set-user-role.yaml), and the release
+# workflow only restarts deployments. So the variable never reached the pod:
+# after v0.3.119 production answered `summaries.enabled: false` with two
+# active credentials, and the installation had one summary, made with the
+# button in the chat. This sets on the deployment exactly what the manifest
+# declares, and is a no-op once it is there.
+#
+# What it changes: one environment variable on deploy/ranch-api, nothing
+# else. Changing it rolls the API out again, the same restart a release does:
+# the hub, the chat sockets and the MCP sessions live in that one process, so
+# open chats reconnect.
+#
+# What it costs: one model call per summarised conversation, at most 25 per
+# run, on the credential's model. A conversation is summarised again only
+# when something new was said in it.
+#
+# Required repository secret: KUBECONFIG_B64 (already present).
+
+name: Ops - chat summaries (prod)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "status = look only; enable = set the interval and roll out; disable = remove it and roll out"
+        required: true
+        type: choice
+        options:
+          - status
+          - enable
+          - disable
+        default: status
+      interval:
+        description: "Seconds between runs, for enable (the manifests say 900)"
+        required: false
+        type: string
+        default: "900"
+
+concurrency:
+  group: ops-chat-summaries
+  cancel-in-progress: false
+
+env:
+  NS: platform
+  DEPLOY: ranch-api
+  VARIABLE: CHAT_INSIGHT_INTERVAL_SEC
+
+jobs:
+  chat-summaries:
+    runs-on: ubuntu-latest
+    env:
+      # Passed through the environment and checked below, never written into
+      # a script.
+      INTERVAL: ${{ inputs.interval }}
+    steps:
+      # A minute is the least that leaves a run time to finish before the
+      # next; a day is the most that still deserves to be called a batch.
+      - name: Check the interval
+        if: inputs.action == 'enable'
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$INTERVAL" | grep -qE '^[0-9]{2,5}$'; then
+            echo "::error::interval must be a whole number of seconds"
+            exit 1
+          fi
+          if [ "$INTERVAL" -lt 60 ] || [ "$INTERVAL" -gt 86400 ]; then
+            echo "::error::interval must be between 60 and 86400 seconds"
+            exit 1
+          fi
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: What the deployment has now
+        run: |
+          set -euo pipefail
+          current="$(kubectl -n "$NS" get deploy "$DEPLOY" -o jsonpath="{.spec.template.spec.containers[0].env[?(@.name=='$VARIABLE')].value}")"
+          echo "$VARIABLE before: ${current:-not set}"
+
+      # `kubectl set env` changes the pod template, which rolls the
+      # deployment out by itself; when the value is already the one asked
+      # for, nothing changes and nothing restarts.
+      - name: Set the interval
+        if: inputs.action == 'enable'
+        run: |
+          set -euo pipefail
+          kubectl -n "$NS" set env deploy/"$DEPLOY" "$VARIABLE=$INTERVAL"
+          kubectl -n "$NS" rollout status deploy/"$DEPLOY" --timeout=10m
+
+      - name: Remove the interval
+        if: inputs.action == 'disable'
+        run: |
+          set -euo pipefail
+          kubectl -n "$NS" set env deploy/"$DEPLOY" "$VARIABLE-"
+          kubectl -n "$NS" rollout status deploy/"$DEPLOY" --timeout=10m
+
+      # Why conversations failed, as kinds and counts. This repository is
+      # public and so is this log: a line of the API log names a conversation
+      # and can quote a provider's message, which may carry an organisation's
+      # identifiers. So a line is never printed. It is sorted into a kind:
+      # the provider's HTTP status with its error type and, from a fixed
+      # list, the words its message mentions; an answer that could not be
+      # used, with the reason the API gives it (a fixed set of words); a
+      # transcript that could not be read; or "another error".
+      - name: Write the reason grouper
+        if: always()
+        run: |
+          cat > "$RUNNER_TEMP/reasons.awk" <<'AWK'
+          {
+            line = $0
+            low = tolower(line)
+            if (match(line, /Anthropic API [0-9]+/)) {
+              status = substr(line, RSTART + 14, RLENGTH - 14)
+              type = "type not given"
+              if (match(line, /"type":"[a-z_]+_error"/)) type = substr(line, RSTART + 8, RLENGTH - 9)
+              hint = ""
+              if (index(low, "workspace")) hint = hint " workspace"
+              if (index(low, "credit balance")) hint = hint " credit-balance"
+              if (index(low, "rate limit")) hint = hint " rate-limit"
+              if (index(low, "max_tokens")) hint = hint " max_tokens"
+              if (index(low, "thinking")) hint = hint " thinking"
+              if (index(low, "prompt is too long")) hint = hint " prompt-too-long"
+              if (index(low, "oauth")) hint = hint " oauth"
+              if (index(low, "beta")) hint = hint " beta"
+              if (index(low, "model")) hint = hint " model"
+              key = "the provider answered " status ", " type (hint == "" ? "" : "; its message mentions:" hint)
+            } else if (match(line, /unusable answer: [a-z JSON]+/)) {
+              key = "an " substr(line, RSTART, RLENGTH)
+            } else if (low ~ /transcript|storage|nosuchkey|s3/) {
+              key = "the transcript could not be read"
+            } else {
+              key = "another error (not quoted here)"
+            }
+            n[key]++
+          }
+          END { for (k in n) printf "  %d  %s\n", n[k], k }
+          AWK
+
+      # The value, the version, and what the batch has said of itself since
+      # the pod started: the line it logs when its timer starts, the counts
+      # of each run, and the kinds of failure. A failed run or conversation
+      # is counted and sorted, never quoted.
+      - name: Report
+        if: always()
+        run: |
+          current="$(kubectl -n "$NS" get deploy "$DEPLOY" -o jsonpath="{.spec.template.spec.containers[0].env[?(@.name=='$VARIABLE')].value}")"
+          echo "$VARIABLE now: ${current:-not set — the batch is off}"
+          kubectl -n "$NS" get deploy "$DEPLOY" -o jsonpath='ready: {.status.readyReplicas}/{.spec.replicas}{"\n"}'
+          version="$(kubectl -n "$NS" exec deploy/"$DEPLOY" -- printenv RANCH_VERSION 2>/dev/null || true)"
+          echo "running version: ${version:-unknown}"
+
+          # Colour codes of the API's logger are taken out before anything
+          # is matched or shown.
+          logs="$(kubectl -n "$NS" logs deploy/"$DEPLOY" --tail=5000 2>/dev/null | sed -E 's/\x1b\[[0-9;]*m//g' || true)"
+          echo "== the batch, in the log of the running pod"
+          started="$(printf '%s\n' "$logs" | grep -F 'chat insight batch enabled' | tail -1 || true)"
+          echo "${started:-no \"chat insight batch enabled\" line: the timer has not started in this pod}"
+          printf '%s\n' "$logs" | grep -E 'insight batch: eligible=' | tail -5 || true
+          failed="$(printf '%s\n' "$logs" | grep -cE 'insight batch (failed|aborted)' || true)"
+          echo "runs that failed or were aborted: ${failed:-0}"
+
+          echo "== conversations that failed, by kind of reason (no id and no provider message is printed)"
+          fails="$(printf '%s\n' "$logs" | grep -F 'insight failed for ' || true)"
+          if [ -z "$fails" ]; then
+            echo "  none in the last 5000 lines of the log"
+          else
+            printf '%s\n' "$fails" | awk -f "$RUNNER_TEMP/reasons.awk" | sort -rn
+          fi
+          echo "The first run comes one interval after the pod started. The page reads the result as summaries.enabled."

@@ -1970,6 +1970,18 @@ export type ChatSessionDto = {
   insights?: {
     [key: string]: unknown;
   } | null;
+  /**
+   * How the conversation ended, by its latest summary. `unknown`: the summary could not tell. Null while there is no summary.
+   */
+  outcome?: "resolved" | "open" | "unknown";
+  /**
+   * The person’s main question, one line, in their language. Null while there is no summary, or when they asked for nothing.
+   */
+  question?: string | null;
+  /**
+   * Labels of the topics the summary assigned, at most two. On `/me/chats` in the language of `Accept-Language` when the console has it, English otherwise; on `/chats` always English.
+   */
+  topics?: Array<string>;
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -2048,6 +2060,10 @@ export type SyncChatsResponseDto = {
   scannedFiles: number;
   upserted: number;
   skipped: number;
+  /**
+   * Index rows removed because their transcript file no longer exists
+   */
+  pruned: number;
 };
 
 export type CreateChatFeedbackDto = {
@@ -3235,11 +3251,40 @@ export type StatsNoteDto = {
   /**
    * Which figure is not complete over the whole of the requested and the previous period.
    */
-  figure: "activity" | "ratings" | "citations" | "handovers";
+  figure:
+    | "activity"
+    | "ratings"
+    | "citations"
+    | "handovers"
+    | "outcomes"
+    | "topics";
   /**
    * Since when it is counted. Later than `range.previousFrom`; the page says "counted since …" once for the block.
    */
   completeSince: string;
+};
+
+export type MyStatsSummariesDto = {
+  /**
+   * Whether this installation produces conversation summaries. False: the three counts here, `board.resolved`, `resolved` and `summarised` of every agent and all of `outcome` are 0, and `topics` and `openQuestions.items` are empty, because nothing about summaries is counted. Show one card in their place, not zeros.
+   */
+  enabled: boolean;
+  /**
+   * Whether topics are there to show: summaries are produced and the installation has a vocabulary, at least one topic that stands. False: no conversation is asked about topics yet, so `topics` is empty and `topic` of every open question is null. Leave the topics block out then, and do not say that the conversations were about nothing. Everything else read from summaries is counted either way. Always false when `enabled` is false.
+   */
+  topicsReady: boolean;
+  /**
+   * How many of the period's conversations have a summary. With `waiting` and `tooShort` it adds up to `board.conversations.value`.
+   */
+  summarised: number;
+  /**
+   * Conversations without a summary yet that will get one: long enough, and the batch has not reached them. Not counted in topics or outcomes yet.
+   */
+  waiting: number;
+  /**
+   * Conversations without a summary that will not get one as they stand: under three messages from the person. Not a backlog.
+   */
+  tooShort: number;
 };
 
 export type StatsComparedCountDto = {
@@ -3264,6 +3309,17 @@ export type MyStatsBoardAgentsDto = {
   reachable: number;
 };
 
+export type MyStatsResolvedDto = {
+  /**
+   * Conversations of the period whose summary says the person got what they asked for.
+   */
+  resolved: number;
+  /**
+   * Conversations of the period that have a summary: what the share is a share of. The same number as `summaries.summarised`.
+   */
+  summarised: number;
+};
+
 export type MyStatsBoardDto = {
   /**
    * Conversations the person wrote in. A conversation that went on from the previous period is counted in both.
@@ -3274,6 +3330,10 @@ export type MyStatsBoardDto = {
    */
   messages: StatsComparedCountDto;
   agents: MyStatsBoardAgentsDto;
+  /**
+   * The resolved share: `resolved` out of `summarised`. Both 0 when `summaries.enabled` is false, and `summarised` 0 while no conversation of the period has a summary: no share to show either way.
+   */
+  resolved: MyStatsResolvedDto;
 };
 
 export type MyStatsDayDto = {
@@ -3314,6 +3374,14 @@ export type MyStatsAgentDto = {
    */
   conversations: number;
   /**
+   * The ones among those conversations whose summary says resolved. 0 when `summaries.enabled` is false.
+   */
+  resolved: number;
+  /**
+   * The ones among those conversations that have a summary: what `resolved` is a share of. 0 when `summaries.enabled` is false.
+   */
+  summarised: number;
+  /**
    * The model the agent runs now, shown as received. Null when it has none.
    */
   model: string | null;
@@ -3321,6 +3389,131 @@ export type MyStatsAgentDto = {
    * The last message in those conversations, whoever wrote it. Null only when they were removed while the view was being computed.
    */
   lastMessageAt: string | null;
+};
+
+export type MyStatsTopicQuestionDto = {
+  /**
+   * The conversation the question was asked in.
+   */
+  chatId: string;
+  agentId: string;
+  agentName: string;
+  /**
+   * The person's main question in that conversation: one line, in their language, as its summary worded it. Shown as received. It is in this answer because the answer is its owner’s; no other route or tool of the statistics carries it.
+   */
+  question: string;
+  /**
+   * The conversation's last message.
+   */
+  at: string;
+  /**
+   * How that conversation ended. `unknown`: its summary could not tell; neither a resolved nor an open mark.
+   */
+  outcome: "resolved" | "open" | "unknown";
+};
+
+export type MyStatsTopicDto = {
+  /**
+   * The topic. One that was merged into another is counted under that other, and only that one is listed.
+   */
+  id: string;
+  /**
+   * The topic's name in the request's language (`Accept-Language`, among the languages of the console), in English when it has none in that language.
+   */
+  label: string;
+  /**
+   * Summarised conversations of the period that carry the topic. A conversation can carry two, so the topics can add up to more than `summaries.summarised`, and one with no topic is in none.
+   */
+  conversations: number;
+  /**
+   * Of them, the ones resolved.
+   */
+  resolved: number;
+  /**
+   * Of them, the ones left open. With `resolved` it can be less than `conversations`: the rest ended `unknown`.
+   */
+  open: number;
+  /**
+   * Up to four main questions of those conversations, newest first, each wording once. Empty when no summary quoted a question.
+   */
+  questions: Array<MyStatsTopicQuestionDto>;
+};
+
+export type MyStatsSentimentDto = {
+  positive: number;
+  neutral: number;
+  mixed: number;
+  negative: number;
+};
+
+export type MyStatsLanguageDto = {
+  /**
+   * ISO 639-1 code, lower case, as the summary judged it.
+   */
+  code: string;
+  /**
+   * Summarised conversations in that language.
+   */
+  conversations: number;
+};
+
+export type MyStatsOutcomeDto = {
+  /**
+   * Conversations whose summary says the person got what they asked for.
+   */
+  resolved: number;
+  /**
+   * Conversations whose summary says they did not.
+   */
+  open: number;
+  /**
+   * Summarised, and the summary could not tell. In neither of the two above, and never under open questions.
+   */
+  unknown: number;
+  /**
+   * Conversations of the period with no summary: `summaries.waiting` and `summaries.tooShort` together. With the three above it adds up to `board.conversations.value`, except when `summaries.enabled` is false: all four are then 0 and stand for nothing.
+   */
+  notSummarised: number;
+  /**
+   * The tone of the summarised conversations, each in one of the four. A summary that stored no tone is in none, so they can add up to less than the summarised.
+   */
+  sentiment: MyStatsSentimentDto;
+  /**
+   * The languages of the summarised conversations, most first. Empty when none has a summary.
+   */
+  languages: Array<MyStatsLanguageDto>;
+};
+
+export type MyStatsOpenQuestionDto = {
+  /**
+   * The conversation left open: what "Continue" opens, with `agentId`.
+   */
+  chatId: string;
+  agentId: string;
+  agentName: string;
+  /**
+   * The person's main question in it, shown as received. Null when the summary found the conversation open and quoted no question.
+   */
+  question: string | null;
+  /**
+   * The name of the conversation's first topic, as `topics[].label` names it. Null when its summary assigned none, and for every question while `summaries.topicsReady` is false.
+   */
+  topic: string | null;
+  /**
+   * The conversation's last message.
+   */
+  at: string;
+};
+
+export type MyStatsOpenQuestionsDto = {
+  /**
+   * The newest four conversations of the period left open, newest first. Empty when none was, and when `summaries.enabled` is false: tell the two apart by that field.
+   */
+  items: Array<MyStatsOpenQuestionDto>;
+  /**
+   * How many more there are. `items` and `more` together are `outcome.open`.
+   */
+  more: number;
 };
 
 export type MyStatsSourceDto = {
@@ -3424,12 +3617,25 @@ export type MyStatsDto = {
    * One entry for each figure whose history starts inside the requested or the previous period. Empty when every figure covers both.
    */
   notes: Array<StatsNoteDto>;
+  /**
+   * Whether conversation summaries are produced here, whether their topics are there to show, and how many of the period's conversations have a summary, wait for one, or are too short for one.
+   */
+  summaries: MyStatsSummariesDto;
   board: MyStatsBoardDto;
   activity: MyStatsActivityDto;
   /**
    * The agents the person wrote to in the period, by their messages, most first.
    */
   agents: Array<MyStatsAgentDto>;
+  /**
+   * What the period's summarised conversations were about: up to eight topics, most conversations first. Empty when no summarised conversation has a topic, when `summaries.enabled` is false, and while `summaries.topicsReady` is false: the installation has no vocabulary yet, and no conversation is asked about topics.
+   */
+  topics: Array<MyStatsTopicDto>;
+  /**
+   * How the period's conversations ended. All zeros and no language when `summaries.enabled` is false.
+   */
+  outcome: MyStatsOutcomeDto;
+  openQuestions: MyStatsOpenQuestionsDto;
   help: MyStatsHelpDto;
   models: MyStatsModelsDto;
 };
@@ -3473,6 +3679,13 @@ export type InstallationStatsNoteDto = {
    * Since when it is counted. Later than `range.previousFrom`; the page says "counted since …" once for the block.
    */
   completeSince: string;
+};
+
+export type InstallationStatsSummariesDto = {
+  /**
+   * Whether this installation produces conversation summaries: the batch is scheduled and has a credential it can use. False: `open` and `summarised` of every `quality` row are 0 because nothing was counted. Say "summaries are not produced" there, never "no conversation was left open".
+   */
+  enabled: boolean;
 };
 
 export type InstallationStatsTokensDto = {
@@ -3643,6 +3856,14 @@ export type InstallationStatsQualityDto = {
    * Every rating its answers got in the period, up or down. Ratings are read as they stand now: one withdrawn since is not counted.
    */
   rated: number;
+  /**
+   * Of `summarised`, the conversations whose summary says the person was left without what they asked for. A summary that could not tell is not among them. 0 when `summaries.enabled` is false: not counted, which is not "none".
+   */
+  open: number;
+  /**
+   * Of `conversations`, the ones that have a summary: what the open share is a share of. Show it with the share: 1 open of 3 summarised and 100 of 300 are the same share and not the same news. 0 when `summaries.enabled` is false, and while no conversation of the agent has a summary: no share to show either way.
+   */
+  summarised: number;
 };
 
 export type InstallationStatsChannelDto = {
@@ -3667,6 +3888,10 @@ export type InstallationStatsDto = {
    * One entry for each figure whose history starts inside the requested or the previous period. Empty when every figure covers both.
    */
   notes: Array<InstallationStatsNoteDto>;
+  /**
+   * Whether conversation summaries are produced here: what the open share of `quality` is read from.
+   */
+  summaries: InstallationStatsSummariesDto;
   board: InstallationStatsBoardDto;
   /**
    * One entry per UTC day of the period, oldest first, today last; a day with no usage is there with nothing.
@@ -3686,7 +3911,7 @@ export type InstallationStatsDto = {
   projection30d: number | null;
   health: InstallationStatsHealthDto;
   /**
-   * Per agent with a conversation or a rating in the period: how many conversations, and how its answers were rated. Most conversations first.
+   * Per agent with a conversation or a rating in the period: how many conversations, how its answers were rated, and how many of the conversations that have a summary were left open. Most conversations first.
    */
   quality: Array<InstallationStatsQualityDto>;
   /**

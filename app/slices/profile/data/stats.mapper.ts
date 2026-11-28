@@ -3,6 +3,7 @@ import type {
   InstallationStatsDto,
   InstallationStatsIncidentDto,
   InstallationStatsNoteDto,
+  InstallationStatsQualityDto,
   MyStatsAgentDto,
   MyStatsDto,
   StatsNoteDto,
@@ -11,10 +12,20 @@ import type {
   IInstallationAgent,
   IInstallationIncident,
   IInstallationNote,
+  IInstallationQuality,
   IInstallationStats,
   IPersonalStats,
   IStatsAgent,
+  IStatsLanguage,
   IStatsNote,
+  IStatsOpenQuestion,
+  IStatsOpenQuestions,
+  IStatsOutcome,
+  IStatsResolved,
+  IStatsSummaries,
+  IStatsTopic,
+  IStatsTopicQuestion,
+  StatsOutcomeKind,
 } from '../domain/stats.types';
 
 /** An ISO instant as a `Date`, or null when it is absent or not a date. */
@@ -44,6 +55,45 @@ function names(value: unknown): string[] {
   return out;
 }
 
+// What follows reads the blocks that came with conversation summaries
+// (CLEAN-270) off the answer as it arrives, whatever its type promises. An
+// API that is older than the console sends none of them, and the page must
+// then show "summaries off", which is what every absent piece maps to: a
+// count of zero, an empty list, and `enabled: false`.
+
+/** A count, or zero for anything that is not one: absent, negative, text. */
+function count(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/**
+ * A count that is a part of `whole`, and so never more than it. An answer
+ * that says 9 resolved of 6 summarised contradicts itself; the page prints
+ * both numbers beside their share, and "9 of 6" is not a thing to print.
+ */
+function part(value: unknown, whole: number): number {
+  return Math.min(count(value), whole);
+}
+
+/** Text as it came, or null when there is none. Never trimmed or re-cased. */
+function words(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
+/** An object to read fields off, or an empty one. */
+function fields(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+/** A list, or an empty one. */
+function list(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+const OUTCOMES: readonly StatsOutcomeKind[] = ['resolved', 'open', 'unknown'];
+
 /**
  * Maps the generated statistics DTO onto the slice's domain shape. The one
  * place in the profile slice that imports from `#api`, and the one place an
@@ -54,6 +104,7 @@ function names(value: unknown): string[] {
  */
 export class StatsMapper {
   toPersonal(dto: MyStatsDto): IPersonalStats {
+    const summaries = this.toSummaries(dto.summaries);
     return {
       period: dto.period,
       timeZone: dto.timeZone,
@@ -67,10 +118,12 @@ export class StatsMapper {
       notes: dto.notes
         .map((note) => this.toNote(note))
         .filter((note): note is IStatsNote => note !== null),
+      summaries,
       board: {
         conversations: { ...dto.board.conversations },
         messages: { ...dto.board.messages },
         agents: { ...dto.board.agents },
+        resolved: this.toResolved(dto.board.resolved),
       },
       activity: {
         days: dto.activity.days.map((day) => ({
@@ -81,6 +134,13 @@ export class StatsMapper {
         activeDays: dto.activity.activeDays,
       },
       agents: dto.agents.map((agent) => this.toAgent(agent)),
+      // No topic anywhere in the view while they are not ready (the owner's
+      // decision of 2026-11-28): the API sends none then, and an older one,
+      // which made a topic of whatever a conversation proposed, sends the
+      // ones the decision holds back.
+      topics: summaries.topicsReady ? this.toTopics(dto.topics) : [],
+      outcome: this.toOutcome(dto.outcome),
+      openQuestions: this.toOpenQuestions(dto.openQuestions, summaries.topicsReady),
       help: {
         cited: {
           conversations: dto.help.cited.conversations,
@@ -123,6 +183,9 @@ export class StatsMapper {
       notes: dto.notes
         .map((note) => this.toInstallationNote(note))
         .filter((note): note is IInstallationNote => note !== null),
+      // Only an explicit `true`: an older API sends no field, and the open
+      // share is then "not counted", never "none left open".
+      summaries: { enabled: fields(dto.summaries).enabled === true },
       board: {
         tokens: { ...dto.board.tokens },
         calls: { ...dto.board.calls },
@@ -148,12 +211,145 @@ export class StatsMapper {
         incidentsTotal: dto.health.incidentsTotal,
         refusals: dto.health.refusals.map((row) => ({ ...row })),
       },
-      quality: dto.quality.map((row) => ({ ...row })),
+      quality: dto.quality.map((row) => this.toQuality(row)),
       channels: dto.channels.map((row) => ({ ...row })),
     };
   }
 
   // ── internals ──────────────────────────────────────────────────────────
+
+  private toSummaries(dto: unknown): IStatsSummaries {
+    const from = fields(dto);
+    // Only an explicit `true` switches the blocks on.
+    const enabled = from.enabled === true;
+    return {
+      enabled,
+      // And only an explicit `true` shows the Topics block: an older API
+      // sends no field. Never without summaries, whatever the field says.
+      topicsReady: enabled && from.topicsReady === true,
+      summarised: count(from.summarised),
+      waiting: count(from.waiting),
+      tooShort: count(from.tooShort),
+    };
+  }
+
+  private toResolved(dto: unknown): IStatsResolved {
+    const from = fields(dto);
+    const summarised = count(from.summarised);
+    return { resolved: part(from.resolved, summarised), summarised };
+  }
+
+  /** A topic needs an id to be selected by and a label to be shown under. */
+  private toTopics(dto: unknown): IStatsTopic[] {
+    const topics: IStatsTopic[] = [];
+    for (const entry of list(dto)) {
+      const from = fields(entry);
+      const id = words(from.id);
+      const label = words(from.label);
+      if (id === null || label === null) continue;
+      topics.push({
+        id,
+        label,
+        conversations: count(from.conversations),
+        resolved: count(from.resolved),
+        open: count(from.open),
+        questions: this.toTopicQuestions(from.questions),
+      });
+    }
+    return topics;
+  }
+
+  /** A question without words has nothing to show and is left out. */
+  private toTopicQuestions(dto: unknown): IStatsTopicQuestion[] {
+    const questions: IStatsTopicQuestion[] = [];
+    for (const entry of list(dto)) {
+      const from = fields(entry);
+      const question = words(from.question);
+      if (question === null) continue;
+      const outcome = OUTCOMES.find((kind) => kind === from.outcome);
+      questions.push({
+        chatId: words(from.chatId) ?? '',
+        agentId: words(from.agentId) ?? '',
+        agentName: words(from.agentName) ?? '',
+        question,
+        at: instant(from.at),
+        // An outcome this console does not know is no mark either way.
+        outcome: outcome ?? 'unknown',
+      });
+    }
+    return questions;
+  }
+
+  private toOutcome(dto: unknown): IStatsOutcome {
+    const from = fields(dto);
+    const tone = fields(from.sentiment);
+    const languages: IStatsLanguage[] = [];
+    for (const entry of list(from.languages)) {
+      const language = fields(entry);
+      const code = words(language.code);
+      if (code !== null) languages.push({ code, conversations: count(language.conversations) });
+    }
+    return {
+      resolved: count(from.resolved),
+      open: count(from.open),
+      unknown: count(from.unknown),
+      notSummarised: count(from.notSummarised),
+      sentiment: {
+        positive: count(tone.positive),
+        neutral: count(tone.neutral),
+        mixed: count(tone.mixed),
+        negative: count(tone.negative),
+      },
+      languages,
+    };
+  }
+
+  /**
+   * An open question is listed for its "Continue", which needs the agent and
+   * the conversation. One that names neither is still an open conversation:
+   * it goes to `more`, so that the list and the remainder keep adding up to
+   * what the outcomes count as open.
+   *
+   * `withTopics` is `summaries.topicsReady`: without it a question carries
+   * no topic, whatever the answer names for it.
+   */
+  private toOpenQuestions(dto: unknown, withTopics: boolean): IStatsOpenQuestions {
+    const from = fields(dto);
+    const items: IStatsOpenQuestion[] = [];
+    let unlisted = 0;
+    for (const entry of list(from.items)) {
+      const item = fields(entry);
+      const chatId = words(item.chatId);
+      const agentId = words(item.agentId);
+      if (chatId === null || agentId === null) {
+        unlisted += 1;
+        continue;
+      }
+      items.push({
+        chatId,
+        agentId,
+        agentName: words(item.agentName) ?? '',
+        // Null is "open, and no question was quoted": the page says so.
+        question: words(item.question),
+        topic: withTopics ? words(item.topic) : null,
+        at: instant(item.at),
+      });
+    }
+    return { items, more: count(from.more) + unlisted };
+  }
+
+  private toQuality(dto: InstallationStatsQualityDto): IInstallationQuality {
+    const summarised = count(dto.summarised);
+    return {
+      agentId: dto.agentId,
+      name: dto.name,
+      conversations: dto.conversations,
+      down: dto.down,
+      rated: dto.rated,
+      open: part(dto.open, summarised),
+      summarised,
+    };
+  }
 
   // A note without a readable date has nothing to say ("counted since …"),
   // so it is left out rather than shown with an invented one.
@@ -163,11 +359,14 @@ export class StatsMapper {
   }
 
   private toAgent(dto: MyStatsAgentDto): IStatsAgent {
+    const summarised = count(dto.summarised);
     return {
       agentId: dto.agentId,
       name: dto.name,
       messages: dto.messages,
       conversations: dto.conversations,
+      resolved: part(dto.resolved, summarised),
+      summarised,
       model: typeof dto.model === 'string' && dto.model ? dto.model : null,
       lastMessageAt: instant(dto.lastMessageAt),
     };

@@ -263,9 +263,45 @@ const chatRow = (agentId: string) => ({
   summary: null,
   summaryAt: null,
   insights: null,
+  outcome: null,
+  question: null,
+  topicIds: [`topic-of-${agentId}`],
   archived: false,
   createdAt: AT,
 });
+// The topics the summaries sorted those chats under (CLEAN-270): each agent's
+// chat carries a subject raised with that agent alone, named after it, so a
+// topic of an agent out of reach would show in what a tool says.
+const TOPICS = IDS.map((agentId) => ({
+  id: `topic-of-${agentId}`,
+  key: `${agentId === RANCH ? 'owner' : NAMES[agentId]}-things`,
+  labels: { en: `${mark(agentId)} things` },
+  mergedIntoId: null,
+  createdAt: AT,
+}));
+const topics = {
+  /** What `list_chats` names the topics of its rows by. */
+  findByIds: jest.fn((ids: readonly string[]) =>
+    Promise.resolve(
+      new Map(TOPICS.filter((t) => ids.includes(t.id)).map((t) => [t.id, t])),
+    ),
+  ),
+  /** Counted over the chats of the scope, as the gateway counts. */
+  listWithCounts: jest.fn((scope?: IScope) =>
+    Promise.resolve(
+      TOPICS.map((topic) => ({
+        topic,
+        conversations: IDS.map(chatRow).filter(
+          (chat) =>
+            chat.topicIds.includes(topic.id) && within(scope, chat.agentId),
+        ).length,
+        merged: [],
+      })),
+    ),
+  ),
+};
+/** The summaries are switched on: `list_chat_topics` says whether they are. */
+const insight = { isEnabled: () => Promise.resolve(true) };
 const chats = {
   findById: () => Promise.resolve(null),
   list: jest.fn((f: IPageFilter) => {
@@ -503,10 +539,11 @@ const instances = new Map<unknown, unknown>([
       chats as never,
       unused('reader'),
       sync as never,
-      unused('insight'),
+      insight as never,
       access,
       permission,
       agents,
+      topics as never,
     ),
   ],
   [
@@ -829,7 +866,7 @@ const REACH_TOOLS = toolFiles(SLICES)
  * The lists and sums over every agent the caller reaches. Each carries
  * `scope` when the caller's lists narrow something. `args` is what the tool
  * needs besides an agent, `byAgent` that it also takes one agent's id, and
- * `counts` that its result holds numbers and no rows.
+ * `counts` that its result holds numbers and no row of an agent.
  */
 const ACROSS: Record<
   string,
@@ -839,6 +876,9 @@ const ACROSS: Record<
   list_agent_events: { byAgent: true },
   list_agent_incidents: { byAgent: true },
   list_agent_limits: {},
+  // A row is a topic with a count of conversations, never an agent: which
+  // topics are listed, and each count, are of the agents the caller reads.
+  list_chat_topics: { counts: true },
   list_chats: { byAgent: true },
   list_paddock_evaluations: { byAgent: true },
   list_paddock_scenarios: { byAgent: true },
@@ -880,6 +920,8 @@ const NOT_A_LIST: Record<string, string> = {
   delete_paddock_scenario: 'names one scenario',
   list_agents:
     'the reach itself: its rows are the agents this person can use, its description says the list is never every agent of the installation, and its shape (a bare array) is what every reader of it parses',
+  merge_chat_topics:
+    'names two topics: one with no conversation the caller reads is not found, in the words for a key that names nothing',
   summarize_chat: 'names one chat',
   get_share_link: 'names one agent',
   create_share_link: 'names one agent',
@@ -1094,6 +1136,44 @@ describe('what narrows a reach', () => {
     const open = await parsed(asOpen('list_chats'));
     expect(open).toHaveProperty(OWNER_ONLY_LEFT_OUT_FIELD);
     expect(open).not.toHaveProperty(ACCESS_SCOPE_FIELD);
+  });
+
+  it('list_chat_topics counts the conversations of the agents the caller reads, and carries the two fields as list_chats does', async () => {
+    const keysOf = (result: Result) =>
+      (result.topics as { key: string }[]).map((t) => t.key).sort();
+
+    const mine = await parsed(asLimited('list_chat_topics'));
+    expect(keysOf(mine)).toEqual(['alpha-things']);
+    expect(mine[ACCESS_SCOPE_FIELD]).toBe(ACCESS_SCOPE_TEXT);
+    expect(mine[OWNER_ONLY_LEFT_OUT_FIELD]).toBe(LEFT_OUT('conversations'));
+    expect(json(mine)).not.toContain(SECRET);
+
+    // The Admin who reaches every agent is told of the one, not the other.
+    const open = await parsed(asOpen('list_chat_topics'));
+    expect(keysOf(open)).toEqual(['alpha-things', 'bravo-things']);
+    expect(open[OWNER_ONLY_LEFT_OUT_FIELD]).toBe(LEFT_OUT('conversations'));
+    expect(open).not.toHaveProperty(ACCESS_SCOPE_FIELD);
+
+    const whole = await parsed(asOwner('list_chat_topics'));
+    expect(keysOf(whole)).toEqual([
+      'alpha-things',
+      'bravo-things',
+      'owner-things',
+    ]);
+  });
+
+  it('a list of topics with none in it still says that it covers this person’s agents only', async () => {
+    topics.listWithCounts.mockResolvedValueOnce(
+      TOPICS.map((topic) => ({ topic, conversations: 0, merged: [] })),
+    );
+
+    expect(await parsed(asLimited('list_chat_topics'))).toEqual({
+      topics: [],
+      total: 0,
+      summariesEnabled: true,
+      notIncluded: LEFT_OUT('conversations'),
+      scope: ACCESS_SCOPE_TEXT,
+    });
   });
 
   it('list_agents says in its description that it is never every agent of the installation', () => {
@@ -1836,6 +1916,8 @@ const OUTSIDE_THE_MANAGE_RULE: Record<string, string> = {
     'the calling agent asks a colleague: a question, checked per connection by `PeerAccessService`',
   delete_llm:
     'deletes a credential, not an agent: the reach only decides which agents its sentence names',
+  merge_chat_topics:
+    'folds one topic of the installation’s vocabulary into another, not an agent: the reach only decides which topics the caller may name, and one raised only with the assistant is not found for anybody but the Owner: `supervised` (CLEAN-270)',
 };
 
 describe('writing tools that name an agent and stand outside the manage rule', () => {

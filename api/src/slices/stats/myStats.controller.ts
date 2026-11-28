@@ -16,6 +16,7 @@ import {
 } from '@nestjs/swagger';
 import { Request } from 'express';
 import { clientIdFromJwtPayload } from '#/bridle/domain/chatIdentity';
+import { topicLanguageOf } from '#/chat/domain/chatTopic';
 import { accessCallerOf } from '#/user/agentAccess/guards';
 import { IAuthTokenPayload } from '#/user/auth/domain/auth.types';
 import { JwtAuthGuard, Roles } from '#/user/auth/guards';
@@ -55,9 +56,17 @@ export class MyStatsController {
       'in, their messages, the agents that answered, activity by day for ' +
       'the last 13 weeks and by weekday, the agents they talked to, how ' +
       'agents helped (cited sources, hand-overs to peers, their ratings) ' +
-      'and which models answered. Counts, names and times only: nothing ' +
-      'that was written. Only conversations with agents the caller reaches ' +
-      'now are counted. Days are cut in the zone sent as `tz`.',
+      'and which models answered. Where the installation produces ' +
+      'conversation summaries (`summaries.enabled`), also what their ' +
+      'conversations were about (`topics`, named in the language of ' +
+      '`Accept-Language`; empty until the installation has a vocabulary, ' +
+      '`summaries.topicsReady`), how they ended (`outcome`, `board.resolved`) ' +
+      'and which were left open (`openQuestions`); where it does not, ' +
+      'those parts are empty. Counts, names and times, and of what was ' +
+      "written only the caller's own main questions, as the summaries of " +
+      'their conversations worded them. Only conversations with agents ' +
+      'the caller reaches now are counted. Days are cut in the zone sent ' +
+      'as `tz`.',
     operationId: 'getMyStats',
   })
   @ApiOkResponse({ type: MyStatsDto })
@@ -71,9 +80,17 @@ export class MyStatsController {
     @Req() req: AuthedRequest,
   ): Promise<MyStatsDto> {
     // Nothing but `period` and `tz` is read from the query, here or below.
+    const header = req.headers?.['accept-language'];
     return this.stats.forPerson(this.viewerOf(req), {
       period: query.period ?? DEFAULT_PERIOD,
       timeZone: query.tz,
+      // Topics are named in the console's language (CLEAN-270), which the
+      // app console sends with every request. Which of the languages a
+      // topic has a label in the header asks for is the chat slice's to
+      // say, as on `GET /me/chats`; English when it names none of them.
+      language: topicLanguageOf(
+        typeof header === 'string' ? header : undefined,
+      ),
     });
   }
 

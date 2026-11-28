@@ -167,6 +167,10 @@ const chats = only<never>('chats', {
     ),
   list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
 });
+/** The topics of the summaries (CLEAN-270): counted per caller, see below. */
+const chatTopics = only<never>('chatTopics', {
+  listWithCounts: jest.fn().mockResolvedValue([]),
+});
 const evaluation = (id: string, agentId: string) => ({ id, agentId });
 /**
  * What the evaluation service does with an id: "not found" for one that
@@ -313,10 +317,11 @@ const chatTool = new ChatTool(
   chats,
   never('reader'),
   never('sync'),
-  never('insight'),
+  only('insight', { isEnabled: () => Promise.resolve(true) }),
   access,
   permission,
   agents,
+  chatTopics,
 );
 const logs = new LogTool(agents, never('logService'), permission);
 const oauth = new McpOauthTool(never('oauth'), access);
@@ -383,6 +388,28 @@ const { service: personalStats } = statsHarness(
         userMessages: a.id === HIDDEN ? 9 : 2,
         agentMessages: 2,
       })),
+    ),
+    // Summaries are produced (CLEAN-270), and every conversation has one
+    // that left it open, with a question and a topic of its agent's own:
+    // whatever of the hidden agent's shows was read past the reach.
+    summaries: true,
+    topics: AGENTS.map((a) => ({
+      id: `topic-of-${a.id}`,
+      key: `topic-of-${a.name}`,
+      labels: { en: `Subject of ${a.name}` },
+    })),
+    summarised: Object.fromEntries(
+      STATS_PEOPLE.flatMap(({ clientId }) =>
+        AGENTS.map((a) => [
+          `chat-${clientId}-${a.id}`,
+          {
+            summaryAt: AN_HOUR_AGO,
+            outcome: 'open' as const,
+            question: `asked-of-${a.name}`,
+            topicIds: [`topic-of-${a.id}`],
+          },
+        ]),
+      ),
     ),
     ratings: STATS_PEOPLE.flatMap(({ userId, clientId }) =>
       AGENTS.map((a) => ({
@@ -459,6 +486,16 @@ const { service: installationStats } = installationHarness(
       userMessages: 1,
       agentMessages: 1,
     })),
+    // Each of those conversations has a summary that left it open
+    // (CLEAN-270), quoting what its visitor asked. The count is an agent's
+    // figure; the question is the visitor's and in nobody's answer here.
+    summaries: true,
+    summarised: Object.fromEntries(
+      AGENTS.map((a) => [
+        `visit-${a.id}`,
+        { outcome: 'open' as const, question: `a-visitor-asked-${a.name}` },
+      ]),
+    ),
     ratings: AGENTS.map((a) => ({
       agentId: a.id,
       rating: -1 as const,
@@ -796,6 +833,10 @@ describe('tools that list, as a limited Admin', () => {
         ratings: { up: number };
       };
       models: { items: { model: string; messages: number }[] };
+      summaries: { enabled: boolean; summarised: number };
+      topics: { label: string; conversations: number }[];
+      outcome: { open: number; notSummarised: number };
+      openQuestions: { items: { agentId: string; question: string }[] };
     }
     const statsOf = async (req: Request) =>
       JSON.parse(await said(() => LISTS.get_my_stats(req))) as IStats;
@@ -821,12 +862,31 @@ describe('tools that list, as a limited Admin', () => {
       'model-of-alpha',
       'model-of-bravo',
     ]);
+    // What the summaries say (CLEAN-270): two conversations of theirs, and
+    // nothing the hidden agent's said. Not its outcome in a count, not the
+    // subject it was about, not the question asked of it.
+    expect(mine.summaries).toMatchObject({ enabled: true, summarised: 2 });
+    expect(mine.outcome).toMatchObject({ open: 2, notSummarised: 0 });
+    expect(mine.topics.map((t) => t.label).sort()).toEqual([
+      'Subject of alpha',
+      'Subject of bravo',
+    ]);
+    expect(mine.openQuestions.items.map((q) => q.agentId).sort()).toEqual([
+      A,
+      B,
+    ]);
     const text = JSON.stringify(mine);
     expect(text).not.toContain(HIDDEN_BASE);
     expect(text).not.toContain(HIDDEN_MODEL);
+    expect(text).not.toContain(`asked-of-${HIDDEN_NAME}`);
+    expect(text).not.toContain(`Subject of ${HIDDEN_NAME}`);
 
     // The Owner reaches all three, and the same history shows whole.
     const whole = await statsOf(asOwner());
+    expect(whole.summaries.summarised).toBe(3);
+    expect(whole.openQuestions.items.map((q) => q.question)).toContain(
+      `asked-of-${HIDDEN_NAME}`,
+    );
     expect(whole.board.conversations.value).toBe(3);
     expect(whole.board.messages.value).toBe(13);
     expect(whole.board.agents).toEqual({ value: 3, reachable: 3 });
@@ -856,8 +916,15 @@ describe('tools that list, as a limited Admin', () => {
         incidentsTotal: number;
         refusals: { agentId: string; refused: number }[];
       };
-      quality: { agentId: string; conversations: number; rated: number }[];
+      quality: {
+        agentId: string;
+        conversations: number;
+        rated: number;
+        open: number;
+        summarised: number;
+      }[];
       channels: { channel: string; conversations: number }[];
+      summaries: { enabled: boolean };
     }
     const statsOf = async (req: Request) =>
       JSON.parse(await said(() => LISTS.get_installation_stats(req))) as IStats;
@@ -882,8 +949,17 @@ describe('tools that list, as a limited Admin', () => {
     expect(mine.health.incidentsTotal).toBe(2);
     expect(mine.health.refusals.map((r) => r.agentId).sort()).toEqual([A, B]);
     expect(mine.quality.map((q) => q.agentId).sort()).toEqual([A, B]);
+    // The share left open (CLEAN-270): of the reached agents' conversations.
+    expect(mine.summaries).toEqual({ enabled: true });
+    expect(mine.quality.map((q) => [q.summarised, q.open])).toEqual([
+      [1, 1],
+      [1, 1],
+    ]);
     expect(mine.channels).toEqual([{ channel: 'console', conversations: 2 }]);
     const text = JSON.stringify(mine);
+    // What a visitor asked is theirs: a reached agent's or not, it is in
+    // no installation answer.
+    expect(text).not.toContain('a-visitor-asked-');
     expect(text).not.toContain(HIDDEN_MODEL);
     expect(text).not.toContain(`reason-for-${HIDDEN_NAME}`);
     // And nobody is named, reached agent or not: people are a number.
@@ -909,6 +985,9 @@ describe('tools that list, as a limited Admin', () => {
       refused: 70,
     });
     expect(whole.quality.map((q) => q.agentId).sort()).toEqual([A, B, HIDDEN]);
+    expect(whole.quality.reduce((sum, q) => sum + q.open, 0)).toBe(3);
+    // Not for the Owner either: an installation view counts, it does not quote.
+    expect(JSON.stringify(whole)).not.toContain('a-visitor-asked-');
     expect(whole.channels).toEqual([
       { channel: 'console', conversations: 2 },
       { channel: 'telegram', conversations: 1 },
@@ -936,6 +1015,16 @@ describe('tools that list, as a limited Admin', () => {
     expect(
       (chats as unknown as { list: jest.Mock }).list,
     ).toHaveBeenLastCalledWith(expect.objectContaining({ agentScope: scope }));
+
+    // A count over conversations is a reading of them (CLEAN-270): the
+    // topics are counted over the reached agents only, and the Owner's over
+    // every agent.
+    const counted = (chatTopics as unknown as { listWithCounts: jest.Mock })
+      .listWithCounts;
+    await chatTool.listChatTopics({}, null, asAdmin());
+    expect(counted).toHaveBeenLastCalledWith(scope);
+    await chatTool.listChatTopics({}, null, asOwner());
+    expect(counted).toHaveBeenLastCalledWith(undefined);
 
     const spies = events as unknown as {
       listEvents: jest.Mock;

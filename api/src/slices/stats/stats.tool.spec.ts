@@ -146,6 +146,37 @@ describe('get_my_stats: what the tool says it is', () => {
     expect(metadata.description).toMatch(/person (who is )?asking|their own/i);
     expect(metadata.description).toContain('7, 30 or 90');
   });
+
+  // What the summaries add (CLEAN-270). On most installations they are not
+  // produced, and the model can only say so if the description told it
+  // that an empty list is then not an answer.
+  it('tells the model what the summaries add, whose the questions are, and what to say when none are produced', () => {
+    const { description } = metadata;
+
+    for (const field of [
+      '`summaries`',
+      '`topics`',
+      '`outcome`',
+      '`openQuestions`',
+      '`board.resolved`',
+    ]) {
+      expect(description).toContain(field);
+    }
+    expect(description).toMatch(/`summaries\.enabled` (is )?false/);
+    expect(description).toMatch(/summaries are not produced/i);
+    expect(description).toMatch(/their own (main )?question/i);
+    expect(description).toMatch(/unknown/);
+  });
+
+  // Topics wait for a vocabulary (CLEAN-270, the owner's decision of
+  // 2026-11-28). An empty `topics` then says nothing about what the person
+  // talked about, and the model can only say so if it was told.
+  it('tells the model that `topics` is empty until `summaries.topicsReady`, and what to say then', () => {
+    const { description } = metadata;
+
+    expect(description).toMatch(/`summaries\.topicsReady` (is )?false/);
+    expect(description).toMatch(/topics are not (yet )?(set up|sorted)/i);
+  });
 });
 
 describe('get_my_stats: whose statistics', () => {
@@ -369,6 +400,141 @@ describe('get_my_stats: what it asks for and what it answers', () => {
       jest.useRealTimers();
     }
   });
+
+  // FR-033: the main question of a conversation is its person's words. The
+  // tool answers for the party asking, so it carries that party's questions
+  // and nobody else's, whoever's token the agent holds.
+  it('carries the questions of the person asking, and of nobody else', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-27T10:30:00.000Z') });
+    try {
+      const open = (question: string) => ({
+        summaryAt: '2026-11-25T11:00:00Z',
+        outcome: 'open' as const,
+        question,
+        topicIds: ['t-billing'],
+      });
+      const chat = (sessionId: string, externalUserId: string) => ({
+        sessionId,
+        agentId: 'a1',
+        externalUserId,
+        hour: '2026-11-25T09:00:00Z',
+        userMessages: 3,
+        agentMessages: 3,
+      });
+      const { service } = statsHarness({
+        agents: [{ id: 'a1', name: 'Atlas', model: 'claude-sonnet-4-6' }],
+        summaries: true,
+        topics: [
+          { id: 't-billing', key: 'billing', labels: { en: 'Billing' } },
+        ],
+        hours: [
+          chat('c-user', 'user-7'),
+          chat('c-other', 'user-8'),
+          chat('c-owner', 'admin'),
+        ],
+        summarised: {
+          'c-user': open('What user seven asked'),
+          'c-other': open('What user eight asked'),
+          'c-owner': open('What the Owner asked'),
+        },
+      });
+      const tool = new StatsTool(service, {} as InstallationStatsService);
+      const asked = async (role: UserRoleTypes, userId: string) =>
+        textOf(
+          await tool.getMyStats(
+            { period: 7 },
+            undefined,
+            answering(role, userId),
+          ),
+        );
+
+      const user = await asked(UserRoleTypes.User, 'user-7');
+      expect(user).toContain('What user seven asked');
+      expect(user).not.toContain('What user eight asked');
+      expect(user).not.toContain('What the Owner asked');
+
+      // The Owner asking through the same agent gets their own, and not a
+      // User's: an Owner token is not a view of everybody's questions.
+      const owner = await asked(UserRoleTypes.Owner, 'owner-1');
+      expect(owner).toContain('What the Owner asked');
+      expect(owner).not.toContain('What user seven asked');
+      expect(owner).not.toContain('What user eight asked');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // The same answer as the route's, so the same `summaries`: with
+  // `topicsReady`, false while the installation has no vocabulary
+  // (CLEAN-270, the owner's decision of 2026-11-28).
+  it('says whether the topics are ready, as the page is told', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-27T10:30:00.000Z') });
+    try {
+      const world = (topics: { id: string; key: string }[]) =>
+        statsHarness({
+          agents: [{ id: 'a1', name: 'Atlas', model: 'claude-sonnet-4-6' }],
+          summaries: true,
+          topics: topics.map((t) => ({ ...t, labels: { en: 'Billing' } })),
+          hours: [
+            {
+              sessionId: 'c-user',
+              agentId: 'a1',
+              externalUserId: 'user-7',
+              hour: '2026-11-25T09:00:00Z',
+              userMessages: 3,
+              agentMessages: 3,
+            },
+          ],
+          summarised: {
+            'c-user': {
+              summaryAt: '2026-11-25T11:00:00Z',
+              outcome: 'open' as const,
+              question: 'What user seven asked',
+              topicIds: ['t-billing'],
+            },
+          },
+        }).service;
+      const answer = async (service: PersonalStatsService) =>
+        JSON.parse(
+          textOf(
+            await new StatsTool(
+              service,
+              {} as InstallationStatsService,
+            ).getMyStats(
+              { period: 7 },
+              undefined,
+              answering(UserRoleTypes.User, 'user-7'),
+            ),
+          ),
+        ) as {
+          summaries: Record<string, unknown>;
+          topics: unknown[];
+          openQuestions: { items: { topic: string | null }[] };
+        };
+
+      const without = await answer(world([]));
+      expect(without.summaries).toEqual({
+        enabled: true,
+        topicsReady: false,
+        summarised: 1,
+        waiting: 0,
+        tooShort: 0,
+      });
+      expect(without.topics).toEqual([]);
+      expect(without.openQuestions.items.map((q) => q.topic)).toEqual([null]);
+
+      const withOne = await answer(
+        world([{ id: 't-billing', key: 'billing' }]),
+      );
+      expect(withOne.summaries.topicsReady).toBe(true);
+      expect(withOne.topics).toHaveLength(1);
+      expect(withOne.openQuestions.items.map((q) => q.topic)).toEqual([
+        'Billing',
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 /**
@@ -474,6 +640,18 @@ describe('get_installation_stats: what the tool says it is', () => {
     expect(description).toContain('`reach.ownerOnly`');
     expect(description).toMatch(/only the Owner/);
     expect(description).toMatch(/no model with a price/);
+  });
+
+  // The share left open (CLEAN-270). Summaries are off on most
+  // installations: a zero there is "not counted", and the model has to be
+  // told, or it reports that nobody was left without an answer.
+  it('tells the model how to read the open share, and what to say when summaries are not produced', () => {
+    const { description } = installationMetadata;
+
+    expect(description).toContain('`open`');
+    expect(description).toContain('`summarised`');
+    expect(description).toMatch(/`summaries\.enabled` (is )?false/);
+    expect(description).toMatch(/summaries are not produced/i);
   });
 });
 
@@ -673,6 +851,60 @@ describe('get_installation_stats: who may ask, and for which agents', () => {
     expect(without(JSON.parse(mine) as Answer)).toEqual(
       without(JSON.parse(JSON.stringify(viaRoute)) as Answer),
     );
+  });
+
+  // FR-021 and FR-033: the installation's answer counts how conversations
+  // ended and repeats nothing anybody asked, for the Owner as for an Admin.
+  it('counts the conversations left open and carries no question of anybody’s', async () => {
+    const { service: access } = accessHarness(['a1']);
+    const anHourAgo = new Date(
+      Math.floor(Date.now() / 3_600_000) * 3_600_000 - 3_600_000,
+    ).toISOString();
+    const QUESTIONS = ['Why was I charged twice?', 'Когда придёт возврат?'];
+    const { service } = installationHarness(
+      {
+        agents: [{ id: 'a1', name: 'Atlas' }],
+        summaries: true,
+        hours: ['c1', 'c2', 'c3'].map((sessionId, i) => ({
+          sessionId,
+          agentId: 'a1',
+          externalUserId: `visitor-${i}`,
+          hour: anHourAgo,
+          userMessages: 3,
+          agentMessages: 3,
+        })),
+        summarised: {
+          c1: { outcome: 'open', question: QUESTIONS[0] },
+          c2: { outcome: 'resolved', question: QUESTIONS[1] },
+        },
+      },
+      access,
+    );
+    const tool = new StatsTool({} as PersonalStatsService, service);
+
+    for (const party of [ADMIN, OWNER]) {
+      const text = textOf(
+        await tool.getInstallationStats(
+          {},
+          undefined,
+          answering(party.role, party.id),
+        ),
+      );
+      const answer = JSON.parse(text) as {
+        summaries: { enabled: boolean };
+        quality: { conversations: number; summarised: number; open: number }[];
+      };
+
+      expect(answer.summaries).toEqual({ enabled: true });
+      expect(answer.quality[0]).toMatchObject({
+        conversations: 3,
+        summarised: 2,
+        open: 1,
+      });
+      for (const question of QUESTIONS) expect(text).not.toContain(question);
+      expect(text).not.toContain('question');
+      expect(text).not.toContain('topic');
+    }
   });
 
   // CLEAN-236, as chat history has it: what people said to the Ranch

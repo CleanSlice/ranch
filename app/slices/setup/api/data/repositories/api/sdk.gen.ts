@@ -3298,7 +3298,7 @@ export class ChatsService {
   }
 
   /**
-   * Generate (or refresh) an LLM summary + insights for one chat, on demand.
+   * Generate (or refresh) an LLM summary + insights for one chat, on demand: the main question, the outcome and the topics with it.
    */
   public static summarizeChat<ThrowOnError extends boolean = false>(
     options: Options<SummarizeChatData, ThrowOnError>,
@@ -4391,7 +4391,7 @@ export class UsageService {
 
 export class StatsService {
   /**
-   * The current user's own statistics for the last 7, 30 or 90 days, with the period before it for comparison: conversations they wrote in, their messages, the agents that answered, activity by day for the last 13 weeks and by weekday, the agents they talked to, how agents helped (cited sources, hand-overs to peers, their ratings) and which models answered. Counts, names and times only: nothing that was written. Only conversations with agents the caller reaches now are counted. Days are cut in the zone sent as `tz`.
+   * The current user's own statistics for the last 7, 30 or 90 days, with the period before it for comparison: conversations they wrote in, their messages, the agents that answered, activity by day for the last 13 weeks and by weekday, the agents they talked to, how agents helped (cited sources, hand-overs to peers, their ratings) and which models answered. Where the installation produces conversation summaries (`summaries.enabled`), also what their conversations were about (`topics`, named in the language of `Accept-Language`; empty until the installation has a vocabulary, `summaries.topicsReady`), how they ended (`outcome`, `board.resolved`) and which were left open (`openQuestions`); where it does not, those parts are empty. Counts, names and times, and of what was written only the caller's own main questions, as the summaries of their conversations worded them. Only conversations with agents the caller reaches now are counted. Days are cut in the zone sent as `tz`.
    */
   public static getMyStats<ThrowOnError extends boolean = false>(
     options?: Options<GetMyStatsData, ThrowOnError>,

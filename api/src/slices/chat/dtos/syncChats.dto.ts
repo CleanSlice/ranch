@@ -15,4 +15,9 @@ export class SyncChatsResponseDto {
   @ApiProperty() scannedFiles: number;
   @ApiProperty() upserted: number;
   @ApiProperty() skipped: number;
+  @ApiProperty({
+    description:
+      'Index rows removed because their transcript file no longer exists',
+  })
+  pruned: number;
 }

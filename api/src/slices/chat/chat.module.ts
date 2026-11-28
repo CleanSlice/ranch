@@ -14,6 +14,8 @@ import { UserModule } from '#/user/user/user.module';
 import { IChatSourceGateway, ChatSourceService } from './domain';
 import { IChatActivityGateway, ChatActivityService } from './domain';
 import { ChatActivityGateway } from './data/chatActivity.gateway';
+import { IChatTopicGateway } from './domain';
+import { ChatTopicGateway } from './data/chatTopic.gateway';
 import { KnowledgeModule } from '#/reins/knowledge/knowledge.module';
 import { SourceModule } from '#/reins/source/source.module';
 import { TemplateModule } from '#/agent/template/template.module';
@@ -47,13 +49,23 @@ import { TemplateModule } from '#/agent/template/template.module';
     ChatActivityService,
     { provide: IChatSourceGateway, useClass: ChatSourceGateway },
     { provide: IChatActivityGateway, useClass: ChatActivityGateway },
+    // The vocabulary the summary chooses its topics from (CLEAN-270).
+    { provide: IChatTopicGateway, useClass: ChatTopicGateway },
     {
       provide: IChatGateway,
       useClass: ChatGateway,
     },
   ],
   // IChatActivityGateway is exported for the stats slice: what it shows about
-  // activity it asks of this port, never of the table.
-  exports: [IChatGateway, ChatSourceService, IChatActivityGateway],
+  // activity it asks of this port, never of the table. IChatTopicGateway and
+  // ChatInsightService go out for the same reader (CLEAN-270): a topic's
+  // label by id, and whether the installation produces summaries at all.
+  exports: [
+    IChatGateway,
+    ChatSourceService,
+    IChatActivityGateway,
+    IChatTopicGateway,
+    ChatInsightService,
+  ],
 })
 export class ChatModule {}

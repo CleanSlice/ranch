@@ -27,6 +27,14 @@ export interface IChatSessionData {
   summary: string | null;
   summaryAt: Date | null;
   insights: unknown; // Prisma Json? — null when not yet computed
+  /** How it ended, by the latest summary; null while there is none. */
+  outcome: ChatOutcome | null;
+  /** The person's main question, one line; null when there is none. */
+  question: string | null;
+  /** `ChatTopic.id` of each topic the summary assigned; at most two. */
+  topicIds: string[];
+  /** Which prompt wrote the summary: 0 none, 1 before CLEAN-270, 2 since. */
+  insightVersion: number;
   archived: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -72,6 +80,43 @@ export interface IChatSessionRef {
   id: string;
   agentId: string;
   lastMessageAt: Date;
+}
+
+/**
+ * What a person's statistics read of one of their conversations' summary
+ * (CLEAN-270): the two judgments, the topics, the tone and the language,
+ * with what says whether a summary is still to come. `question` is the
+ * person's own words, so this is read only for the person it is shown to
+ * (spec 038, FR-033); the summary's text is not here at all.
+ */
+export interface IChatSessionOutcome extends IChatSessionRef {
+  /** Messages from the person so far: what the summary batch's floor compares. */
+  userMessageCount: number;
+  /** When the summary was written; null while there is none. */
+  summaryAt: Date | null;
+  /** Null while there is no summary, and for one an older release wrote. */
+  outcome: ChatOutcome | null;
+  question: string | null;
+  /** `ChatTopic.id`s as stored: a merged one is still under its own id. */
+  topicIds: string[];
+  /** From `insights`; null when it holds none of the four. */
+  sentiment: ChatSentiment | null;
+  /** From `insights`: an ISO 639-1 code in lower case, or null. */
+  language: string | null;
+}
+
+/**
+ * How the conversations one agent had in a period ended, as far as their
+ * summaries say (CLEAN-270). Counts only, and of the same conversations
+ * `IAgentChannelConversations` counts for that agent: `open` is a part of
+ * `summarised`, which is a part of its conversations.
+ */
+export interface IAgentOutcomeCounts {
+  agentId: string;
+  /** Conversations a person wrote in during the period that have a summary. */
+  summarised: number;
+  /** The ones among them whose summary says the person was left without an answer. */
+  open: number;
 }
 
 /** One author's ratings over a period: how many up, how many down. */
@@ -134,6 +179,13 @@ export interface IAgentChannelConversations {
 export interface IInstallationActivity {
   /** One entry per agent and channel with at least one conversation. */
   conversations: IAgentChannelConversations[];
+  /**
+   * How those conversations ended, per agent, when that was asked for
+   * (CLEAN-270): an agent none of whose conversations has a summary is
+   * absent. Empty when it was not asked for, which says nothing about how
+   * anything ended.
+   */
+  outcomes: IAgentOutcomeCounts[];
   /** Distinct people who wrote, in the period and in the one before it. */
   people: { value: number; previous: number };
 }
@@ -172,6 +224,8 @@ export interface IChatSyncResult {
   scannedFiles: number;
   upserted: number;
   skipped: number; // unchanged since last reconcile
+  /** Rows removed because their transcript file is gone (CLEAN-272). */
+  pruned: number;
 }
 
 /**
@@ -191,7 +245,26 @@ export interface IChatActivity {
 
 export type ChatSentiment = 'positive' | 'neutral' | 'negative' | 'mixed';
 
-/** LLM-derived structured insights, stored in `ChatSession.insights` (Json). */
+/**
+ * How a conversation ended, as its summary judged it (CLEAN-270, spec 038
+ * contracts/summary-judgments.md, judgment 2). `unknown` is an answer of its
+ * own: the summary could not tell, and the conversation is then neither
+ * resolved nor an open question.
+ */
+export const ChatOutcomeTypes = {
+  Resolved: 'resolved',
+  Open: 'open',
+  Unknown: 'unknown',
+} as const;
+export type ChatOutcome =
+  (typeof ChatOutcomeTypes)[keyof typeof ChatOutcomeTypes];
+
+/**
+ * What `ChatSession.insights` (Json) holds. The shape version 1 wrote, kept
+ * as it is for the admin console's chat pages (spec 038, data-model.md):
+ * `topics` are English labels, and `resolved` is true for the outcome
+ * `resolved` and false for the other two.
+ */
 export interface IChatInsights {
   topics: string[];
   sentiment: ChatSentiment;
@@ -199,16 +272,77 @@ export interface IChatInsights {
   language: string; // ISO 639-1, e.g. "en", "ru"
 }
 
+/**
+ * What one summary writes on its conversation (version 2, CLEAN-270): the
+ * text, the two judgments as columns a period view can read, and the Json
+ * of version 1 beside them.
+ */
+export interface IChatSummaryData {
+  summary: string;
+  question: string | null;
+  outcome: ChatOutcome;
+  /** `ChatTopic.id` of each clear fit, at most two. */
+  topicIds: string[];
+  insights: IChatInsights;
+}
+
+/** A topic's label per language of the app console: `{ en, ru }`. */
+export type IChatTopicLabels = Record<string, string>;
+
+/** One subject, as the installation's summaries name it (`ChatTopic`). */
+export interface IChatTopicData {
+  id: string;
+  /** Lower-case English slug; what the model chooses between. */
+  key: string;
+  labels: IChatTopicLabels;
+  /** The topic this one was folded into, when an operator merged it. */
+  mergedIntoId: string | null;
+  createdAt: Date;
+}
+
+/**
+ * A topic with how many conversations carry it, those of the topics folded
+ * into it included; a conversation is counted once.
+ */
+export interface IChatTopicUsage {
+  topic: IChatTopicData;
+  conversations: number;
+  /** Keys of the topics merged into this one. */
+  merged: string[];
+}
+
 /** Eligibility gate for the insight cron-batch (never summarize empty/unchanged). */
 export interface IChatInsightGate {
   cooldownMs: number; // lastMessageAt must be older than now - cooldown (settled)
   minUserMessages: number; // skip trivial chats
   limit: number; // per-run batch cap (bounds token spend)
+  /**
+   * A summary written by an older prompt is redone when the conversation's
+   * last message is not older than this (CLEAN-270).
+   */
+  resummarizeWindowMs: number;
+  /**
+   * Conversations to leave out though they are eligible: ones the batch has
+   * set aside (`ChatInsightService`), each as it stood then. One whose last
+   * message has moved since is no longer the conversation named, and is
+   * taken. They do not count against `limit`. Absent when there is none.
+   */
+  exclude?: IChatInsightExclusion[];
+}
+
+/** One conversation at one moment of it: its id and its last message then. */
+export interface IChatInsightExclusion {
+  id: string;
+  lastMessageAt: Date;
 }
 
 export interface IChatInsightBatchResult {
   eligible: number;
+  /** Summaries written. */
   summarized: number;
+  /** Conversations with no transcript, or no message in it: nothing to summarise. */
+  skipped: number;
+  /** The model's answer was unusable, or the transcript could not be read. */
   failed: number;
 }
 

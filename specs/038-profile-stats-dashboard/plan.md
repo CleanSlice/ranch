@@ -162,6 +162,7 @@ api/src/app.module.ts                                 # StatsModule
 api/prisma/migrations/<ts>_stats_collection/          # PR 1
 api/prisma/migrations/<ts>_stats_read_indexes/        # PR 2
 api/prisma/migrations/<ts>_chat_summary_v2/           # PR 3
+api/prisma/migrations/<ts>_chat_summary_v2_backfill/  # PR 3, the UPDATE alone
 api/scripts/summary-calibration.ts                    # PR 3, T-CAL
 api/swagger-spec.json                                 # regenerated
 

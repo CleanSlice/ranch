@@ -131,8 +131,8 @@ export class PaddockEvaluationService {
     },
     scope: IPaddockRunScope = {},
   ): Promise<IPaddockEvaluationData[]> {
-    return (await this.evaluationGateway.findAll(filter)).map((ev) =>
-      this.shownTo(ev, scope),
+    return (await this.evaluationGateway.findAll(filter)).filter(
+      (ev) => !this.keptFrom(ev, scope),
     );
   }
 
@@ -141,113 +141,56 @@ export class PaddockEvaluationService {
     scope: IPaddockRunScope = {},
   ): Promise<IPaddockEvaluationData> {
     const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
-    return this.shownTo(ev, scope);
+    // The same answer for an evaluation that does not exist and for one
+    // this reader is not to read: the one place the question is asked.
+    if (!ev || this.keptFrom(ev, scope)) {
+      throw new NotFoundException('Evaluation not found');
+    }
+    return ev;
   }
 
-  // ── What a run holds of scenarios its reader may not read (CLEAN-271) ──
+  // ── A run that holds scenarios its reader may not read (CLEAN-271) ──
   //
-  // An evaluation keeps a COPY of the scenarios it ran: the snapshot, a
-  // result and a trace per scenario, and a report and a log about all of
-  // them. An ordinary agent may sit on a template the Ranch assistant is
-  // built from, and a run of it started by the Owner (or before this rule)
-  // holds that template's scenarios, which only the Owner reads. Whoever
-  // reaches the agent reads the run, so the copy is read through the same
-  // scope as the live rows: the scenario and its result are left out, by
-  // id they are "not part of this evaluation", and the report and the log,
-  // which are one text about every scenario and cannot be taken apart, are
-  // the Owner's for such a run.
+  // An evaluation keeps a COPY of the scenarios it ran, and everything
+  // else it holds is about them: results, counts, a pass rate, a trace per
+  // scenario, a report, a log, the runner's error text. An ordinary agent
+  // may sit on a template the Ranch assistant is built from, and a run of
+  // it started by the Owner holds that template's scenarios, which only
+  // the Owner reads.
+  //
+  // Such a run is not taken apart for anybody else. Three attempts at
+  // leaving the kept scenarios out field by field each missed a field (a
+  // count, a summary list, free text of an error, a log line), and the
+  // next field added to an evaluation would be missed the same way. So the
+  // run is refused WHOLE: for a reader it keeps a scenario from, it does
+  // not exist. One question, `keptFrom`, asked in one place, `getById`,
+  // which every read and every action below goes through before anything
+  // is read; a list leaves the run out.
+  //
+  // What this costs is small and is the Owner's territory anyway. A run
+  // holds a scenario only of its own agent or of that agent's template
+  // (`resolveScenarios`), so only an agent that sits ON a template the
+  // assistant is built from can have such a run; and a run started by
+  // anybody but the Owner leaves those scenarios out, so such a run is
+  // always one the Owner started.
 
-  /** The ids of the snapshot's scenarios `scope` keeps from its reader. */
+  /** Whether `ev` holds a scenario `scope` keeps from its reader. */
   private keptFrom(
     ev: IPaddockEvaluationData,
     scope: IPaddockRunScope,
-  ): Set<string> {
+  ): boolean {
     const hides = scope.hidesTemplate;
-    if (!hides) return new Set();
-    return new Set(
-      ev.scenariosSnapshot
-        .filter(
-          (s) => !s.agentId && Boolean(s.templateId) && hides(s.templateId!),
-        )
-        .map((s) => s.id),
+    if (!hides) return false;
+    return ev.scenariosSnapshot.some(
+      (s) => !s.agentId && Boolean(s.templateId) && hides(s.templateId!),
     );
   }
-
-  /** `ev` as the reader of `scope` gets it. */
-  private shownTo(
-    ev: IPaddockEvaluationData,
-    scope: IPaddockRunScope,
-  ): IPaddockEvaluationData {
-    const kept = this.keptFrom(ev, scope);
-    if (kept.size === 0) return ev;
-    // One place builds the whole view, and every field that was derived
-    // from the snapshot is derived again from what is left of it. A kept
-    // scenario is not listed, not counted and not hinted at: no "hidden: n",
-    // because that a template of the assistant has scenarios, and how many,
-    // is the Owner's business as much as their text.
-    const scenariosSnapshot = ev.scenariosSnapshot.filter(
-      (s) => !kept.has(s.id),
-    );
-    const results = ev.results.filter((r) => !kept.has(r.scenarioId));
-    const count = (verdict: string) =>
-      results.filter((r) => r.verdict === verdict).length;
-    const passCount = count('pass');
-    const names = ev.scenariosSnapshot
-      .filter((s) => kept.has(s.id))
-      .flatMap((s) => [s.id, s.name])
-      .filter((word) => typeof word === 'string' && word !== '');
-    return {
-      ...ev,
-      scenariosSnapshot,
-      scenarios: ev.scenarios.filter((s) => !kept.has(s.id)),
-      results,
-      currentScenarioId:
-        ev.currentScenarioId && kept.has(ev.currentScenarioId)
-          ? null
-          : ev.currentScenarioId,
-      scenarioCount: scenariosSnapshot.length,
-      passCount,
-      failCount: count('fail'),
-      partialCount: count('partial'),
-      skippedCount: count('skipped'),
-      passRate:
-        ev.passRate === null
-          ? null
-          : scenariosSnapshot.length === 0
-            ? 0
-            : passCount / scenariosSnapshot.length,
-      // The report is one text about every scenario and cannot be taken
-      // apart: for this reader the run has none, as a run that stopped
-      // before writing one has none.
-      reportS3Key: null,
-      // A message of the runner may name the scenario it stopped at.
-      errorMessage:
-        ev.errorMessage && names.some((word) => ev.errorMessage!.includes(word))
-          ? 'The run stopped with an error.'
-          : ev.errorMessage,
-    };
-  }
-
-  /**
-   * Which evaluation the runner's log of an agent belongs to. The runner
-   * keeps ONE buffer per agent, cleared when a run of that agent starts, so
-   * the lines under an agent are those of its latest run, whichever
-   * evaluation is asked about. Kept here, next to the buffer and for as
-   * long: both are this process's memory.
-   */
-  private readonly logOf = new Map<string, string>();
 
   async abort(
     id: string,
     scope: IPaddockRunScope = {},
   ): Promise<IPaddockEvaluationData> {
-    return this.shownTo(await this.abortRun(id), scope);
-  }
-
-  private async abortRun(id: string): Promise<IPaddockEvaluationData> {
-    const ev = await this.evaluationGateway.findById(id);
-    if (!ev) throw new NotFoundException('Evaluation not found');
+    const ev = await this.getById(id, scope);
     if (ev.status !== 'running') return ev;
     // Best-effort: kill the underlying paddock CLI subprocess (if any).
     const killed = this.runner.abort(ev.agentId);
@@ -279,11 +222,10 @@ export class PaddockEvaluationService {
     sourceId: string,
     scope: IPaddockRunScope = {},
   ): Promise<IPaddockEvaluationData> {
-    const stored = await this.evaluationGateway.findById(sourceId);
-    if (!stored) throw new NotFoundException('Source evaluation not found');
-    // The source as the person rerunning it reads it: a scenario kept from
-    // them is not sent again under their run (CLEAN-271).
-    const source = this.shownTo(stored, scope);
+    const source = await this.evaluationGateway.findById(sourceId);
+    if (!source || this.keptFrom(source, scope)) {
+      throw new NotFoundException('Source evaluation not found');
+    }
 
     const agent = await this.agentGateway.findById(source.agentId);
     if (!agent) {
@@ -341,17 +283,9 @@ export class PaddockEvaluationService {
     id: string,
     scope: IPaddockRunScope = {},
   ): Promise<{ lines: string[] }> {
-    const stored = await this.evaluationGateway.findById(id);
-    if (!stored) throw new NotFoundException('Evaluation not found');
-    // The buffer is the agent's, not this evaluation's. It is this
-    // evaluation's log only when this is the run that filled it: asked
-    // about an earlier run, it used to answer with the lines of a later
-    // one, which may hold scenarios this reader does not read (CLEAN-271).
-    // And a run that holds any has no log for this reader, as one that
-    // never started has none.
-    if (this.logOf.get(stored.agentId) !== id) return { lines: [] };
-    if (this.keptFrom(stored, scope).size > 0) return { lines: [] };
-    return { lines: this.runner.getLogs(stored.agentId) };
+    await this.getById(id, scope);
+    // The runner keeps one buffer per run, under the evaluation's id.
+    return { lines: this.runner.getLogs(id) };
   }
 
   // Fetch a scenario as it was captured into this evaluation's snapshot.
@@ -393,13 +327,7 @@ export class PaddockEvaluationService {
     scenarioId: string,
     scope: IPaddockRunScope = {},
   ): Promise<object | null> {
-    const stored = await this.evaluationGateway.findById(id);
-    if (!stored) throw new NotFoundException('Evaluation not found');
-    if (this.keptFrom(stored, scope).has(scenarioId)) {
-      throw new NotFoundException(
-        `Scenario ${scenarioId} is not part of evaluation ${id}`,
-      );
-    }
+    await this.getById(id, scope);
     return this.reportGateway.loadTrace(id, scenarioId);
   }
 
@@ -489,16 +417,12 @@ export class PaddockEvaluationService {
     let envelope: { agentDir: string; cleanup: () => Promise<void> } | null =
       null;
     try {
-      // From here the agent's log buffer is this evaluation's: emptied and
-      // handed over in one step, before anything is awaited, so that no line
-      // of the run before is ever read under this id.
-      this.runner.clearLogs(agentId);
-      this.logOf.set(agentId, evaluationId);
       const judges = await this.resolveJudgeCredentials(judgeConfig);
       const agentLlm = await this.resolveAgentLlm(agentId);
       envelope = await this.envelope.materialize(agentId);
 
       const output = await this.runner.run({
+        evaluationId,
         agentId,
         agentDir: envelope.agentDir,
         scenarios,

@@ -350,8 +350,7 @@ const paddockEvaluations = new PaddockEvaluationService(
   // The run itself is another process; this spec is about what goes into it.
   {
     run: () => new Promise(() => undefined),
-    getLogs: () => ['a line about text of scenario-ranch'],
-    clearLogs: () => undefined,
+    getLogs: (evaluationId: string) => [`a line of ${evaluationId}`],
     abort: () => false,
   } as never,
   {
@@ -1697,171 +1696,100 @@ describe('the scenarios of a template the assistant is built from are the Owner�
       ]);
     });
 
-    it('an Admin who reaches the agent reads the run without them: the evaluation, the list, a scenario, a trace', async () => {
-      for (const ask of [asAdmin, asAdminConsole]) {
-        const one = await ask('get_paddock_evaluation', { id });
-        const list = await ask('list_paddock_evaluations', { agentId: ALPHA });
-        for (const said of [one, list]) {
-          expect(said).toContain('scenario-alpha');
-          expect(said).not.toContain('scenario-ranch');
-          expect(said).not.toContain('text of scenario-ranch');
-        }
-        const hidden = await ask('get_paddock_evaluation_scenario_result', {
-          id,
-          scenarioId: 'scenario-ranch',
-        });
-        const unknown = await ask('get_paddock_evaluation_scenario_result', {
-          id,
-          scenarioId: 'scenario-nobody-has',
-        });
-        expect(hidden).not.toContain('text of scenario-ranch');
-        expect(hidden.split('scenario-ranch').join('x')).toBe(
-          unknown.split('scenario-nobody-has').join('x'),
-        );
-        const trace = await ask('get_paddock_evaluation_trace', {
-          id,
-          scenarioId: 'scenario-ranch',
-        });
-        expect(trace).toContain('is not part of evaluation');
-        expect(
-          await ask('get_paddock_evaluation_scenario_result', {
-            id,
-            scenarioId: 'scenario-alpha',
-          }),
-        ).toContain('text of scenario-alpha');
-      }
-    });
+    // The run is not taken apart for an Admin: it is refused whole. Every
+    // read of it and every action on it answers as the same call on an
+    // evaluation that does not exist, word for word.
+    const NOBODYS = 'evaluation-nobody-has';
+    const CALLS: [string, (of: string) => object][] = [
+      ['get_paddock_evaluation', (of) => ({ id: of })],
+      ['get_paddock_evaluation_report', (of) => ({ id: of })],
+      ['get_paddock_evaluation_logs', (of) => ({ id: of })],
+      [
+        'get_paddock_evaluation_scenario_result',
+        (of) => ({ id: of, scenarioId: 'scenario-alpha' }),
+      ],
+      [
+        'get_paddock_evaluation_scenario_result',
+        (of) => ({ id: of, scenarioId: 'scenario-ranch' }),
+      ],
+      [
+        'get_paddock_evaluation_trace',
+        (of) => ({ id: of, scenarioId: 'scenario-alpha' }),
+      ],
+      [
+        'get_paddock_evaluation_trace',
+        (of) => ({ id: of, scenarioId: 'scenario-ranch' }),
+      ],
+      ['rerun_paddock_evaluation', (of) => ({ id: of })],
+      ['abort_paddock_evaluation', (of) => ({ id: of, confirm: true })],
+    ];
 
-    it('nothing of the run tells an Admin they were there: every field is that of a run that held only the rest', async () => {
-      const whole = evaluationRows.get(id)!;
-      Object.assign(whole, {
-        scenarios: whole.scenariosSnapshot.map((s) => ({
-          id: s.id,
-          name: `name of ${s.id}`,
-        })),
-        results: [
-          { scenarioId: 'scenario-ranch', verdict: 'pass' },
-          { scenarioId: 'scenario-alpha', verdict: 'fail' },
-        ],
+    it('for an Admin every read of it and every action on it is the answer for an evaluation that does not exist', async () => {
+      // Everything a field-by-field view could have let through.
+      Object.assign(evaluationRows.get(id)!, {
+        status: 'running',
+        reportS3Key: 'evaluations/x/report.json',
+        errorMessage: 'the agent answered: text of scenario-ranch',
         scenarioCount: 2,
-        passCount: 1,
-        failCount: 1,
-        partialCount: 0,
-        skippedCount: 0,
         passRate: 0.5,
-        currentScenarioId: 'scenario-ranch',
-        errorMessage: 'Watchdog: scenario "scenario-ranch" was idle',
       });
-      const seen = JSON.parse(
-        await asAdmin('get_paddock_evaluation', { id }),
-      ) as Record<string, unknown>;
-      // The same run, had it held only the scenario the Admin reads.
-      const alphaOnly = whole.scenariosSnapshot.filter(
-        (s) => s.id === 'scenario-alpha',
-      );
-      const expected = JSON.parse(
-        JSON.stringify({
-          ...whole,
-          scenariosSnapshot: alphaOnly,
-          scenarios: [{ id: 'scenario-alpha', name: 'name of scenario-alpha' }],
-          results: [{ scenarioId: 'scenario-alpha', verdict: 'fail' }],
-          scenarioCount: 1,
-          passCount: 0,
-          failCount: 1,
-          partialCount: 0,
-          skippedCount: 0,
-          passRate: 0,
-          currentScenarioId: null,
-          errorMessage: 'The run stopped with an error.',
-        }),
-      ) as Record<string, unknown>;
-      expect(seen).toEqual(expected);
-      // No count of what was left out, under any name.
-      expect(Object.keys(seen).sort()).toEqual(Object.keys(expected).sort());
-      expect(JSON.stringify(seen)).not.toContain('scenario-ranch');
-      // The list says the same of it.
-      const listed = JSON.parse(
-        await asAdmin('list_paddock_evaluations', { agentId: ALPHA }),
-      ) as { evaluations: Record<string, unknown>[] };
-      expect(listed.evaluations[0]).toEqual(expected);
-      // And the Owner reads the stored numbers.
-      const owners = JSON.parse(
-        await asOwner('get_paddock_evaluation', { id }),
-      ) as Record<string, unknown>;
-      expect(owners.scenarioCount).toBe(2);
-      expect(owners.passRate).toBe(0.5);
-    });
-
-    it('the report and the log are one text about every scenario: for an Admin such a run has neither, in the words of a run that wrote none', async () => {
-      evaluationRows.get(id)!.reportS3Key = 'evaluations/x/report.json';
-      // A run with no report at all, to compare the answer with.
-      await asOwner('run_paddock_evaluation', {
-        agentId: ALPHA,
-        scenarioIds: ['scenario-alpha'],
-      });
-      const bare = evaluationsCreated[1].id;
-      expect(await asAdmin('get_paddock_evaluation_report', { id })).toBe(
-        await asAdmin('get_paddock_evaluation_report', { id: bare }),
-      );
-      expect(await asAdmin('get_paddock_evaluation_report', { id })).toContain(
-        'Report not yet available',
-      );
-      expect(
-        JSON.parse(await asAdmin('get_paddock_evaluation', { id })).reportS3Key,
-      ).toBeNull();
-    });
-
-    it('the log is the agent’s, not the evaluation’s: it is read only for the run that filled it, and never for a run that holds them', async () => {
-      const logs = (who: typeof asAdmin, of: string) =>
-        who('get_paddock_evaluation_logs', { id: of });
-      const settled = () => new Promise((resolve) => setImmediate(resolve));
-      await settled();
-      // The Owner's run filled the buffer, and holds a scenario of the
-      // assistant's template: the Owner reads it, an Admin reads nothing.
-      expect(await logs(asOwner, id)).toContain('a line about');
-      expect(await logs(asAdmin, id)).not.toContain('a line about');
-      // A later run of the same agent takes the buffer over.
-      await asAdmin('run_paddock_evaluation', { agentId: ALPHA });
-      await settled();
-      const later = evaluationsCreated[1].id;
-      expect(evaluationsCreated[1].scenariosSnapshot.map((s) => s.id)).toEqual([
-        'scenario-alpha',
-      ]);
-      expect(await logs(asAdmin, later)).toContain('a line about');
-      // Asked about the earlier run, nobody is handed the later run's lines:
-      // not the Owner, and not the Admin by way of an evaluation they read.
-      expect(await logs(asOwner, id)).not.toContain('a line about');
-      expect(await logs(asAdmin, id)).not.toContain('a line about');
-      // The other direction is the one that leaked: the Owner runs again,
-      // the buffer holds the assistant's scenarios, and the Admin asks for
-      // the log of THEIR run, which holds none.
-      await asOwner('run_paddock_evaluation', { agentId: ALPHA });
-      await settled();
-      expect(await logs(asAdmin, later)).not.toContain('a line about');
-      expect(await logs(asOwner, evaluationsCreated[2].id)).toContain(
-        'a line about',
-      );
-    });
-
-    it('an Admin’s rerun does not send them again, and aborting answers without them', async () => {
-      const said = await asAdmin('rerun_paddock_evaluation', { id });
-      expect(said).not.toContain('scenario-ranch');
-      expect(evaluationsCreated).toHaveLength(2);
-      expect(evaluationsCreated[1].scenariosSnapshot.map((s) => s.id)).toEqual([
-        'scenario-alpha',
-      ]);
-      expect(
-        await asAdmin('abort_paddock_evaluation', { id, confirm: true }),
-      ).not.toContain('scenario-ranch');
-    });
-
-    it('a rerun with nothing left for the Admin runs nothing', async () => {
-      evaluationsCreated[0].scenariosSnapshot = [
-        scenarioRows.get('scenario-ranch')!,
-      ];
-      const said = await asAdmin('rerun_paddock_evaluation', { id });
-      expect(said).toContain('no scenarios to rerun');
+      const stored = JSON.stringify([...evaluationRows.entries()]);
+      for (const ask of [asAdmin, asAdminConsole]) {
+        for (const [tool, args] of CALLS) {
+          const said = await ask(tool, args(id));
+          const unknown = await ask(tool, args(NOBODYS));
+          expect([tool, said.split(id).join('<id>')]).toEqual([
+            tool,
+            unknown.split(NOBODYS).join('<id>'),
+          ]);
+          expect(said).not.toContain('scenario-ranch');
+          expect(said).not.toContain('a line of');
+        }
+        const list = JSON.parse(
+          await ask('list_paddock_evaluations', { agentId: ALPHA }),
+        ) as { evaluations: { id: string }[] };
+        expect(list.evaluations).toEqual([]);
+        expect(JSON.stringify(list)).not.toContain(id);
+      }
+      // Nothing ran again, nothing was stopped, nothing was written.
       expect(evaluationsCreated).toHaveLength(1);
+      expect(JSON.stringify([...evaluationRows.entries()])).toBe(stored);
+    });
+
+    it('a run of the same agent that holds none of them is the Admin’s as before, next to it', async () => {
+      await asAdmin('run_paddock_evaluation', { agentId: ALPHA });
+      await new Promise((resolve) => setImmediate(resolve));
+      const mine = evaluationsCreated[1];
+      expect(mine.scenariosSnapshot.map((s) => s.id)).toEqual([
+        'scenario-alpha',
+      ]);
+      expect(
+        await asAdmin('get_paddock_evaluation', { id: mine.id }),
+      ).toContain('text of scenario-alpha');
+      // Its log is its own: the lines kept under its id, and no other run's.
+      const log = await asAdmin('get_paddock_evaluation_logs', {
+        id: mine.id,
+      });
+      expect(log).toContain(`a line of ${mine.id}`);
+      expect(log).not.toContain(`a line of ${id}`);
+      const list = JSON.parse(
+        await asAdmin('list_paddock_evaluations', { agentId: ALPHA }),
+      ) as { evaluations: { id: string }[] };
+      expect(list.evaluations.map((e) => e.id)).toEqual([mine.id]);
+      await asAdmin('rerun_paddock_evaluation', { id: mine.id });
+      expect(evaluationsCreated[2].scenariosSnapshot.map((s) => s.id)).toEqual([
+        'scenario-alpha',
+      ]);
+    });
+
+    it('the Owner reads its log, under its own id', async () => {
+      expect(await asOwner('get_paddock_evaluation_logs', { id })).toContain(
+        `a line of ${id}`,
+      );
+      const list = JSON.parse(
+        await asOwner('list_paddock_evaluations', { agentId: ALPHA }),
+      ) as { evaluations: { id: string }[] };
+      expect(list.evaluations.map((e) => e.id)).toEqual([id]);
     });
 
     it('the Owner reads the whole run and reruns all of it', async () => {

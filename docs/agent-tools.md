@@ -615,13 +615,18 @@ read since CLEAN-268. An evaluation runs the scenarios of its own agent and
 no others: a scenario named by id from another scope is not copied into the
 run's snapshot, and a run started by anybody but the Owner leaves the
 scenarios of the assistant's template out of an ordinary agent that sits on
-it. A run keeps a copy of its scenarios, and the copy is read through the
-same rule: for anybody but the Owner the snapshot, the results and a trace
-leave those scenarios out (by id: "not part of this evaluation"), a rerun
-does not send them again, and the report and the log of a run that holds
-any, being one text about every scenario, are the Owner's. So is the
-download of the template: anybody else's archive has no scenarios. A
-template archive never makes a tool server `builtIn`.
+it. A run keeps a copy of its scenarios, and everything else it holds is
+about them (results, counts, a trace, a report, a log, the runner's error
+text), so a run that holds one of those scenarios is not taken apart: for
+anybody but the Owner it does not exist. Every read of it and every action
+on it (get, scenario result, report, trace, logs, rerun, abort) answers as
+for an evaluation that does not exist, and the lists leave it out; one
+question, asked in `PaddockEvaluationService.getById`. Only an agent that
+sits on a template the assistant is built from can have such a run, and
+only the Owner can start one. The log of a run is kept per run, under the
+evaluation's id, never per agent. The download of such a template has no
+scenarios for anybody but the Owner. A template archive never makes a tool
+server `builtIn`.
 
 Managing the assistant is the Owner's. Its pod, though, is put together at
 every restart from things that are not the agent, and an Admin could write

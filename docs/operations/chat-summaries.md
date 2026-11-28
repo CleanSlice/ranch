@@ -53,6 +53,14 @@ open chats reconnect. Run it when a release would be acceptable.
   conversation with nothing to read; `failed` is an answer that could not be
   used or a provider error, and such a conversation is set aside for an hour,
   doubling to a day, instead of being asked again on every run.
+- When a run reports failures, the same report sorts them by kind and counts
+  them: the provider's HTTP status with its error type and the words its
+  message mentions (from a fixed list: workspace, credit balance, rate limit,
+  model and a few more), an answer that could not be used with the reason,
+  a transcript that could not be read, or another error. No conversation id
+  and no provider message is printed: the repository and its Actions logs are
+  public, and a provider's message can carry an organisation's identifiers.
+  The full lines are in the API log, as `insight failed for <chat id>: …`.
 - On the page, "How conversations end" says how many conversations have a
   summary and how many still wait for one. The waiting number falls by up to
   25 per run.

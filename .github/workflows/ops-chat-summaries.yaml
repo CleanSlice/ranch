@@ -109,10 +109,52 @@ jobs:
           kubectl -n "$NS" set env deploy/"$DEPLOY" "$VARIABLE-"
           kubectl -n "$NS" rollout status deploy/"$DEPLOY" --timeout=10m
 
+      # Why conversations failed, as kinds and counts. This repository is
+      # public and so is this log: a line of the API log names a conversation
+      # and can quote a provider's message, which may carry an organisation's
+      # identifiers. So a line is never printed. It is sorted into a kind:
+      # the provider's HTTP status with its error type and, from a fixed
+      # list, the words its message mentions; an answer that could not be
+      # used, with the reason the API gives it (a fixed set of words); a
+      # transcript that could not be read; or "another error".
+      - name: Write the reason grouper
+        if: always()
+        run: |
+          cat > "$RUNNER_TEMP/reasons.awk" <<'AWK'
+          {
+            line = $0
+            low = tolower(line)
+            if (match(line, /Anthropic API [0-9]+/)) {
+              status = substr(line, RSTART + 14, RLENGTH - 14)
+              type = "type not given"
+              if (match(line, /"type":"[a-z_]+_error"/)) type = substr(line, RSTART + 8, RLENGTH - 9)
+              hint = ""
+              if (index(low, "workspace")) hint = hint " workspace"
+              if (index(low, "credit balance")) hint = hint " credit-balance"
+              if (index(low, "rate limit")) hint = hint " rate-limit"
+              if (index(low, "max_tokens")) hint = hint " max_tokens"
+              if (index(low, "thinking")) hint = hint " thinking"
+              if (index(low, "prompt is too long")) hint = hint " prompt-too-long"
+              if (index(low, "oauth")) hint = hint " oauth"
+              if (index(low, "beta")) hint = hint " beta"
+              if (index(low, "model")) hint = hint " model"
+              key = "the provider answered " status ", " type (hint == "" ? "" : "; its message mentions:" hint)
+            } else if (match(line, /unusable answer: [a-z JSON]+/)) {
+              key = "an " substr(line, RSTART, RLENGTH)
+            } else if (low ~ /transcript|storage|nosuchkey|s3/) {
+              key = "the transcript could not be read"
+            } else {
+              key = "another error (not quoted here)"
+            }
+            n[key]++
+          }
+          END { for (k in n) printf "  %d  %s\n", n[k], k }
+          AWK
+
       # The value, the version, and what the batch has said of itself since
-      # the pod started: the line it logs when its timer starts and the
-      # counts of each run. A failed run is counted here and not quoted: its
-      # line can carry a provider's answer.
+      # the pod started: the line it logs when its timer starts, the counts
+      # of each run, and the kinds of failure. A failed run or conversation
+      # is counted and sorted, never quoted.
       - name: Report
         if: always()
         run: |
@@ -122,11 +164,21 @@ jobs:
           version="$(kubectl -n "$NS" exec deploy/"$DEPLOY" -- printenv RANCH_VERSION 2>/dev/null || true)"
           echo "running version: ${version:-unknown}"
 
-          logs="$(kubectl -n "$NS" logs deploy/"$DEPLOY" --tail=5000 2>/dev/null || true)"
+          # Colour codes of the API's logger are taken out before anything
+          # is matched or shown.
+          logs="$(kubectl -n "$NS" logs deploy/"$DEPLOY" --tail=5000 2>/dev/null | sed -E 's/\x1b\[[0-9;]*m//g' || true)"
           echo "== the batch, in the log of the running pod"
           started="$(printf '%s\n' "$logs" | grep -F 'chat insight batch enabled' | tail -1 || true)"
           echo "${started:-no \"chat insight batch enabled\" line: the timer has not started in this pod}"
           printf '%s\n' "$logs" | grep -E 'insight batch: eligible=' | tail -5 || true
           failed="$(printf '%s\n' "$logs" | grep -cE 'insight batch (failed|aborted)' || true)"
           echo "runs that failed or were aborted: ${failed:-0}"
+
+          echo "== conversations that failed, by kind of reason (no id and no provider message is printed)"
+          fails="$(printf '%s\n' "$logs" | grep -F 'insight failed for ' || true)"
+          if [ -z "$fails" ]; then
+            echo "  none in the last 5000 lines of the log"
+          else
+            printf '%s\n' "$fails" | awk -f "$RUNNER_TEMP/reasons.awk" | sort -rn
+          fi
           echo "The first run comes one interval after the pod started. The page reads the result as summaries.enabled."

@@ -378,6 +378,10 @@ Paths are relative to the repository root. `admin/` and `app/` files are patched
   - *`main`'s new access-list rule (CLEAN-268) reached the two topic tools.* `list_chat_topics` and `merge_chat_topics` had to be filed under it, and `list_chat_topics` carries `scope` when the caller's lists narrowed what was counted.
   - *The guard against repeating the topic list.* An answer whose summary or question names three or more listed topics the conversation was not filed under is not stored, reason `'repeats the topic list'`, and its conversation is set aside like any other unusable answer.
 - **Left**: T085, the release, which the decision unblocks. The cause of production's single summary stays unconfirmed until the API log is read. Topics: CLEAN-278.
+- **After the release, 2026-11-28**:
+  - *v0.3.119 answered `summaries.enabled: false`.* `CHAT_INSIGHT_INTERVAL_SEC` never reached the pod: the cluster runs manifests applied by hand and a release only restarts the deployments. CLEAN-279 added the workflow that sets it.
+  - *Once set, nothing was summarised.* Two runs of 25 were refused with 429, all 50 calls: production's Anthropic credentials are both subscription tokens, the ones the agents run on, and the provider refuses a direct summary request made with one.
+  - *CLEAN-280.* The batch prefers an API key to a subscription token, and it reports itself as not producing summaries when the provider refuses it wholesale, in two steps. After one run whose every model call was refused, the next run is a probe of one conversation instead of 25 and the page is told nothing, so a provider that was down for a minute costs one probe. When that next run is refused too, `summaries.enabled` is false until a call goes through, and the probes go on. docs/operations/chat-summaries.md has what the operator sees and does.
 
 ---
 

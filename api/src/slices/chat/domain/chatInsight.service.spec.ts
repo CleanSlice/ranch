@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { Logger, NotFoundException } from '@nestjs/common';
 import {
   COINS_PROPOSED_TOPICS,
   ChatInsightService,
@@ -1493,13 +1493,20 @@ describe('ChatInsightService.runBatch: an answer it cannot use', () => {
   // The provider being down, or slow, or asking for fewer calls, says
   // nothing about the conversation. Setting it aside would have an outage
   // cost every conversation of every run an hour and more.
-  it.each<[string, Reply]>([
-    ['a 500', { status: 500 }],
-    ['a 529, overloaded', { status: 529 }],
-    ['a 429, too many requests', { status: 429 }],
-    ['a 408, timed out', { status: 408 }],
-    ['a request that never arrived', new TypeError('fetch failed')],
-  ])('asks again on the next run after %s', async (_name, reply) => {
+  //
+  // The limit of the second run: nothing was set aside, so no row is read
+  // in order to be skipped. After a run the provider answered with nothing
+  // but an error status it is a probe of one conversation, not 25
+  // (CLEAN-280, "a provider that refuses every call"); a request that
+  // never arrived is not the provider's answer, and the run after it is a
+  // whole one.
+  it.each<[string, Reply, number]>([
+    ['a 500', { status: 500 }, 1],
+    ['a 529, overloaded', { status: 529 }, 1],
+    ['a 429, too many requests', { status: 429 }, 1],
+    ['a 408, timed out', { status: 408 }, 1],
+    ['a request that never arrived', new TypeError('fetch failed'), 25],
+  ])('asks again on the next run after %s', async (_name, reply, next) => {
     const asked = modelBy(() => reply);
     const { chats, gates } = queueOf(() => [chatOf('c1')]);
     const { svc } = make({ chats, reader: readerById().reader });
@@ -1509,7 +1516,7 @@ describe('ChatInsightService.runBatch: an answer it cannot use', () => {
     expect((await svc.runBatch()).failed).toBe(1);
 
     expect(asked).toEqual(['c1', 'c1']);
-    expect(gates.map((gate) => gate.limit)).toEqual([25, 25]);
+    expect(gates.map((gate) => gate.limit)).toEqual([25, next]);
   });
 
   // A request the provider refuses for what is in it is refused again.
@@ -2544,5 +2551,623 @@ describe('ChatInsightService: topics in this release', () => {
     });
     expect(made.hasStanding).toHaveBeenCalledTimes(2);
     expect(made.saveInsights.mock.calls.map(([id]) => id)).toEqual(['c2']);
+  });
+});
+
+// ── What follows was written for CLEAN-280 ────────────────────────────
+
+/** A subscription token, the kind the agents run on, and an ordinary key. */
+const SUBSCRIPTION_KEY = 'sk-ant-oat01-subscription';
+const API_KEY = 'sk-ant-api03-ordinary';
+
+/** The headers of every request the model was sent, in order. */
+function sentHeaders(): Array<Record<string, string>> {
+  const calls = (global.fetch as unknown as jest.Mock).mock.calls as Array<
+    [unknown, { headers: Record<string, string> }]
+  >;
+  return calls.map(([, init]) => init.headers);
+}
+
+/**
+ * Which credential a summary is made with (CLEAN-280). Production had two
+ * active Anthropic credentials, both subscription tokens, the ones the
+ * agents run on: the provider refuses a direct summary request made with
+ * one. So an ordinary API key is taken first wherever there is one, and a
+ * subscription token only when it is the only kind there is.
+ */
+describe('ChatInsightService.credential: an API key before a subscription token', () => {
+  const of = (id: string, over: Partial<typeof CREDENTIAL> = {}) => ({
+    ...CREDENTIAL,
+    id,
+    ...over,
+  });
+
+  it('takes an API key though a subscription token comes first by provider and model', async () => {
+    const { svc } = make({
+      llms: llmsStub([
+        of('oat-1', { model: 'claude-a', apiKey: SUBSCRIPTION_KEY }),
+        of('oat-2', { model: 'claude-b', apiKey: SUBSCRIPTION_KEY }),
+        of('api-1', { provider: 'claude', apiKey: API_KEY }),
+      ]),
+    });
+    expect((await svc.credential())?.id).toBe('api-1');
+  });
+
+  it('keeps the order it was given within each kind', async () => {
+    const { svc } = make({
+      llms: llmsStub([
+        of('oat-1', { apiKey: SUBSCRIPTION_KEY }),
+        of('api-1', { provider: 'Anthropic', apiKey: API_KEY }),
+        of('api-2', { provider: 'claude', apiKey: API_KEY }),
+      ]),
+    });
+    expect((await svc.credential())?.id).toBe('api-1');
+
+    const tokens = make({
+      llms: llmsStub([
+        of('oat-1', { apiKey: SUBSCRIPTION_KEY }),
+        of('oat-2', { provider: 'claude', apiKey: SUBSCRIPTION_KEY }),
+      ]),
+    });
+    expect((await tokens.svc.credential())?.id).toBe('oat-1');
+  });
+
+  // An installation may have one that works; the one that does not is what
+  // the refused state is for.
+  it('takes a subscription token when it is the only kind there is', async () => {
+    const { svc } = make({
+      llms: llmsStub([of('oat-1', { apiKey: SUBSCRIPTION_KEY })]),
+    });
+    expect((await svc.credential())?.id).toBe('oat-1');
+  });
+
+  it('does not take another provider’s key for being an API key', async () => {
+    const { svc } = make({
+      llms: llmsStub([
+        of('openai-1', { provider: 'openai', apiKey: 'sk-proj-other' }),
+        of('oat-1', { apiKey: SUBSCRIPTION_KEY }),
+      ]),
+    });
+    expect((await svc.credential())?.id).toBe('oat-1');
+  });
+
+  it('is the one the batch and a summary by hand both call the provider with', async () => {
+    mockFetch(answer());
+    const { svc } = make({
+      chats: makeChats({ eligible: [SESSION] }),
+      llms: llmsStub([
+        of('oat-1', { apiKey: SUBSCRIPTION_KEY }),
+        of('api-1', { provider: 'claude', apiKey: API_KEY }),
+      ]),
+    });
+
+    await svc.runBatch();
+    await svc.summarize('c1');
+
+    const headers = sentHeaders();
+    expect(headers).toHaveLength(2);
+    for (const sent of headers) {
+      expect(sent['x-api-key']).toBe(API_KEY);
+      expect(sent.authorization).toBeUndefined();
+    }
+  });
+});
+
+/**
+ * A provider that refuses every call (CLEAN-280). Production's batch was
+ * switched on with subscription tokens for credentials: two runs of 25, and
+ * the provider answered 429 to all 50 calls. A 429 says "later" about a
+ * conversation, so nothing was set aside, `summaries.enabled` stayed true,
+ * the page went on counting conversations that "wait for a summary", and
+ * the batch went on sending 25 calls every quarter of an hour on the token
+ * the agents use.
+ *
+ * Two steps, because a provider that is down for a minute must not change
+ * what people see for a quarter of an hour. After one run whose every model
+ * call the provider refused, with a status of 4xx or 5xx, the batch doubts
+ * the provider: the next run is a probe of one conversation, and the page
+ * is told nothing. When that run is refused too, the service answers "not
+ * enabled" until a call goes through, and goes on probing.
+ */
+describe('ChatInsightService: a provider that refuses every call', () => {
+  const ENV = 'CHAT_INSIGHT_INTERVAL_SEC';
+  const before = process.env[ENV];
+  const started: ChatInsightService[] = [];
+  let warn: jest.SpyInstance;
+  let log: jest.SpyInstance;
+  let elapsed = 0;
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(REVIEW_NOW);
+    process.env[ENV] = '900';
+    elapsed = 0;
+    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    while (started.length) started.pop()!.onModuleDestroy();
+    if (before === undefined) delete process.env[ENV];
+    else process.env[ENV] = before;
+    warn.mockRestore();
+    log.mockRestore();
+    jest.useRealTimers();
+  });
+
+  /** The next run of the batch, an interval after the one before it. */
+  const runAgain = (svc: ChatInsightService) => {
+    elapsed += 15 * MINUTE;
+    jest.setSystemTime(new Date(REVIEW_NOW.getTime() + elapsed));
+    return svc.runBatch();
+  };
+
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, index) => chatOf(`c${index}`));
+
+  /**
+   * The service as the application starts it, over the conversations given.
+   * One whose id starts with `gone` has no transcript, and one whose id
+   * starts with `broken` has a transcript that cannot be read.
+   */
+  const boot = (list: () => IChatSessionData[], llms = llmsStub()) => {
+    const { chats, gates } = queueOf(list);
+    const byId = readerById();
+    const read = jest.fn(async (agentId: string, path: string) => {
+      if (path.includes('bridle:broken')) throw new Error('storage is down');
+      return byId.read(agentId, path);
+    });
+    const made = make({
+      chats,
+      llms,
+      reader: { read } as unknown as TranscriptReaderService,
+    });
+    made.svc.onModuleInit();
+    started.push(made.svc);
+    return { ...made, gates, llms };
+  };
+
+  /** Every line the service logged at the level of `spy`. */
+  const lines = (spy: jest.SpyInstance) =>
+    (spy.mock.calls as unknown[][]).map(([line]) => String(line));
+  const refusedLines = () =>
+    lines(warn).filter((line) => line.startsWith('insight batch refused'));
+
+  describe('after one run the provider refused whole', () => {
+    it('still reports summaries, says nothing, and asks about one conversation on the next run', async () => {
+      const asked = modelBy(() => ({ status: 429 }));
+      const { svc, gates } = boot(() => many(30));
+
+      expect(await svc.runBatch()).toEqual({
+        eligible: 25,
+        summarized: 0,
+        skipped: 0,
+        failed: 25,
+      });
+
+      expect(asked).toHaveLength(25);
+      await expect(svc.isEnabled()).resolves.toBe(true);
+      expect(refusedLines()).toEqual([]);
+
+      expect((await runAgain(svc)).eligible).toBe(1);
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1]);
+      expect(asked).toHaveLength(26);
+    });
+
+    // A provider that was down for one run: the probe is all it costs, and
+    // the page never hears of it.
+    it('is over at a probe that is answered: the run after it is a whole one, and the page was told nothing', async () => {
+      let reply: Reply = { status: 529 };
+      const asked = modelBy(() => reply);
+      const { svc, gates, saveInsights } = boot(() => many(30));
+
+      await svc.runBatch();
+      await expect(svc.isEnabled()).resolves.toBe(true);
+
+      reply = answer();
+      expect(await runAgain(svc)).toEqual({
+        eligible: 1,
+        summarized: 1,
+        skipped: 0,
+        failed: 0,
+      });
+      await expect(svc.isEnabled()).resolves.toBe(true);
+      expect(saveInsights).toHaveBeenCalledTimes(1);
+
+      await runAgain(svc);
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1, 25]);
+      expect(asked).toHaveLength(25 + 1 + 25);
+      await expect(svc.isEnabled()).resolves.toBe(true);
+      expect(refusedLines()).toEqual([]);
+    });
+
+    // The provider answered: that is what the probe asks, whatever the
+    // answer holds.
+    it('is over at a probe answered with an answer that cannot be used', async () => {
+      let reply: Reply = { status: 429 };
+      modelBy(() => reply);
+      const { svc, gates } = boot(() => many(30));
+      await svc.runBatch();
+
+      reply = REFUSAL;
+      await runAgain(svc);
+      reply = { status: 429 };
+      await runAgain(svc);
+
+      // A whole run, and the one row read to be skipped.
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1, 25 + 1]);
+      await expect(svc.isEnabled()).resolves.toBe(true);
+    });
+
+    // A request that never arrived says nothing of the provider, either
+    // way: the doubt stays, and the next answer decides.
+    it('is left as it was by a probe that never arrived', async () => {
+      let reply: Reply = { status: 429 };
+      modelBy(() => reply);
+      const { svc, gates } = boot(() => many(30));
+      await svc.runBatch();
+
+      reply = new TypeError('fetch failed');
+      await runAgain(svc);
+      await expect(svc.isEnabled()).resolves.toBe(true);
+
+      reply = { status: 429 };
+      await runAgain(svc);
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1, 1]);
+      await expect(svc.isEnabled()).resolves.toBe(false);
+    });
+
+    it('is left as it was by a run with nothing to summarise', async () => {
+      modelBy(() => ({ status: 429 }));
+      let list = many(2);
+      const { svc, gates } = boot(() => list);
+      await svc.runBatch();
+
+      list = [];
+      await runAgain(svc);
+      await expect(svc.isEnabled()).resolves.toBe(true);
+
+      list = many(2);
+      await runAgain(svc);
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1, 1]);
+      await expect(svc.isEnabled()).resolves.toBe(false);
+    });
+
+    it('is over when a summary asked for by hand goes through', async () => {
+      let reply: Reply = { status: 429 };
+      modelBy(() => reply);
+      const { svc, gates } = boot(() => many(2));
+      await svc.runBatch();
+
+      reply = answer();
+      await svc.summarize('c1');
+      await runAgain(svc);
+
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 25]);
+    });
+  });
+
+  describe('when the next run that calls the model is refused too', () => {
+    it('reports no summaries, having cost 25 calls and one, and goes on asking about one conversation a run', async () => {
+      const asked = modelBy(() => ({ status: 429 }));
+      const { svc, gates } = boot(() => many(30));
+
+      await svc.runBatch();
+      expect(await runAgain(svc)).toEqual({
+        eligible: 1,
+        summarized: 0,
+        skipped: 0,
+        failed: 1,
+      });
+
+      expect(asked).toHaveLength(25 + 1);
+      await expect(svc.isEnabled()).resolves.toBe(false);
+
+      await runAgain(svc);
+      await runAgain(svc);
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1, 1, 1]);
+      expect(asked).toHaveLength(25 + 1 + 1 + 1);
+      await expect(svc.isEnabled()).resolves.toBe(false);
+    });
+
+    it.each([400, 404, 429, 500, 529])(
+      'counts a status of %i as the provider refusing',
+      async (status) => {
+        modelBy(() => ({ status }));
+        // More than a run takes: a 400 sets its conversation aside, and the
+        // probe needs one that is not.
+        const { svc } = boot(() => many(30));
+
+        await svc.runBatch();
+        await expect(svc.isEnabled()).resolves.toBe(true);
+        await runAgain(svc);
+
+        await expect(svc.isEnabled()).resolves.toBe(false);
+      },
+    );
+
+    // A 400 sets its conversation aside, and a run reads the ones set aside
+    // in order to skip them: the probe is still one conversation.
+    it('takes one conversation past the ones set aside', async () => {
+      const asked = modelBy(() => ({ status: 400 }));
+      const { svc, gates } = boot(() => many(30));
+
+      await svc.runBatch();
+      const probe = await runAgain(svc);
+
+      expect(probe.eligible).toBe(1);
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1 + 25]);
+      expect(asked).toHaveLength(26);
+      expect(asked[25]).toBe('c25');
+      await expect(svc.isEnabled()).resolves.toBe(false);
+    });
+
+    it('reports summaries again at the first call that goes through, and the next run is a whole one', async () => {
+      let reply: Reply = { status: 429 };
+      const asked = modelBy(() => reply);
+      const { svc, gates, saveInsights } = boot(() => many(30));
+
+      await svc.runBatch();
+      await runAgain(svc);
+      await expect(svc.isEnabled()).resolves.toBe(false);
+
+      // The provider recovers: the probe is the call that finds out.
+      reply = answer();
+      expect(await runAgain(svc)).toEqual({
+        eligible: 1,
+        summarized: 1,
+        skipped: 0,
+        failed: 0,
+      });
+      await expect(svc.isEnabled()).resolves.toBe(true);
+      expect(saveInsights).toHaveBeenCalledTimes(1);
+
+      await runAgain(svc);
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1, 1, 25]);
+      expect(asked).toHaveLength(25 + 1 + 1 + 25);
+    });
+
+    it('reports summaries again when a summary asked for by hand goes through', async () => {
+      let reply: Reply = { status: 429 };
+      modelBy(() => reply);
+      const { svc, gates } = boot(() => many(2));
+      await svc.runBatch();
+      await runAgain(svc);
+      await expect(svc.isEnabled()).resolves.toBe(false);
+
+      reply = answer();
+      await svc.summarize('c1');
+
+      await expect(svc.isEnabled()).resolves.toBe(true);
+      await runAgain(svc);
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1, 25]);
+    });
+
+    it('stays as it is through a run with nothing to summarise', async () => {
+      modelBy(() => ({ status: 429 }));
+      let list = many(2);
+      const { svc } = boot(() => list);
+      await svc.runBatch();
+      await runAgain(svc);
+      await expect(svc.isEnabled()).resolves.toBe(false);
+
+      list = [];
+      await runAgain(svc);
+
+      await expect(svc.isEnabled()).resolves.toBe(false);
+    });
+
+    // Keyed as a rejected credential is: by the credential and the moment
+    // it was last saved, never by its key. Saved again, it starts over.
+    it('starts over when the credential is saved again: a whole run, then a probe', async () => {
+      modelBy(() => ({ status: 429 }));
+      const { svc, gates, llms } = boot(() => many(30));
+      await svc.runBatch();
+      await runAgain(svc);
+      await expect(svc.isEnabled()).resolves.toBe(false);
+
+      (llms.findActive as jest.Mock).mockImplementation(async () => [
+        { ...CREDENTIAL, updatedAt: new Date('2026-11-28T00:00:00Z') },
+      ]);
+
+      await expect(svc.isEnabled()).resolves.toBe(true);
+      await runAgain(svc);
+      await expect(svc.isEnabled()).resolves.toBe(true);
+      await runAgain(svc);
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1, 25, 1]);
+      // Refused again, as that credential.
+      await expect(svc.isEnabled()).resolves.toBe(false);
+      expect(refusedLines()).toHaveLength(2);
+    });
+
+    it('runs whole with an API key added beside the token that was refused', async () => {
+      modelBy(() => ({ status: 429 }));
+      const token = { ...CREDENTIAL, id: 'oat-1', apiKey: SUBSCRIPTION_KEY };
+      const { svc, gates, llms } = boot(() => many(30), llmsStub([token]));
+      await svc.runBatch();
+      await runAgain(svc);
+      await expect(svc.isEnabled()).resolves.toBe(false);
+
+      (llms.findActive as jest.Mock).mockImplementation(async () => [
+        token,
+        { ...CREDENTIAL, id: 'api-1', provider: 'claude', apiKey: API_KEY },
+      ]);
+      modelBy(() => answer());
+
+      await expect(svc.isEnabled()).resolves.toBe(true);
+      expect((await runAgain(svc)).summarized).toBe(25);
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1, 25]);
+      expect(sentHeaders()[0]['x-api-key']).toBe(API_KEY);
+    });
+  });
+
+  describe('what does not count', () => {
+    it.each<[string, (id: string) => Reply]>([
+      [
+        'one conversation of the run was summarised',
+        (id) => (id === 'c1' ? answer() : { status: 429 }),
+      ],
+      [
+        'the provider answered one call, with an answer that cannot be used',
+        (id) => (id === 'c1' ? REFUSAL : { status: 429 }),
+      ],
+      ['no answer could be used', () => REFUSAL],
+      ['the requests never arrived', () => new TypeError('fetch failed')],
+      [
+        'one request never arrived',
+        (id) => (id === 'c1' ? new TypeError('fetch failed') : { status: 429 }),
+      ],
+    ])(
+      'a run in which %s is not doubted: the next is a whole one',
+      async (_name, by) => {
+        modelBy(by);
+        const { svc, gates } = boot(() => many(3));
+
+        await svc.runBatch();
+        await runAgain(svc);
+
+        expect(gates).toHaveLength(2);
+        for (const gate of gates) expect(gate.limit).toBeGreaterThanOrEqual(25);
+        await expect(svc.isEnabled()).resolves.toBe(true);
+        expect(refusedLines()).toEqual([]);
+      },
+    );
+
+    // Those are about a conversation, not about the provider: neither
+    // makes a model call, so neither is a call the provider refused or
+    // answered.
+    it('neither a transcript it could not read nor a conversation with nothing to read: the run is judged by the call it made', async () => {
+      const asked = modelBy(() => ({ status: 429 }));
+      const { svc, gates } = boot(() => [
+        chatOf('gone1'),
+        chatOf('broken1'),
+        chatOf('c1'),
+      ]);
+
+      expect(await svc.runBatch()).toEqual({
+        eligible: 3,
+        summarized: 0,
+        skipped: 1,
+        failed: 2,
+      });
+      // The one call that was made was refused.
+      expect(asked).toEqual(['c1']);
+
+      await runAgain(svc);
+      // A probe, and the two rows read to be skipped.
+      expect(gates.map((gate) => gate.limit)).toEqual([25, 1 + 2]);
+      expect(asked).toEqual(['c1', 'c1']);
+      await expect(svc.isEnabled()).resolves.toBe(false);
+    });
+
+    it('a run that made no model call', async () => {
+      const asked = modelBy(() => ({ status: 429 }));
+      const { svc, gates } = boot(() => [chatOf('gone1'), chatOf('broken1')]);
+
+      await svc.runBatch();
+      await runAgain(svc);
+      await runAgain(svc);
+
+      expect(asked).toEqual([]);
+      for (const gate of gates) expect(gate.limit).toBeGreaterThanOrEqual(25);
+      await expect(svc.isEnabled()).resolves.toBe(true);
+      expect(refusedLines()).toEqual([]);
+    });
+
+    // By hand a person asks about one conversation and reads the error;
+    // what the page says of the installation is the batch's to decide.
+    it('a summary asked for by hand, however often it is refused', async () => {
+      modelBy(() => ({ status: 429 }));
+      const { svc, gates } = boot(() => many(2));
+
+      for (let time = 0; time < 3; time++) {
+        await expect(svc.summarize('c1')).rejects.toThrow('Anthropic API 429');
+      }
+
+      await expect(svc.isEnabled()).resolves.toBe(true);
+      await svc.runBatch();
+      expect(gates.map((gate) => gate.limit)).toEqual([25]);
+    });
+  });
+
+  describe('the log', () => {
+    it('says nothing after the first refused run, and once, at warn, after the second, with the status of that run and the kind of credential', async () => {
+      let reply: Reply = { status: 429 };
+      modelBy(() => reply);
+      const { svc } = boot(() => many(30));
+
+      await svc.runBatch();
+      expect(refusedLines()).toEqual([]);
+
+      reply = { status: 529 };
+      await runAgain(svc);
+      expect(refusedLines()).toEqual([
+        'insight batch refused: the provider refused every call of the run (HTTP 529); the credential is a subscription token: false; summaries are reported as not produced until a call succeeds',
+      ]);
+
+      // Still refused on the runs that follow: the state is not entered
+      // again, and the line is not written again.
+      await runAgain(svc);
+      await runAgain(svc);
+      expect(refusedLines()).toHaveLength(1);
+    });
+
+    it('says that the credential is a subscription token, and nothing of its key', async () => {
+      modelBy(() => ({ status: 429 }));
+      const { svc } = boot(
+        () => many(3),
+        llmsStub([{ ...CREDENTIAL, apiKey: SUBSCRIPTION_KEY }]),
+      );
+
+      await svc.runBatch();
+      await runAgain(svc);
+
+      expect(refusedLines()).toEqual([
+        'insight batch refused: the provider refused every call of the run (HTTP 429); the credential is a subscription token: true; summaries are reported as not produced until a call succeeds',
+      ]);
+      const everything = [...lines(warn), ...lines(log)].join('\n');
+      expect(everything).not.toContain(SUBSCRIPTION_KEY);
+      expect(everything).not.toContain('sk-ant');
+      expect(everything).not.toContain('oat01');
+    });
+
+    it('writes the line again when the state is entered again', async () => {
+      let reply: Reply = { status: 429 };
+      modelBy(() => reply);
+      const { svc } = boot(() => many(3));
+
+      await svc.runBatch();
+      await runAgain(svc);
+      reply = answer();
+      await runAgain(svc);
+      reply = { status: 500 };
+      await runAgain(svc);
+      await runAgain(svc);
+
+      expect(
+        refusedLines().map((line) => /HTTP [^)]+/.exec(line)?.[0]),
+      ).toEqual(['HTTP 429', 'HTTP 500']);
+    });
+
+    // An ops workflow reads these lines by their wording
+    // (.github/workflows/ops-chat-summaries.yaml).
+    it('keeps the line of the run and the line of each conversation as they were', async () => {
+      modelBy(() => ({ status: 429 }));
+      const { svc } = boot(() => many(2));
+
+      await svc.runBatch();
+      await runAgain(svc);
+
+      expect(lines(log)).toEqual(
+        expect.arrayContaining([
+          'insight batch: eligible=2 summarized=0 skipped=0 failed=2',
+          'insight batch: eligible=1 summarized=0 skipped=0 failed=1',
+        ]),
+      );
+      expect(lines(warn)).toContain(
+        'insight failed for c0: Anthropic API 429: the provider said no',
+      );
+      expect(lines(warn)).toContain(
+        'insight failed for c1: Anthropic API 429: the provider said no',
+      );
+    });
   });
 });

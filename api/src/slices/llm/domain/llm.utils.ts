@@ -24,6 +24,21 @@ export function normalizeCredential(raw: string): string {
 }
 
 /**
+ * Whether an Anthropic key is a Claude **subscription OAuth token**
+ * (`sk-ant-oat…`), the kind the agents run on, and not a standard API key.
+ *
+ * The one place that tells the two apart (CLEAN-280). `anthropicAuthHeaders`
+ * chooses the transport by it, and the summary batch chooses its credential
+ * by it (`ChatInsightService.credential`): the provider refuses a direct
+ * summary request made with a subscription token, so an API key is taken
+ * first. Answers a boolean and nothing of the key; a caller that logs the
+ * kind logs this and never a prefix.
+ */
+export function isAnthropicSubscriptionToken(apiKey: string): boolean {
+  return apiKey.startsWith('sk-ant-oat');
+}
+
+/**
  * Anthropic accepts two credential types over DIFFERENT transports — sending
  * one the other's way is a hard 401 (`invalid x-api-key`):
  *  - `sk-ant-oat…` — a Claude **subscription OAuth token** (what our agents/bots
@@ -37,7 +52,7 @@ export function normalizeCredential(raw: string): string {
  * summaries, scenario generation) work with the exact credential the bots use.
  */
 export function anthropicAuthHeaders(apiKey: string): Record<string, string> {
-  if (apiKey.startsWith('sk-ant-oat')) {
+  if (isAnthropicSubscriptionToken(apiKey)) {
     return {
       authorization: `Bearer ${apiKey}`,
       'anthropic-beta': 'oauth-2025-04-20,claude-code-20250219',

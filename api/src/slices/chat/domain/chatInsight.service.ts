@@ -7,7 +7,11 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { ILlmGateway, anthropicAuthHeaders } from '#/llm/domain';
+import {
+  ILlmGateway,
+  anthropicAuthHeaders,
+  isAnthropicSubscriptionToken,
+} from '#/llm/domain';
 import type { ILlmCredentialData } from '#/llm/domain';
 import { TranscriptReaderService } from '#/agent/file/domain';
 import { AgentPermissionService } from '#/agent/agent/domain/agentPermission.service';
@@ -172,6 +176,41 @@ const SET_ASIDE_READ_MAX = 25;
 const SET_ASIDE_MAX = 1000;
 
 /**
+ * How many conversations a run asks about from the first run the provider
+ * refused whole, until a call is answered (CLEAN-280): one, where the gate
+ * takes 25.
+ *
+ * One call is enough to learn that the provider answers again, and it is
+ * learnt within an interval, because every run still asks. It is also all
+ * that a provider which goes on refusing is sent: four calls an hour at a
+ * run every quarter of an hour, where it was a hundred. In production those
+ * hundred were refused on the subscription token the agents run on, and a
+ * rate limit counted against that token is theirs too.
+ */
+const REFUSED_PROBE_LIMIT = 1;
+
+/**
+ * How many runs in a row the provider has to refuse whole before the
+ * installation is reported as producing no summaries (CLEAN-280): two.
+ *
+ * One is not enough, because one is what a blip looks like. A quiet
+ * installation has a single conversation to summarise in a run, and the
+ * provider being overloaded for that one call would otherwise take three
+ * blocks off the statistics page for a quarter of an hour. So the first
+ * refused run only makes the batch careful: the next run is a probe
+ * (`REFUSED_PROBE_LIMIT`), and the page is told nothing. A blip costs that
+ * one probe and never reaches the page.
+ *
+ * Two is enough, because the second run is the provider refusing again an
+ * interval later, which is what production's subscription tokens did (429
+ * to all 50 calls of two runs). The page learns of it one interval after it
+ * began, and by then it has cost 25 calls and one, where every run cost 25.
+ * A third would only be another quarter of an hour of a page that promises
+ * summaries.
+ */
+const REFUSED_RUNS_BEFORE_OFF = 2;
+
+/**
  * The provider statuses that say "later" and nothing about the request: a
  * timeout and a rate limit. With the 5xx they are failures a conversation
  * is not set aside for; any other 4xx is the provider refusing this request
@@ -234,6 +273,16 @@ interface IRun {
    * the subject anew.
    */
   always: Set<string>;
+  /**
+   * How many times the model was called, and the status of each call the
+   * provider answered with an error status (`ProviderStatusError`), in
+   * order. A run is refused when it called and the two are as many
+   * (`noteRefusal`, CLEAN-280). A conversation that never got as far as
+   * the call (nothing to read, a transcript that could not be read, a
+   * failure of our own database) is in neither.
+   */
+  calls: number;
+  refusals: number[];
 }
 
 /** Read on first need, once; a failed read is forgotten and asked again. */
@@ -380,6 +429,38 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
   private rejected: string | null = null;
 
   /**
+   * The credential the provider refused every call of a batch run with
+   * (CLEAN-280), as `stampOf` it, and how many such runs in a row; null
+   * once a call has gone through.
+   *
+   * Beside `rejected`, and not the same thing. A 401 or a 403 names the
+   * credential, on the first call, and ends the run. This is a run that
+   * called the model at least once and got an error status every time, any
+   * 4xx or 5xx: production's 50 calls were all answered 429, which of one
+   * call says "later" and of every call of two runs says that summaries are
+   * not being made. The status alone cannot tell a subscription token the
+   * provider will never serve from an outage, so the state claims neither.
+   *
+   * Two steps, by `runs`:
+   *
+   *  - one such run, and the provider is doubted: the runs that follow are
+   *    probes of one conversation (`REFUSED_PROBE_LIMIT`), and `isEnabled`
+   *    still answers true;
+   *  - `REFUSED_RUNS_BEFORE_OFF` of them, and it is refused: `isEnabled`
+   *    answers false, the log says so once, and the probes go on.
+   *
+   * Either ends at the first call the provider answers, the batch's or one
+   * made by hand, and the run after that is a whole one. A run that made no
+   * call, and a call that got no answer at all, leave it as it was.
+   *
+   * Keyed and kept as `rejected` is: by the credential and the moment it
+   * was last saved, never by its key, in memory. Saved again, a credential
+   * starts over, and after a restart the first run is a whole one and
+   * finds out again.
+   */
+  private refusal: { stamp: string; runs: number } | null = null;
+
+  /**
    * Conversations the batch could make no summary of, by id (CLEAN-270).
    *
    * Such a conversation stays eligible as far as the database knows:
@@ -479,24 +560,43 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
   /**
    * Whether this installation produces summaries (CLEAN-270, spec 038
    * FR-011): the batch is scheduled in this process, there is an active
-   * Anthropic credential, and the provider did not refuse that credential
-   * the last time it was used.
+   * Anthropic credential, the provider did not reject that credential the
+   * last time it was used, and it did not refuse every call of the batch's
+   * last two runs that made one (CLEAN-280).
    *
    * It is what the statistics page shows three blocks or one card by, and
-   * "off" is the ordinary case, our own production included: no interval,
-   * or no credential. The third condition is for a key that was revoked: the
-   * batch then runs and writes nothing, and a page that said "on" would be
-   * promising summaries that are not coming. It answers true again when the
-   * credential is saved again or a call goes through.
+   * "off" is the ordinary case: no interval, or no credential. The third
+   * condition is for a key that was revoked, and the fourth for a
+   * credential the provider does not serve summaries on, which is what a
+   * subscription token of the kind the agents run on turned out to be in
+   * production (`refusal`). In both the batch runs and writes nothing, and
+   * a page that said "on" would be promising summaries that are not coming.
+   * It answers true again when the credential is saved again or a call goes
+   * through.
    *
-   * It does not say that a summary was written lately, and a provider that
-   * is down is not "off": conversations wait and are summarised when it
-   * answers.
+   * It does not say that a summary was written lately. A provider that
+   * cannot be reached is not "off", nor is one that answers some calls of a
+   * run, nor one that refused a single run whole
+   * (`REFUSED_RUNS_BEFORE_OFF`): conversations wait and are summarised when
+   * it answers. One that refuses run after run is reported as not
+   * producing for as long as that lasts, whatever the cause.
    */
   async isEnabled(): Promise<boolean> {
     if (!this.timer) return false;
     const credential = await this.credential();
-    return credential !== null && stampOf(credential) !== this.rejected;
+    if (credential === null) return false;
+    const stamp = stampOf(credential);
+    return stamp !== this.rejected && !this.isRefused(stamp);
+  }
+
+  /** How many runs in a row the provider refused whole with this credential. */
+  private refusedRuns(stamp: string): number {
+    return this.refusal?.stamp === stamp ? this.refusal.runs : 0;
+  }
+
+  /** Whether that is as many as reports the installation as not producing. */
+  private isRefused(stamp: string): boolean {
+    return this.refusedRuns(stamp) >= REFUSED_RUNS_BEFORE_OFF;
   }
 
   /** On-demand summarize (admin button). Returns the updated session. */
@@ -537,20 +637,25 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
 
     this.running = true;
     const result = { ...empty };
+    // From the first run the provider refused whole with this credential, a
+    // run is a probe of one conversation (`refusal`). The size is decided
+    // here, once: a probe that is answered ends the state (`analyze`), and
+    // it is the next run that is a whole one again, an interval later.
+    const limit =
+      this.refusedRuns(stampOf(credential)) > 0
+        ? REFUSED_PROBE_LIMIT
+        : this.gate.limit;
+    const run = this.newRun();
     try {
       const now = Date.now();
       const plan = this.planRun(now);
       const found = await this.chats.findEligibleForInsight({
         ...this.gate,
-        limit: this.gate.limit + plan.read,
+        limit: limit + plan.read,
         ...(plan.exclude.length ? { exclude: plan.exclude } : {}),
       });
-      const sessions = this.takeFrom(found, plan, now).slice(
-        0,
-        this.gate.limit,
-      );
+      const sessions = this.takeFrom(found, plan, now).slice(0, limit);
       result.eligible = sessions.length;
-      const run = this.newRun();
       // One after another, never side by side: each conversation reads the
       // vocabulary the one before it may have added to.
       for (const session of sessions) {
@@ -585,22 +690,69 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `insight batch: eligible=${result.eligible} summarized=${result.summarized} skipped=${result.skipped} failed=${result.failed}`,
     );
+    this.noteRefusal(run, credential);
     return result;
   }
 
   /**
-   * The credential a summary is made with: the first active one of
-   * Anthropic, or null. Public for the calibration script
+   * Count the run that just ended when it called the model and the
+   * provider answered every call with an error status (`refusal`,
+   * CLEAN-280): the first such run makes the next ones probes, and the
+   * second reports the installation as producing no summaries.
+   *
+   * Judged by the calls and by nothing else of the run. A conversation with
+   * nothing to read or a transcript that could not be read made no call and
+   * is about that conversation. A call the provider answered, with a
+   * summary or with an answer that cannot be used, is the provider
+   * answering: one of those and the run is not refused, and the count has
+   * already been dropped (`analyze`). Nor is it by a request that got no
+   * answer at all, which is the network's failure, and that one leaves the
+   * count as it was, as does a run with nothing to summarise.
+   *
+   * Said once, on the run that makes it `REFUSED_RUNS_BEFORE_OFF`, with the
+   * statuses of that run: a probe that is refused after that finds the
+   * state as it is and adds no line. Nothing of the key is written, only
+   * which kind it is.
+   */
+  private noteRefusal(run: IRun, credential: ILlmCredentialData): void {
+    if (run.calls === 0 || run.refusals.length !== run.calls) return;
+    const stamp = stampOf(credential);
+    if (this.isRefused(stamp)) return;
+    this.refusal = { stamp, runs: this.refusedRuns(stamp) + 1 };
+    if (!this.isRefused(stamp)) return;
+    const statuses = [...new Set(run.refusals)].join(', ');
+    const subscription = isAnthropicSubscriptionToken(credential.apiKey);
+    this.logger.warn(
+      `insight batch refused: the provider refused every call of the run (HTTP ${statuses}); the credential is a subscription token: ${subscription}; summaries are reported as not produced until a call succeeds`,
+    );
+  }
+
+  /**
+   * The credential a summary is made with, by the batch and by hand: among
+   * the active ones of Anthropic, the first whose key is an ordinary API
+   * key, else the first that is a subscription token, or null. Within each
+   * kind the order is the gateway's, by provider and then by model.
+   *
+   * An API key first (CLEAN-280) because the provider refuses a direct
+   * summary request made with a subscription token of the kind the agents
+   * run on: production had two of those and no key, and every call of two
+   * runs was answered 429. A token is still taken when it is the only kind
+   * there is, since an installation may have one that is served; the one
+   * that is not is what `refusal` reports.
+   *
+   * Public for the calibration script
    * (api/scripts/summary-calibration.ts), which has to measure with the
    * credential the batch would use.
    */
   async credential(): Promise<ILlmCredentialData | null> {
-    const active = await this.llms.findActive();
+    const anthropic = (await this.llms.findActive()).filter((c) => {
+      const p = c.provider.toLowerCase();
+      return p === 'claude' || p === 'anthropic';
+    });
     return (
-      active.find((c) => {
-        const p = c.provider.toLowerCase();
-        return p === 'claude' || p === 'anthropic';
-      }) ?? null
+      anthropic.find((c) => !isAnthropicSubscriptionToken(c.apiKey)) ??
+      anthropic[0] ??
+      null
     );
   }
 
@@ -634,7 +786,10 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
       }
       throw err;
     }
+    // The provider answered: neither state outlives that, whatever the
+    // answer turns out to hold (`isEnabled`).
     this.rejected = null;
+    this.refusal = null;
     // How it ended, before what it says (CLEAN-270). An answer cut at the
     // token limit can hold a complete object from before the cut, and the
     // parser, which takes the first complete one, would store it as if the
@@ -687,6 +842,8 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
       ),
       hasTopics: once(() => this.topics.hasStanding()),
       always: new Set(),
+      calls: 0,
+      refusals: [],
     };
   }
 
@@ -881,11 +1038,15 @@ export class ChatInsightService implements OnModuleInit, OnModuleDestroy {
         : [];
 
     let parsed: ParsedInsight;
+    run.calls++;
     try {
       parsed = await this.analyze(transcript, vocabulary, credential, {
         topics: withTopics,
       });
     } catch (err) {
+      if (err instanceof ProviderStatusError) {
+        run.refusals.push(err.providerStatus);
+      }
       if (lastsBeyondARetry(err)) this.backOff(session);
       throw err;
     }
